@@ -1,0 +1,17 @@
+{
+  "display_name": "Echoes Memory System",
+  "loading_order": 110,
+  "generate_interceptor": "EchoesRecallInterceptor",
+  "dependencies": [
+    "third-party/JS-Slash-Runner"
+  ],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Eternalt",
+  "version": "0.2.1",
+  "auto_update": true,
+  "minimum_client_version": "1.18.0",
+  "hooks": {
+    "activate": "onActivate"
+  }
+}
