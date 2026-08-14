@@ -30789,13 +30789,13 @@ ${message2.content}`).join("\n\n"));
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "0.2.1",
+  version: "0.2.2",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
   license: "CC-BY-NC-4.0",
   engines: {
-    node: ">=20.9.0 <21 || >=22.0.0 <23"
+    node: ">=20.9.0 <21 || >=22.0.0 <23 || >=24.0.0 <25"
   },
   scripts: {
     build: "node scripts/build.mjs",
