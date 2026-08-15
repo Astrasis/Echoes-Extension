@@ -24001,30 +24001,29 @@ var extractionCoordinator = new ExtractionCoordinator();
 
 // src/extension/ui/dialogs.ts
 init_domain();
-function dialogShell(title, className = "") {
-  const dialog4 = document.createElement("dialog");
-  dialog4.className = `echoes-dialog ${className}`.trim();
-  dialog4.innerHTML = `
-    <form class="echoes-dialog-frame">
+function dialogShell(title, options = "") {
+  const { className = "", submitLabel = "\u4FDD\u5B58", showCancel = true, closeOnly = false } = typeof options === "string" ? { className: options } : options;
+  const dialog = document.createElement("dialog");
+  dialog.className = `echoes-dialog ${className}`.trim();
+  const footer = closeOnly ? '<button type="submit" class="menu_button echoes-primary">\u5173\u95ED</button>' : `${showCancel ? '<button type="button" class="menu_button" data-close>\u53D6\u6D88</button>' : ""}<button type="submit" class="menu_button echoes-primary">${submitLabel}</button>`;
+  dialog.innerHTML = `
+    <form class="echoes-dialog-frame" method="dialog">
       <header class="echoes-dialog-header">
         <h2></h2>
-        <button type="button" class="echoes-icon-button" data-dialog-cancel title="\u5173\u95ED" aria-label="\u5173\u95ED">
+        <button type="button" class="echoes-icon-button" data-close title="\u5173\u95ED" aria-label="\u5173\u95ED">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </header>
       <div class="echoes-dialog-body"></div>
-      <footer class="echoes-dialog-footer">
-        <button type="button" class="menu_button" data-dialog-cancel>\u53D6\u6D88</button>
-        <button type="submit" class="menu_button echoes-primary">\u4FDD\u5B58</button>
-      </footer>
+      <footer class="echoes-dialog-footer">${footer}</footer>
     </form>`;
-  dialog4.querySelector("h2").textContent = title;
-  document.body.append(dialog4);
-  dialog4.querySelectorAll("[data-dialog-cancel]").forEach((button3) => {
-    button3.addEventListener("click", () => dialog4.close("cancel"));
+  dialog.querySelector("h2").textContent = title;
+  document.body.append(dialog);
+  dialog.querySelectorAll("[data-close]").forEach((button3) => {
+    button3.addEventListener("click", () => dialog.close("cancel"));
   });
-  dialog4.addEventListener("close", () => dialog4.remove(), { once: true });
-  return dialog4;
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  return dialog;
 }
 function slugify2(value) {
   const slug = value.normalize("NFKD").replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").toLowerCase();
@@ -24114,8 +24113,8 @@ function definitionMarkup(includeTemplate) {
     <div class="echoes-column-editor"></div>`;
 }
 function openTypeDialog(templates, current) {
-  const dialog4 = dialogShell(current ? "\u7F16\u8F91\u8BB0\u5FC6\u7C7B\u578B" : "\u65B0\u5EFA\u8BB0\u5FC6\u7C7B\u578B");
-  const body = dialog4.querySelector(".echoes-dialog-body");
+  const dialog = dialogShell(current ? "\u7F16\u8F91\u8BB0\u5FC6\u7C7B\u578B" : "\u65B0\u5EFA\u8BB0\u5FC6\u7C7B\u578B");
+  const body = dialog.querySelector(".echoes-dialog-body");
   body.innerHTML = definitionMarkup(true);
   const templateSelect = body.querySelector("[name=templateId]");
   for (const template of templates) {
@@ -24148,7 +24147,7 @@ function openTypeDialog(templates, current) {
   });
   return new Promise((resolve) => {
     let settled = false;
-    dialog4.querySelector("form").addEventListener("submit", (event) => {
+    dialog.querySelector("form").addEventListener("submit", (event) => {
       event.preventDefault();
       try {
         const parsed = memoryTypeInputSchema.parse({
@@ -24162,20 +24161,20 @@ function openTypeDialog(templates, current) {
         });
         settled = true;
         resolve(parsed);
-        dialog4.close("saved");
+        dialog.close("saved");
       } catch (error51) {
         toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u7C7B\u578B\u5B9A\u4E49\u65E0\u6548");
       }
     });
-    dialog4.addEventListener("close", () => {
+    dialog.addEventListener("close", () => {
       if (!settled) resolve(null);
     }, { once: true });
-    dialog4.showModal();
+    dialog.showModal();
   });
 }
 function openTemplateDialog(current) {
-  const dialog4 = dialogShell(current ? "\u7F16\u8F91\u7C7B\u578B\u6A21\u677F" : "\u65B0\u5EFA\u7C7B\u578B\u6A21\u677F");
-  const body = dialog4.querySelector(".echoes-dialog-body");
+  const dialog = dialogShell(current ? "\u7F16\u8F91\u7C7B\u578B\u6A21\u677F" : "\u65B0\u5EFA\u7C7B\u578B\u6A21\u677F");
+  const body = dialog.querySelector(".echoes-dialog-body");
   body.innerHTML = definitionMarkup(false);
   if (current) fillDefinition(body, current);
   else body.querySelector(".echoes-column-editor").append(renderColumnRow());
@@ -24184,7 +24183,7 @@ function openTemplateDialog(current) {
   });
   return new Promise((resolve) => {
     let settled = false;
-    dialog4.querySelector("form").addEventListener("submit", (event) => {
+    dialog.querySelector("form").addEventListener("submit", (event) => {
       event.preventDefault();
       try {
         const parsed = memoryTypeTemplateInputSchema.parse({
@@ -24196,15 +24195,15 @@ function openTemplateDialog(current) {
         });
         settled = true;
         resolve(parsed);
-        dialog4.close("saved");
+        dialog.close("saved");
       } catch (error51) {
         toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u6A21\u677F\u5B9A\u4E49\u65E0\u6548");
       }
     });
-    dialog4.addEventListener("close", () => {
+    dialog.addEventListener("close", () => {
       if (!settled) resolve(null);
     }, { once: true });
-    dialog4.showModal();
+    dialog.showModal();
   });
 }
 function valueInput(column, value) {
@@ -24233,8 +24232,8 @@ function valueInput(column, value) {
   return label;
 }
 function openRowDialog(type, current) {
-  const dialog4 = dialogShell(current ? "\u7F16\u8F91\u957F\u671F\u8BB0\u5FC6" : "\u6DFB\u52A0\u957F\u671F\u8BB0\u5FC6");
-  const body = dialog4.querySelector(".echoes-dialog-body");
+  const dialog = dialogShell(current ? "\u7F16\u8F91\u957F\u671F\u8BB0\u5FC6" : "\u6DFB\u52A0\u957F\u671F\u8BB0\u5FC6");
+  const body = dialog.querySelector(".echoes-dialog-body");
   body.innerHTML = `
     <div class="echoes-form-grid echoes-fixed-fields">
       <label>\u6570\u636E\u540D<input name="dataName" type="text" required></label>
@@ -24254,7 +24253,7 @@ function openRowDialog(type, current) {
   for (const column of type.columns) valuesHost.append(valueInput(column, current?.values[column.id]));
   return new Promise((resolve) => {
     let settled = false;
-    dialog4.querySelector("form").addEventListener("submit", (event) => {
+    dialog.querySelector("form").addEventListener("submit", (event) => {
       event.preventDefault();
       try {
         const values = {};
@@ -24277,20 +24276,20 @@ function openRowDialog(type, current) {
         });
         settled = true;
         resolve(parsed);
-        dialog4.close("saved");
+        dialog.close("saved");
       } catch (error51) {
         toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u884C\u6570\u636E\u65E0\u6548");
       }
     });
-    dialog4.addEventListener("close", () => {
+    dialog.addEventListener("close", () => {
       if (!settled) resolve(null);
     }, { once: true });
-    dialog4.showModal();
+    dialog.showModal();
   });
 }
 function openSettingsDialog(current) {
-  const dialog4 = dialogShell("\u5DE5\u4F5C\u6D41\u8BBE\u7F6E");
-  const body = dialog4.querySelector(".echoes-dialog-body");
+  const dialog = dialogShell("\u5DE5\u4F5C\u6D41\u8BBE\u7F6E");
+  const body = dialog.querySelector(".echoes-dialog-body");
   body.innerHTML = `
     <div class="echoes-form-grid">
       <label>\u7ED3\u6784\u5316\u8BB0\u5FC6\u7AEF\u70B9\u7EC4<select name="extractionGroup"></select></label>
@@ -24324,7 +24323,7 @@ function openSettingsDialog(current) {
   embeddingGroup.value = current.summary.embeddingGroupId;
   return new Promise((resolve) => {
     let settled = false;
-    dialog4.querySelector("form").addEventListener("submit", (event) => {
+    dialog.querySelector("form").addEventListener("submit", (event) => {
       event.preventDefault();
       settled = true;
       resolve({
@@ -24353,17 +24352,17 @@ function openSettingsDialog(current) {
           embeddingGroupId: embeddingGroup.value
         }
       });
-      dialog4.close("saved");
+      dialog.close("saved");
     });
-    dialog4.addEventListener("close", () => {
+    dialog.addEventListener("close", () => {
       if (!settled) resolve(null);
     }, { once: true });
-    dialog4.showModal();
+    dialog.showModal();
   });
 }
 function openPromptItemDialog(types, current) {
-  const dialog4 = dialogShell(current ? "\u7F16\u8F91\u63D0\u793A\u8BCD\u6761\u76EE" : "\u6DFB\u52A0\u63D0\u793A\u8BCD\u6761\u76EE");
-  const body = dialog4.querySelector(".echoes-dialog-body");
+  const dialog = dialogShell(current ? "\u7F16\u8F91\u63D0\u793A\u8BCD\u6761\u76EE" : "\u6DFB\u52A0\u63D0\u793A\u8BCD\u6761\u76EE");
+  const body = dialog.querySelector(".echoes-dialog-body");
   body.innerHTML = `
     <div class="echoes-form-grid">
       <label>\u6761\u76EE\u7C7B\u578B<select name="kind">
@@ -24404,7 +24403,7 @@ function openPromptItemDialog(types, current) {
   refresh();
   return new Promise((resolve) => {
     let settled = false;
-    dialog4.querySelector("form").addEventListener("submit", (event) => {
+    dialog.querySelector("form").addEventListener("submit", (event) => {
       event.preventDefault();
       if (kind.value === "type_writer" && !typeSelect.value) {
         toastr.error("\u6CA1\u6709\u53EF\u5F15\u7528\u7684\u8BB0\u5FC6\u7C7B\u578B\u3002", "\u63D0\u793A\u8BCD\u65E0\u6548");
@@ -24423,20 +24422,20 @@ function openPromptItemDialog(types, current) {
       };
       settled = true;
       resolve(item);
-      dialog4.close("saved");
+      dialog.close("saved");
     });
-    dialog4.addEventListener("close", () => {
+    dialog.addEventListener("close", () => {
       if (!settled) resolve(null);
     }, { once: true });
-    dialog4.showModal();
+    dialog.showModal();
   });
 }
 function openPreviewDialog(blocks, runtimeInput) {
-  const dialog4 = dialogShell("\u526F API \u8BF7\u6C42\u9884\u89C8", "echoes-preview-dialog");
-  const footer = dialog4.querySelector(".echoes-dialog-footer");
-  footer.innerHTML = '<button type="button" class="menu_button echoes-primary" data-dialog-cancel>\u5173\u95ED</button>';
-  footer.querySelector("[data-dialog-cancel]").addEventListener("click", () => dialog4.close());
-  const body = dialog4.querySelector(".echoes-dialog-body");
+  const dialog = dialogShell("\u526F API \u8BF7\u6C42\u9884\u89C8", "echoes-preview-dialog");
+  const footer = dialog.querySelector(".echoes-dialog-footer");
+  footer.innerHTML = '<button type="button" class="menu_button echoes-primary" data-close>\u5173\u95ED</button>';
+  footer.querySelector("[data-close]").addEventListener("click", () => dialog.close());
+  const body = dialog.querySelector(".echoes-dialog-body");
   for (const block of [...blocks, { title: "\u8FD0\u884C\u65F6\u8868\u683C\u4E0E\u589E\u91CF\u5BF9\u8BDD", role: "user", content: runtimeInput }]) {
     const section = document.createElement("section");
     section.className = "echoes-preview-block";
@@ -24447,7 +24446,7 @@ function openPreviewDialog(blocks, runtimeInput) {
     section.append(heading, pre);
     body.append(section);
   }
-  dialog4.showModal();
+  dialog.showModal();
 }
 function extractionOperationTarget(item, types, rows) {
   const operation = item.operation;
@@ -24458,8 +24457,8 @@ function extractionOperationTarget(item, types, rows) {
   return `${typeName} / ${row?.dataName ?? operation.rowId}`;
 }
 function openExtractionReviewDialog(items, types, rows) {
-  const dialog4 = dialogShell("\u5BA1\u6838\u7ED3\u6784\u5316\u8BB0\u5FC6\u6279\u6B21", "echoes-extraction-review-dialog");
-  const body = dialog4.querySelector(".echoes-dialog-body");
+  const dialog = dialogShell("\u5BA1\u6838\u7ED3\u6784\u5316\u8BB0\u5FC6\u6279\u6B21", "echoes-extraction-review-dialog");
+  const body = dialog.querySelector(".echoes-dialog-body");
   const notice = document.createElement("p");
   notice.className = "echoes-extraction-review-notice";
   notice.textContent = "\u6709\u6548\u64CD\u4F5C\u9ED8\u8BA4\u9009\u4E2D\uFF1B\u65E0\u6548\u64CD\u4F5C\u4E0D\u53EF\u63D0\u4EA4\u3002\u63D0\u4EA4\u540E\uFF0C\u672A\u9009\u9879\u4E0E\u65E0\u6548\u9879\u4F1A\u88AB\u660E\u786E\u8DF3\u8FC7\u5E76\u63A8\u8FDB\u68C0\u67E5\u70B9\u3002\u5BA1\u6838\u4EC5\u4FDD\u5B58\u5728\u5F53\u524D\u9875\u9762\u5185\u5B58\u4E2D\u3002";
@@ -24492,35 +24491,35 @@ function openExtractionReviewDialog(items, types, rows) {
     list.append(row);
   }
   body.append(notice, list);
-  const footer = dialog4.querySelector(".echoes-dialog-footer");
+  const footer = dialog.querySelector(".echoes-dialog-footer");
   footer.innerHTML = `
-    <button type="button" class="menu_button" data-dialog-cancel>\u53D6\u6D88</button>
+    <button type="button" class="menu_button" data-close>\u53D6\u6D88</button>
     <button type="button" class="menu_button" data-review-rerun><i class="fa-solid fa-rotate"></i> \u91CD\u8DD1\u6279\u6B21</button>
     <button type="submit" class="menu_button echoes-primary"><i class="fa-solid fa-check"></i> \u63D0\u4EA4\u9009\u4E2D\u9879</button>`;
-  footer.querySelector("[data-dialog-cancel]").addEventListener("click", () => dialog4.close("cancel"));
+  footer.querySelector("[data-close]").addEventListener("click", () => dialog.close("cancel"));
   return new Promise((resolve) => {
     let settled = false;
     footer.querySelector("[data-review-rerun]").addEventListener("click", () => {
       settled = true;
       resolve({ action: "rerun", selectedIndexes: [] });
-      dialog4.close("rerun");
+      dialog.close("rerun");
     });
-    dialog4.querySelector("form").addEventListener("submit", (event) => {
+    dialog.querySelector("form").addEventListener("submit", (event) => {
       event.preventDefault();
       const selectedIndexes = [...list.querySelectorAll('input[type="checkbox"]:checked')].map((input) => Number(input.value));
       settled = true;
       resolve({ action: "submit", selectedIndexes });
-      dialog4.close("submit");
+      dialog.close("submit");
     });
-    dialog4.addEventListener("close", () => {
+    dialog.addEventListener("close", () => {
       if (!settled) resolve(null);
     }, { once: true });
-    dialog4.showModal();
+    dialog.showModal();
   });
 }
 function openMigrationDialog(options) {
-  const dialog4 = dialogShell("\u8FC1\u79FB\u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6");
-  const body = dialog4.querySelector(".echoes-dialog-body");
+  const dialog = dialogShell("\u8FC1\u79FB\u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6");
+  const body = dialog.querySelector(".echoes-dialog-body");
   body.innerHTML = `
     <div class="echoes-form-grid">
       <label class="echoes-form-span">\u6765\u6E90\u4E16\u754C\u4E66<select name="source"></select></label>
@@ -24558,7 +24557,7 @@ function openMigrationDialog(options) {
   else host.textContent = "\u6CA1\u6709\u5176\u4ED6\u53EF\u8FC1\u79FB\u7684\u4E16\u754C\u4E66\u3002";
   return new Promise((resolve) => {
     let settled = false;
-    dialog4.querySelector("form").addEventListener("submit", (event) => {
+    dialog.querySelector("form").addEventListener("submit", (event) => {
       event.preventDefault();
       const typeIds = [...host.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value);
       if (!source.value || typeIds.length === 0) {
@@ -24571,12 +24570,12 @@ function openMigrationDialog(options) {
         typeIds,
         policy: body.querySelector("[name=policy]").value
       });
-      dialog4.close("saved");
+      dialog.close("saved");
     });
-    dialog4.addEventListener("close", () => {
+    dialog.addEventListener("close", () => {
       if (!settled) resolve(null);
     }, { once: true });
-    dialog4.showModal();
+    dialog.showModal();
   });
 }
 
@@ -24954,9 +24953,9 @@ var RetrievalPanel = class {
   }
   async endpointSetDialog(kind, current) {
     const credentials = await echoesApi.listCredentials().catch(() => []);
-    const dialog4 = document.createElement("dialog");
-    dialog4.className = "echoes-dialog echoes-endpoint-dialog";
-    dialog4.innerHTML = `
+    const dialog = document.createElement("dialog");
+    dialog.className = "echoes-dialog echoes-endpoint-dialog";
+    dialog.innerHTML = `
       <form method="dialog" class="echoes-dialog-frame">
         <header class="echoes-dialog-header"><h2>${kind === "embedding" ? "Embedding \u7AEF\u70B9\u7EC4" : "Rerank \u7AEF\u70B9\u7EC4"}</h2><button type="button" class="echoes-icon-button" data-close><i class="fa-solid fa-xmark"></i></button></header>
         <div class="echoes-dialog-body">
@@ -24971,8 +24970,8 @@ var RetrievalPanel = class {
         </div>
         <footer class="echoes-dialog-footer"><button type="button" class="menu_button" data-close>\u53D6\u6D88</button><button type="submit" value="save" class="menu_button echoes-primary">\u4FDD\u5B58</button></footer>
       </form>`;
-    document.body.append(dialog4);
-    const form = dialog4.querySelector("form");
+    document.body.append(dialog);
+    const form = dialog.querySelector("form");
     form.elements.namedItem("name").value = current?.name ?? "";
     form.elements.namedItem("id").value = current?.id ?? uid(kind);
     if (kind === "embedding") {
@@ -24980,11 +24979,11 @@ var RetrievalPanel = class {
       form.elements.namedItem("embeddingSpaceId").value = embedding?.embeddingSpaceId ?? uid("space");
       form.elements.namedItem("dimensions").value = String(embedding?.dimensions ?? 1536);
     }
-    const editor = dialog4.querySelector("[data-endpoint-editor]");
+    const editor = dialog.querySelector("[data-endpoint-editor]");
     const rows = structuredClone(current?.endpoints ?? []);
     const redraw = () => this.renderEndpointEditor(editor, rows, credentials, redraw);
     redraw();
-    dialog4.querySelector("[data-add-endpoint]").addEventListener("click", () => {
+    dialog.querySelector("[data-add-endpoint]").addEventListener("click", () => {
       rows.push({
         id: uid("endpoint"),
         name: `\u7AEF\u70B9 ${rows.length + 1}`,
@@ -24996,7 +24995,7 @@ var RetrievalPanel = class {
       });
       redraw();
     });
-    dialog4.querySelectorAll("[data-close]").forEach((element) => element.addEventListener("click", () => dialog4.close("cancel")));
+    dialog.querySelectorAll("[data-close]").forEach((element) => element.addEventListener("click", () => dialog.close("cancel")));
     return new Promise((resolve) => {
       form.addEventListener("submit", (event) => {
         event.preventDefault();
@@ -25015,19 +25014,19 @@ var RetrievalPanel = class {
           } : base;
           if (kind === "embedding") embeddingEndpointGroupSchema.parse(value);
           else rerankEndpointSetSchema.parse(value);
-          dialog4.close("save");
+          dialog.close("save");
           resolve(value);
         } catch (error51) {
-          const message2 = dialog4.querySelector("[data-error]");
+          const message2 = dialog.querySelector("[data-error]");
           message2.textContent = errorMessage(error51);
           message2.classList.remove("echoes-hidden");
         }
       });
-      dialog4.addEventListener("close", () => {
-        if (dialog4.returnValue !== "save") resolve(null);
-        dialog4.remove();
+      dialog.addEventListener("close", () => {
+        if (dialog.returnValue !== "save") resolve(null);
+        dialog.remove();
       }, { once: true });
-      dialog4.showModal();
+      dialog.showModal();
     });
   }
   renderEndpointEditor(host, rows, credentials, redraw) {
@@ -25131,9 +25130,9 @@ var RetrievalPanel = class {
   async createCollection() {
     const groups = getSettings().retrieval.embeddingGroups;
     if (groups.length === 0) throw new Error("\u8BF7\u5148\u914D\u7F6E Embedding \u7AEF\u70B9\u7EC4\u548C\u5D4C\u5165\u7A7A\u95F4\u3002");
-    const dialog4 = document.createElement("dialog");
-    dialog4.className = "echoes-dialog echoes-compact-dialog";
-    dialog4.innerHTML = `
+    const dialog = document.createElement("dialog");
+    dialog.className = "echoes-dialog echoes-compact-dialog";
+    dialog.innerHTML = `
       <form method="dialog" class="echoes-dialog-frame">
         <header class="echoes-dialog-header"><h2>\u65B0\u5EFA\u68C0\u7D22\u96C6\u5408</h2></header>
         <div class="echoes-dialog-body"><div class="echoes-form-grid">
@@ -25144,12 +25143,12 @@ var RetrievalPanel = class {
         </div></div>
         <footer class="echoes-dialog-footer"><button type="button" class="menu_button" data-close>\u53D6\u6D88</button><button type="submit" class="menu_button echoes-primary">\u521B\u5EFA</button></footer>
       </form>`;
-    document.body.append(dialog4);
-    const form = dialog4.querySelector("form");
+    document.body.append(dialog);
+    const form = dialog.querySelector("form");
     form.elements.namedItem("id").value = uid("collection");
     const select = form.elements.namedItem("groupId");
     groups.forEach((group) => select.add(new Option(`${group.name} \xB7 ${group.dimensions} \u7EF4`, group.id)));
-    dialog4.querySelector("[data-close]").addEventListener("click", () => dialog4.close("cancel"));
+    dialog.querySelector("[data-close]").addEventListener("click", () => dialog.close("cancel"));
     await new Promise((resolve) => {
       form.addEventListener("submit", (event) => {
         event.preventDefault();
@@ -25160,13 +25159,13 @@ var RetrievalPanel = class {
           description: selectedValue(form, "[name=description]"),
           embeddingSpaceId: group.embeddingSpaceId,
           dimensions: group.dimensions
-        }).then(() => dialog4.close("saved")).catch((error51) => toastr.error(errorMessage(error51), "\u96C6\u5408\u521B\u5EFA\u5931\u8D25"));
+        }).then(() => dialog.close("saved")).catch((error51) => toastr.error(errorMessage(error51), "\u96C6\u5408\u521B\u5EFA\u5931\u8D25"));
       });
-      dialog4.addEventListener("close", () => {
-        dialog4.remove();
+      dialog.addEventListener("close", () => {
+        dialog.remove();
         resolve();
       }, { once: true });
-      dialog4.showModal();
+      dialog.showModal();
     });
     await this.render();
   }
@@ -25357,27 +25356,27 @@ var RetrievalPanel = class {
     host.replaceChildren(table);
   }
   confirmAmbiguous(decision) {
-    const dialog4 = document.createElement("dialog");
-    dialog4.className = "echoes-dialog echoes-confirm-dialog";
-    dialog4.innerHTML = `
+    const dialog = document.createElement("dialog");
+    dialog.className = "echoes-dialog echoes-confirm-dialog";
+    dialog.innerHTML = `
       <div class="echoes-dialog-frame">
         <header class="echoes-dialog-header"><h2>\u63D0\u4F9B\u5546\u7ED3\u679C\u4E0D\u786E\u5B9A</h2></header>
         <div class="echoes-dialog-body"><p></p></div>
         <footer class="echoes-dialog-footer"><button type="button" class="menu_button" data-stop>\u505C\u6B62\u5E76\u4F7F\u7528\u964D\u7EA7\u7ED3\u679C</button><button type="button" class="menu_button echoes-primary" data-next ${decision.nextEndpointId ? "" : "disabled"}>\u5207\u6362\u4E0B\u4E00\u7AEF\u70B9</button></footer>
       </div>`;
-    dialog4.querySelector("p").textContent = decision.message;
-    document.body.append(dialog4);
+    dialog.querySelector("p").textContent = decision.message;
+    document.body.append(dialog);
     return new Promise((resolve) => {
-      dialog4.querySelector("[data-stop]").addEventListener("click", () => {
+      dialog.querySelector("[data-stop]").addEventListener("click", () => {
         resolve(false);
-        dialog4.close();
+        dialog.close();
       });
-      dialog4.querySelector("[data-next]").addEventListener("click", () => {
+      dialog.querySelector("[data-next]").addEventListener("click", () => {
         resolve(true);
-        dialog4.close();
+        dialog.close();
       });
-      dialog4.addEventListener("close", () => dialog4.remove(), { once: true });
-      dialog4.showModal();
+      dialog.addEventListener("close", () => dialog.remove(), { once: true });
+      dialog.showModal();
     });
   }
   async waitForJob(initial) {
@@ -27148,9 +27147,9 @@ async function waitForJob3(initial, maxWaitMs) {
   return job;
 }
 function openDecisionDialog(options) {
-  const dialog4 = document.createElement("dialog");
-  dialog4.className = "echoes-dialog echoes-recall-decision";
-  dialog4.innerHTML = `
+  const dialog = document.createElement("dialog");
+  dialog.className = "echoes-dialog echoes-recall-decision";
+  dialog.innerHTML = `
     <form method="dialog">
       <header class="echoes-dialog-header"><h2>\u53EC\u56DE\u8BF7\u6C42\u7ED3\u679C\u4E0D\u786E\u5B9A</h2></header>
       <div class="echoes-dialog-body"><p data-message></p></div>
@@ -27162,25 +27161,25 @@ function openDecisionDialog(options) {
         </button>
       </footer>
     </form>`;
-  dialog4.querySelector("[data-message]").textContent = options.message;
-  dialog4.querySelector("[data-decision=degraded]").textContent = options.degradedLabel ?? "\u4F7F\u7528\u5DF2\u6709 BM25/RRF \u7ED3\u679C";
-  const continueButton = dialog4.querySelector("[data-decision=continue]");
+  dialog.querySelector("[data-message]").textContent = options.message;
+  dialog.querySelector("[data-decision=degraded]").textContent = options.degradedLabel ?? "\u4F7F\u7528\u5DF2\u6709 BM25/RRF \u7ED3\u679C";
+  const continueButton = dialog.querySelector("[data-decision=continue]");
   continueButton.disabled = !options.canContinue;
-  document.body.append(dialog4);
+  document.body.append(dialog);
   return new Promise((resolve) => {
     const finish = (decision) => {
-      dialog4.close();
+      dialog.close();
       resolve(decision);
     };
-    dialog4.querySelectorAll("[data-decision]").forEach((button3) => {
+    dialog.querySelectorAll("[data-decision]").forEach((button3) => {
       button3.addEventListener("click", () => finish(button3.dataset.decision));
     });
-    dialog4.addEventListener("cancel", (event) => {
+    dialog.addEventListener("cancel", (event) => {
       event.preventDefault();
       finish("degraded");
     }, { once: true });
-    dialog4.addEventListener("close", () => dialog4.remove(), { once: true });
-    dialog4.showModal();
+    dialog.addEventListener("close", () => dialog.remove(), { once: true });
+    dialog.showModal();
   });
 }
 function generationIdentity() {
@@ -27713,22 +27712,6 @@ function queryIdentity() {
     personaDescription: String(context.powerUserSettings?.persona_description ?? "")
   };
 }
-function dialog(title) {
-  const element = document.createElement("dialog");
-  element.className = "echoes-dialog echoes-preview-dialog";
-  element.innerHTML = `
-    <form method="dialog">
-      <header class="echoes-dialog-header"><h2></h2></header>
-      <div class="echoes-dialog-body"></div>
-      <footer class="echoes-dialog-footer">
-        <button type="submit" class="menu_button echoes-primary">\u5173\u95ED</button>
-      </footer>
-    </form>`;
-  element.querySelector("h2").textContent = title;
-  element.addEventListener("close", () => element.remove(), { once: true });
-  document.body.append(element);
-  return element;
-}
 function compatibilityLabel(source) {
   if (!source) return "\u672A\u68C0\u67E5";
   if (source.mode === "vector_bm25") return "\u5411\u91CF + BM25";
@@ -28071,7 +28054,7 @@ var RecallPanel = class {
     if (!this.current) return;
     const attached = new Set(this.current.catalog.attachedRecallSources.map((source) => source.namespaceId));
     const options = this.available.filter((source) => source.catalog.namespaceId !== this.current.catalog.namespaceId && !attached.has(source.catalog.namespaceId));
-    const picker = dialog("\u9644\u52A0\u804A\u5929\u603B\u7ED3\u6E90");
+    const picker = dialogShell("\u9644\u52A0\u804A\u5929\u603B\u7ED3\u6E90", { className: "echoes-preview-dialog", closeOnly: true });
     const body = picker.querySelector(".echoes-dialog-body");
     const select = document.createElement("select");
     for (const source of options) {
@@ -28221,7 +28204,7 @@ var RecallPanel = class {
     this.renderContent();
   }
   async addPrompt() {
-    const picker = dialog("\u6DFB\u52A0\u53EC\u56DE\u67E5\u8BE2\u9879");
+    const picker = dialogShell("\u6DFB\u52A0\u53EC\u56DE\u67E5\u8BE2\u9879", { className: "echoes-preview-dialog", closeOnly: true });
     const body = picker.querySelector(".echoes-dialog-body");
     body.innerHTML = `
       <div class="echoes-form-grid">
@@ -28301,7 +28284,7 @@ var RecallPanel = class {
       preset: settings.retrieval.recall.queryPreset,
       ...queryIdentity()
     });
-    const preview = dialog("\u53EC\u56DE\u67E5\u8BE2\u8BCD\u9884\u89C8");
+    const preview = dialogShell("\u53EC\u56DE\u67E5\u8BE2\u8BCD\u9884\u89C8", { className: "echoes-preview-dialog", closeOnly: true });
     const pre = document.createElement("pre");
     pre.textContent = prepared.query || "\u67E5\u8BE2\u8BCD\u4E3A\u7A7A\u3002";
     preview.querySelector(".echoes-dialog-body").append(pre);
@@ -28310,7 +28293,7 @@ var RecallPanel = class {
   async preview() {
     try {
       const result = await recallCoordinator.preview();
-      const preview = dialog("\u53EC\u56DE\u7ED3\u679C\u9884\u89C8");
+      const preview = dialogShell("\u53EC\u56DE\u7ED3\u679C\u9884\u89C8", { className: "echoes-preview-dialog", closeOnly: true });
       const pre = document.createElement("pre");
       const recentBatches = /* @__PURE__ */ new Map();
       for (const slice of result.recentSlices) {
@@ -29305,16 +29288,6 @@ function actionButton2(icon, title, action) {
   button3.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
   return button3;
 }
-function dialog2(title) {
-  const element = document.createElement("dialog");
-  element.className = "echoes-dialog";
-  element.innerHTML = `<form method="dialog"><header class="echoes-dialog-header"><h2></h2><button type="button" class="echoes-icon-button" data-close title="\u5173\u95ED"><i class="fa-solid fa-xmark"></i></button></header><div class="echoes-dialog-body"></div><footer class="echoes-dialog-footer"><button type="button" class="menu_button" data-close>\u53D6\u6D88</button><button type="submit" class="menu_button echoes-primary">\u4FDD\u5B58</button></footer></form>`;
-  element.querySelector("h2").textContent = title;
-  element.querySelectorAll("[data-close]").forEach((button3) => button3.addEventListener("click", () => element.close()));
-  element.addEventListener("close", () => element.remove(), { once: true });
-  document.body.append(element);
-  return element;
-}
 async function waitJob(job) {
   let current = job;
   while (!TERMINAL_STATES6.has(current.status)) {
@@ -29334,22 +29307,17 @@ function stateLabel(slice) {
   }[slice.batch.state];
 }
 function coveredDeletionDialog(message2) {
-  const modal = document.createElement("dialog");
-  modal.className = "echoes-dialog";
-  modal.innerHTML = `
-    <form method="dialog">
-      <header class="echoes-dialog-header"><h2>\u603B\u7ED3\u8986\u76D6\u4E86\u9690\u85CF\u6D88\u606F</h2></header>
-      <div class="echoes-dialog-body"><p data-message></p></div>
-      <footer class="echoes-dialog-footer">
-        <button type="button" class="menu_button" data-choice="cancel">\u53D6\u6D88</button>
-        <button type="button" class="menu_button" data-choice="keep">\u4FDD\u6301\u9690\u85CF\u5E76\u5220\u9664</button>
-        <button type="button" class="menu_button echoes-primary" data-choice="restore">\u6062\u590D\u540E\u5220\u9664</button>
-      </footer>
-    </form>`;
+  const modal = dialogShell("\u603B\u7ED3\u8986\u76D6\u4E86\u9690\u85CF\u6D88\u606F");
+  modal.querySelector(".echoes-dialog-body").innerHTML = "<p data-message></p>";
   modal.querySelector("[data-message]").textContent = message2;
-  document.body.append(modal);
+  modal.querySelector(".echoes-dialog-footer").innerHTML = `
+    <button type="button" class="menu_button" data-choice="cancel">\u53D6\u6D88</button>
+    <button type="button" class="menu_button" data-choice="keep">\u4FDD\u6301\u9690\u85CF\u5E76\u5220\u9664</button>
+    <button type="button" class="menu_button echoes-primary" data-choice="restore">\u6062\u590D\u540E\u5220\u9664</button>`;
   return new Promise((resolve) => {
+    let settled = false;
     const finish = (decision) => {
+      settled = true;
       modal.close();
       resolve(decision);
     };
@@ -29360,7 +29328,9 @@ function coveredDeletionDialog(message2) {
       event.preventDefault();
       finish("cancel");
     }, { once: true });
-    modal.addEventListener("close", () => modal.remove(), { once: true });
+    modal.addEventListener("close", () => {
+      if (!settled) resolve("cancel");
+    }, { once: true });
     modal.showModal();
   });
 }
@@ -29456,7 +29426,7 @@ var SummaryPanel = class {
           <div class="echoes-summary-task" data-summary-task></div>
         </section>
         <section class="echoes-summary-section echoes-compression-section">
-          <header><h2>\u4E0A\u4E0B\u6587\u538B\u7F29</h2><button type="button" class="menu_button" data-summary-action="compression-reconcile"><i class="fa-solid fa-arrows-rotate"></i> \u5BF9\u8D26</button></header>
+          <header><h2>\u4E0A\u4E0B\u6587\u538B\u7F29</h2><button type="button" class="menu_button" data-summary-action="compression-reconcile" title="\u6309\u5F53\u524D\u8BBE\u7F6E\u91CD\u65B0\u8BA1\u7B97\u6D88\u606F\u7684\u538B\u7F29\u72B6\u6001"><i class="fa-solid fa-arrows-rotate"></i> \u91CD\u65B0\u5E94\u7528\u538B\u7F29</button></header>
           <div class="echoes-summary-control-row echoes-compression-controls">
             <label class="echoes-check"><input type="checkbox" data-compression-recall>\u603B\u7ED3\u53EC\u56DE\u603B\u5F00\u5173</label>
             <label class="echoes-check"><input type="checkbox" data-compression-enabled>\u81EA\u52A8\u538B\u7F29</label>
@@ -29838,9 +29808,7 @@ var SummaryPanel = class {
     const form = this.root.querySelector("[data-summary-manual]");
     const data = new FormData(form);
     const prepared = await this.coordinator.previewManual(Number(data.get("start")), Number(data.get("end")));
-    const modal = dialog2("\u603B\u7ED3\u8BF7\u6C42\u9884\u89C8");
-    modal.querySelector(".echoes-dialog-footer").innerHTML = '<button type="button" class="menu_button echoes-primary" data-close>\u5173\u95ED</button>';
-    modal.querySelectorAll("[data-close]").forEach((button3) => button3.addEventListener("click", () => modal.close()));
+    const modal = dialogShell("\u603B\u7ED3\u8BF7\u6C42\u9884\u89C8", { closeOnly: true });
     const body = modal.querySelector(".echoes-dialog-body");
     const previewBlocks = [
       ["\u539F\u59CB\u6D88\u606F", JSON.stringify(prepared.originalMessages, null, 2)],
@@ -29875,7 +29843,7 @@ var SummaryPanel = class {
   async editSlice(sliceId) {
     const current = this.state?.slices.find((slice) => slice.id === sliceId);
     if (!current) return;
-    const modal = dialog2("\u7F16\u8F91\u603B\u7ED3\u5207\u7247");
+    const modal = dialogShell("\u7F16\u8F91\u603B\u7ED3\u5207\u7247");
     const body = modal.querySelector(".echoes-dialog-body");
     body.innerHTML = '<div class="echoes-form-grid"><label>\u6807\u9898<input name="title" required></label><label class="echoes-form-span">\u6807\u7B7E<input name="tags"></label><label class="echoes-form-span">\u6B63\u6587<textarea name="content" rows="12" required></textarea></label></div>';
     body.querySelector("[name=title]").value = current.title;
@@ -29955,7 +29923,7 @@ var SummaryPanel = class {
   async editPrompt(index) {
     const settings = getSettings();
     const current = index === void 0 ? void 0 : settings.summary.promptPreset.items[index];
-    const modal = dialog2(current ? "\u7F16\u8F91\u603B\u7ED3\u63D0\u793A\u8BCD" : "\u6DFB\u52A0\u603B\u7ED3\u63D0\u793A\u8BCD");
+    const modal = dialogShell(current ? "\u7F16\u8F91\u603B\u7ED3\u63D0\u793A\u8BCD" : "\u6DFB\u52A0\u603B\u7ED3\u63D0\u793A\u8BCD");
     const body = modal.querySelector(".echoes-dialog-body");
     body.innerHTML = `<div class="echoes-form-grid"><label>\u7C7B\u578B<select name="kind"><option value="custom">\u81EA\u5B9A\u4E49</option><option value="character">\u89D2\u8272\u8BBE\u5B9A</option><option value="persona">\u7528\u6237\u8BBE\u5B9A</option><option value="previous_summaries">\u524D\u6587\u603B\u7ED3</option><option value="messages">\u5F85\u603B\u7ED3\u6D88\u606F</option></select></label><label>\u89D2\u8272<select name="role"><option value="system">System</option><option value="user">User</option><option value="assistant">Assistant</option></select></label><label>\u6807\u9898<input name="title" required></label><label data-count>\u524D\u6587\u6570\u91CF<input name="count" type="number" min="0" max="100"></label><label class="echoes-form-span" data-content>\u5185\u5BB9<textarea name="content" rows="9"></textarea></label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label></div>`;
     const kind = body.querySelector("[name=kind]");
@@ -30005,7 +29973,7 @@ var SummaryPanel = class {
   async editRule(index) {
     const settings = getSettings();
     const current = index === void 0 ? void 0 : settings.summary.preprocessRules[index];
-    const modal = dialog2(current ? "\u7F16\u8F91\u6E05\u6D17\u89C4\u5219" : "\u6DFB\u52A0\u6E05\u6D17\u89C4\u5219");
+    const modal = dialogShell(current ? "\u7F16\u8F91\u6E05\u6D17\u89C4\u5219" : "\u6DFB\u52A0\u6E05\u6D17\u89C4\u5219");
     const body = modal.querySelector(".echoes-dialog-body");
     body.innerHTML = `<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required></label><label>\u7C7B\u578B<select name="type"><option value="remove">\u5220\u9664</option><option value="replace">\u66FF\u6362</option><option value="extract">\u63D0\u53D6</option></select></label><label class="echoes-form-span">\u8868\u8FBE\u5F0F<input name="pattern" required></label><label>\u6807\u5FD7<input name="flags"></label><label>\u66FF\u6362\u5185\u5BB9<input name="replacement"></label><label class="echoes-check"><input name="user" type="checkbox">User</label><label class="echoes-check"><input name="assistant" type="checkbox">Assistant</label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label></div>`;
     body.querySelector("[name=name]").value = current?.name ?? "\u65B0\u89C4\u5219";
@@ -30052,7 +30020,7 @@ var SummaryPanel = class {
     });
   }
   async addGroup() {
-    const modal = dialog2("\u6DFB\u52A0\u751F\u6210\u7AEF\u70B9\u7EC4");
+    const modal = dialogShell("\u6DFB\u52A0\u751F\u6210\u7AEF\u70B9\u7EC4");
     modal.querySelector(".echoes-dialog-body").innerHTML = '<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required></label></div>';
     await new Promise((resolve) => {
       modal.querySelector("form").addEventListener("submit", (event) => {
@@ -30081,7 +30049,7 @@ var SummaryPanel = class {
     const group = settings.generationGroups.find((item) => item.id === groupId);
     const current = group?.endpoints.find((item) => item.id === endpointId);
     if (!group) return;
-    const modal = dialog2(current ? "\u7F16\u8F91\u751F\u6210\u7AEF\u70B9" : "\u6DFB\u52A0\u751F\u6210\u7AEF\u70B9");
+    const modal = dialogShell(current ? "\u7F16\u8F91\u751F\u6210\u7AEF\u70B9" : "\u6DFB\u52A0\u751F\u6210\u7AEF\u70B9");
     const body = modal.querySelector(".echoes-dialog-body");
     body.innerHTML = `<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required></label><label class="echoes-form-span">API \u5730\u5740<input name="baseUrl" type="url" required></label><label>\u6A21\u578B<input name="model" required></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select name="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input name="timeout" type="number" min="10" max="1800"></label><label>\u6E29\u5EA6<input name="temperature" type="number" min="0" max="2" step="0.1"></label><label class="echoes-check"><input name="streaming" type="checkbox">\u6D41\u5F0F</label><label class="echoes-check"><input name="jsonMode" type="checkbox">JSON \u6A21\u5F0F</label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label></div><p class="echoes-empty-note">\u51ED\u636E\u5728\u201C\u7EF4\u62A4\u201D\u9875\u7BA1\u7406\uFF1B0.2.x \u4EC5\u517C\u5BB9\u8BFB\u53D6\u5C1A\u672A\u8FC1\u79FB\u7684\u65E7\u5BC6\u94A5\u3002</p>`;
     const credentials = await echoesApi.listCredentials().catch(() => []);
@@ -30165,22 +30133,10 @@ function button2(icon, title, action) {
   element.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
   return element;
 }
-function dialog3(title) {
-  const element = document.createElement("dialog");
-  element.className = "echoes-dialog";
-  element.innerHTML = `<form method="dialog"><header class="echoes-dialog-header"><h2></h2><button type="button" class="echoes-icon-button" data-close title="\u5173\u95ED"><i class="fa-solid fa-xmark"></i></button></header><div class="echoes-dialog-body"></div><footer class="echoes-dialog-footer"><button type="button" class="menu_button" data-close>\u53D6\u6D88</button><button type="submit" class="menu_button echoes-primary">\u4FDD\u5B58</button></footer></form>`;
-  element.querySelector("h2").textContent = title;
-  element.querySelectorAll("[data-close]").forEach((item) => item.addEventListener("click", () => element.close()));
-  element.addEventListener("close", () => element.remove(), { once: true });
-  document.body.append(element);
-  return element;
-}
 function previewDialog(title, content) {
-  const element = dialog3(title);
-  element.querySelector(".echoes-dialog-footer").innerHTML = '<button type="button" class="menu_button echoes-primary" data-close>\u5173\u95ED</button>';
+  const element = dialogShell(title, { closeOnly: true });
   element.querySelector(".echoes-dialog-body").innerHTML = '<pre class="echoes-status-preview"></pre>';
   element.querySelector("pre").textContent = content;
-  element.querySelector("[data-close]").addEventListener("click", () => element.close());
   element.showModal();
 }
 function diffSummary(current, parent) {
@@ -30597,7 +30553,7 @@ ${message2.content}`).join("\n\n"));
   editPrompt(index) {
     if (!this.state) return Promise.resolve();
     const current = index === void 0 ? void 0 : this.state.catalog.profile.promptPreset.items[index];
-    const element = dialog3(current ? "\u7F16\u8F91\u72B6\u6001\u63D0\u793A\u8BCD" : "\u6DFB\u52A0\u72B6\u6001\u63D0\u793A\u8BCD");
+    const element = dialogShell(current ? "\u7F16\u8F91\u72B6\u6001\u63D0\u793A\u8BCD" : "\u6DFB\u52A0\u72B6\u6001\u63D0\u793A\u8BCD");
     const body = element.querySelector(".echoes-dialog-body");
     body.innerHTML = `<div class="echoes-form-grid"><label>\u6807\u9898<input name="title" required></label><label>\u7C7B\u578B<select name="kind"><option value="custom">\u81EA\u5B9A\u4E49</option><option value="character">\u89D2\u8272\u8BBE\u5B9A</option><option value="persona">\u7528\u6237\u8BBE\u5B9A</option><option value="current_state">\u5F53\u524D\u72B6\u6001</option><option value="messages">\u589E\u91CF\u6D88\u606F</option></select></label><label>\u89D2\u8272<select name="role"><option value="system">system</option><option value="user">user</option><option value="assistant">assistant</option></select></label><label class="echoes-wide-field">\u5185\u5BB9<textarea name="content"></textarea></label></div>`;
     body.querySelector("[name=title]").value = current?.title ?? "\u81EA\u5B9A\u4E49\u72B6\u6001\u63D0\u793A\u8BCD";
@@ -30628,7 +30584,7 @@ ${message2.content}`).join("\n\n"));
   editCleaning(index) {
     if (!this.state) return Promise.resolve();
     const current = index === void 0 ? void 0 : this.state.catalog.profile.preprocessRules[index];
-    const element = dialog3(current ? "\u7F16\u8F91\u6D88\u606F\u6E05\u6D17" : "\u6DFB\u52A0\u6D88\u606F\u6E05\u6D17");
+    const element = dialogShell(current ? "\u7F16\u8F91\u6D88\u606F\u6E05\u6D17" : "\u6DFB\u52A0\u6D88\u606F\u6E05\u6D17");
     const body = element.querySelector(".echoes-dialog-body");
     body.innerHTML = `<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required></label><label>\u64CD\u4F5C<select name="type"><option value="replace">\u66FF\u6362</option><option value="remove">\u5220\u9664\u5339\u914D</option><option value="extract">\u63D0\u53D6</option></select></label><label>\u6B63\u5219<input name="pattern" required></label><label>\u6807\u5FD7<input name="flags"></label><label>\u89D2\u8272<select name="roles" multiple><option value="user">user</option><option value="assistant">assistant</option></select></label><label>\u66FF\u6362\u6587\u672C<input name="replacement"></label></div>`;
     body.querySelector("[name=name]").value = current?.name ?? "\u72B6\u6001\u6E05\u6D17\u89C4\u5219";
@@ -30663,7 +30619,7 @@ ${message2.content}`).join("\n\n"));
   editValidation(index) {
     if (!this.state) return Promise.resolve();
     const current = index === void 0 ? void 0 : this.state.catalog.profile.validation.rules[index];
-    const element = dialog3(current ? "\u7F16\u8F91\u72B6\u6001\u6821\u9A8C" : "\u6DFB\u52A0\u72B6\u6001\u6821\u9A8C");
+    const element = dialogShell(current ? "\u7F16\u8F91\u72B6\u6001\u6821\u9A8C" : "\u6DFB\u52A0\u72B6\u6001\u6821\u9A8C");
     const body = element.querySelector(".echoes-dialog-body");
     body.innerHTML = `<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required></label><label>\u8DEF\u5F84\uFF08\u70B9\u5206\u9694\uFF0C* \u4E3A\u901A\u914D\uFF09<input name="path" required></label><label>\u7C7B\u578B<select name="type"><option value="string">string</option><option value="number">number</option><option value="boolean">boolean</option><option value="object">object</option><option value="array">array</option><option value="null">null</option></select></label><label class="echoes-check"><input type="checkbox" name="required">\u5FC5\u586B</label><label>\u679A\u4E3E\uFF08JSON \u6570\u7EC4\uFF09<input name="enum"></label><label>\u6700\u5C0F\u503C<input type="number" step="any" name="minimum"></label><label>\u6700\u5927\u503C<input type="number" step="any" name="maximum"></label><label>\u5355\u6B21\u6700\u5927\u53D8\u5316<input type="number" min="0" step="any" name="delta"></label></div>`;
     body.querySelector("[name=name]").value = current?.name ?? "\u72B6\u6001\u5B57\u6BB5";
@@ -30789,7 +30745,7 @@ ${message2.content}`).join("\n\n"));
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "0.2.3",
+  version: "0.2.4",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -32840,7 +32796,7 @@ function addLaunchControls() {
           <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content">
-          <button type="button" class="menu_button" data-echoes-open>
+          <button type="button" class="menu_button echoes-settings-open" data-echoes-open>
             <i class="fa-solid fa-table-columns"></i> \u6253\u5F00\u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6
           </button>
         </div>
