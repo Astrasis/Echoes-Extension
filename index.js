@@ -30756,7 +30756,7 @@ ${message2.content}`).join("\n\n"));
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "0.2.4",
+  version: "0.2.5",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
