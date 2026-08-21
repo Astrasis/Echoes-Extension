@@ -24025,6 +24025,52 @@ function dialogShell(title, options = "") {
   dialog.addEventListener("close", () => dialog.remove(), { once: true });
   return dialog;
 }
+function submitDialog(dialog, submit, options = {}) {
+  const form = dialog.querySelector("form");
+  const body = dialog.querySelector(".echoes-dialog-body");
+  const errorHost = document.createElement("div");
+  errorHost.className = "echoes-dialog-error echoes-hidden";
+  errorHost.setAttribute("role", "alert");
+  body.append(errorHost);
+  return new Promise((resolve) => {
+    let settled = false;
+    let submitting = false;
+    const closeControls = [...dialog.querySelectorAll("[data-close]")];
+    const submitControl = form.querySelector('button[type="submit"]');
+    const setSubmitting = (value) => {
+      submitting = value;
+      if (submitControl) submitControl.disabled = value;
+      closeControls.forEach((control) => {
+        control.disabled = value;
+      });
+      form.setAttribute("aria-busy", String(value));
+    };
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (submitting) return;
+      errorHost.classList.add("echoes-hidden");
+      errorHost.textContent = "";
+      setSubmitting(true);
+      void Promise.resolve().then(submit).then((value) => {
+        settled = true;
+        resolve(value);
+        if (dialog.open) dialog.close("saved");
+      }).catch((error51) => {
+        const message2 = error51 instanceof Error ? error51.message : String(error51);
+        errorHost.textContent = options.errorTitle ? `${options.errorTitle}\uFF1A${message2}` : message2;
+        errorHost.classList.remove("echoes-hidden");
+        setSubmitting(false);
+      });
+    });
+    dialog.addEventListener("cancel", (event) => {
+      if (submitting) event.preventDefault();
+    });
+    dialog.addEventListener("close", () => {
+      if (!settled) resolve(null);
+    }, { once: true });
+    dialog.showModal();
+  });
+}
 function slugify2(value) {
   const slug = value.normalize("NFKD").replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").toLowerCase();
   return slug || "field";
@@ -29686,6 +29732,7 @@ var SummaryPanel = class {
     toggle.className = "echoes-switch";
     const input = document.createElement("input");
     input.type = "checkbox";
+    input.setAttribute("aria-label", `\u542F\u7528${title}`);
     input.checked = enabled;
     toggle.append(input, document.createElement("span"));
     const controls = document.createElement("div");
@@ -29849,22 +29896,14 @@ var SummaryPanel = class {
     body.querySelector("[name=title]").value = current.title;
     body.querySelector("[name=tags]").value = current.tags.join(", ");
     body.querySelector("[name=content]").value = current.content;
-    await new Promise((resolve) => {
-      modal.querySelector("form").addEventListener("submit", (event) => {
-        event.preventDefault();
-        const candidate = summarySliceCandidateSchema.parse({
-          title: body.querySelector("[name=title]").value,
-          content: body.querySelector("[name=content]").value,
-          tags: body.querySelector("[name=tags]").value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean)
-        });
-        void this.withBusy(() => this.coordinator.editSlice(sliceId, candidate)).then(() => {
-          modal.close();
-          resolve();
-        });
+    await submitDialog(modal, async () => {
+      const candidate = summarySliceCandidateSchema.parse({
+        title: body.querySelector("[name=title]").value,
+        content: body.querySelector("[name=content]").value,
+        tags: body.querySelector("[name=tags]").value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean)
       });
-      modal.addEventListener("close", () => resolve(), { once: true });
-      modal.showModal();
-    });
+      await this.withBusy(() => this.coordinator.editSlice(sliceId, candidate));
+    }, { errorTitle: "\u603B\u7ED3\u5207\u7247\u65E0\u6548" });
   }
   async deleteSlice(sliceId) {
     const slice = this.state?.slices.find((candidate) => candidate.id === sliceId);
@@ -29939,21 +29978,14 @@ var SummaryPanel = class {
     };
     kind.addEventListener("change", refresh);
     refresh();
-    await new Promise((resolve) => {
-      modal.querySelector("form").addEventListener("submit", (event) => {
-        event.preventDefault();
-        const base = { id: current?.id ?? newSummaryPromptItemId(), kind: kind.value, title: body.querySelector("[name=title]").value, role: body.querySelector("[name=role]").value, enabled: body.querySelector("[name=enabled]").checked };
-        const item = summaryPromptItemSchema.parse(kind.value === "custom" ? { ...base, content: body.querySelector("[name=content]").value } : kind.value === "previous_summaries" ? { ...base, count: Number(body.querySelector("[name=count]").value) } : base);
-        if (index === void 0) settings.summary.promptPreset.items.push(item);
-        else settings.summary.promptPreset.items[index] = item;
-        settings.summary.promptPreset.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-        saveSettings(settings);
-        modal.close();
-        resolve();
-      });
-      modal.addEventListener("close", () => resolve(), { once: true });
-      modal.showModal();
-    });
+    await submitDialog(modal, () => {
+      const base = { id: current?.id ?? newSummaryPromptItemId(), kind: kind.value, title: body.querySelector("[name=title]").value, role: body.querySelector("[name=role]").value, enabled: body.querySelector("[name=enabled]").checked };
+      const item = summaryPromptItemSchema.parse(kind.value === "custom" ? { ...base, content: body.querySelector("[name=content]").value } : kind.value === "previous_summaries" ? { ...base, count: Number(body.querySelector("[name=count]").value) } : base);
+      if (index === void 0) settings.summary.promptPreset.items.push(item);
+      else settings.summary.promptPreset.items[index] = item;
+      settings.summary.promptPreset.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+      saveSettings(settings);
+    }, { errorTitle: "\u603B\u7ED3\u63D0\u793A\u8BCD\u65E0\u6548" });
   }
   deletePrompt(index) {
     const settings = getSettings();
@@ -29984,20 +30016,16 @@ var SummaryPanel = class {
     body.querySelector("[name=user]").checked = current?.roles.includes("user") ?? true;
     body.querySelector("[name=assistant]").checked = current?.roles.includes("assistant") ?? true;
     body.querySelector("[name=enabled]").checked = current?.enabled ?? true;
-    await new Promise((resolve) => {
-      modal.querySelector("form").addEventListener("submit", (event) => {
-        event.preventDefault();
-        const roles = ["user", "assistant"].filter((role2) => body.querySelector(`[name=${role2}]`).checked);
-        const rule = summaryPreprocessRuleSchema.parse({ id: current?.id ?? newSummaryRuleId(), name: body.querySelector("[name=name]").value, type: body.querySelector("[name=type]").value, pattern: body.querySelector("[name=pattern]").value, flags: body.querySelector("[name=flags]").value, replacement: body.querySelector("[name=replacement]").value, roles, enabled: body.querySelector("[name=enabled]").checked, order: current?.order ?? settings.summary.preprocessRules.length });
-        if (index === void 0) settings.summary.preprocessRules.push(rule);
-        else settings.summary.preprocessRules[index] = rule;
-        saveSettings(settings);
-        modal.close();
-        resolve();
-      });
-      modal.addEventListener("close", () => resolve(), { once: true });
-      modal.showModal();
-    });
+    await submitDialog(modal, () => {
+      const roles = ["user", "assistant"].filter((role2) => body.querySelector(`[name=${role2}]`).checked);
+      const pattern = body.querySelector("[name=pattern]").value;
+      const flags = body.querySelector("[name=flags]").value;
+      new RegExp(pattern, flags);
+      const rule = summaryPreprocessRuleSchema.parse({ id: current?.id ?? newSummaryRuleId(), name: body.querySelector("[name=name]").value, type: body.querySelector("[name=type]").value, pattern, flags, replacement: body.querySelector("[name=replacement]").value, roles, enabled: body.querySelector("[name=enabled]").checked, order: current?.order ?? settings.summary.preprocessRules.length });
+      if (index === void 0) settings.summary.preprocessRules.push(rule);
+      else settings.summary.preprocessRules[index] = rule;
+      saveSettings(settings);
+    }, { errorTitle: "\u603B\u7ED3\u6E05\u6D17\u89C4\u5219\u65E0\u6548" });
   }
   deleteRule(index) {
     const settings = getSettings();
@@ -30022,19 +30050,14 @@ var SummaryPanel = class {
   async addGroup() {
     const modal = dialogShell("\u6DFB\u52A0\u751F\u6210\u7AEF\u70B9\u7EC4");
     modal.querySelector(".echoes-dialog-body").innerHTML = '<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required></label></div>';
-    await new Promise((resolve) => {
-      modal.querySelector("form").addEventListener("submit", (event) => {
-        event.preventDefault();
-        const settings = getSettings();
-        const group = { id: id("generation_group"), name: modal.querySelector("[name=name]").value.trim(), endpoints: [] };
-        settings.generationGroups.push(group);
-        saveSettings(settings);
-        modal.close();
-        resolve();
-      });
-      modal.addEventListener("close", () => resolve(), { once: true });
-      modal.showModal();
-    });
+    await submitDialog(modal, () => {
+      const settings = getSettings();
+      const name = modal.querySelector("[name=name]").value.trim();
+      if (!name) throw new Error("\u7AEF\u70B9\u7EC4\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002");
+      const group = { id: id("generation_group"), name, endpoints: [] };
+      settings.generationGroups.push(group);
+      saveSettings(settings);
+    }, { errorTitle: "\u751F\u6210\u7AEF\u70B9\u7EC4\u65E0\u6548" });
   }
   deleteGroup(groupId) {
     if (!confirm("\u5220\u9664\u8BE5\u751F\u6210\u7AEF\u70B9\u7EC4\uFF1F")) return;
@@ -30070,21 +30093,14 @@ var SummaryPanel = class {
     body.querySelector("[name=streaming]").checked = current?.streaming ?? true;
     body.querySelector("[name=jsonMode]").checked = current?.jsonMode ?? true;
     body.querySelector("[name=enabled]").checked = current?.enabled ?? true;
-    await new Promise((resolve) => {
-      modal.querySelector("form").addEventListener("submit", (event) => {
-        event.preventDefault();
-        const credentialId = credentialSelect.value;
-        const endpoint = { id: current?.id ?? id("generation_endpoint"), name: body.querySelector("[name=name]").value, baseUrl: body.querySelector("[name=baseUrl]").value, model: body.querySelector("[name=model]").value, ...credentialId ? { credentialId } : current?.apiKey ? { apiKey: current.apiKey } : {}, timeoutMs: Number(body.querySelector("[name=timeout]").value) * 1e3, temperature: Number(body.querySelector("[name=temperature]").value), streaming: body.querySelector("[name=streaming]").checked, jsonMode: body.querySelector("[name=jsonMode]").checked, enabled: body.querySelector("[name=enabled]").checked, order: current?.order ?? group.endpoints.length };
-        const parsed = generationEndpointGroupSchema.parse({ ...group, endpoints: current ? group.endpoints.map((item) => item.id === current.id ? endpoint : item) : [...group.endpoints, endpoint] });
-        const groupIndex = settings.generationGroups.findIndex((item) => item.id === group.id);
-        settings.generationGroups[groupIndex] = parsed;
-        saveSettings(settings);
-        modal.close();
-        resolve();
-      });
-      modal.addEventListener("close", () => resolve(), { once: true });
-      modal.showModal();
-    });
+    await submitDialog(modal, () => {
+      const credentialId = credentialSelect.value;
+      const endpoint = { id: current?.id ?? id("generation_endpoint"), name: body.querySelector("[name=name]").value, baseUrl: body.querySelector("[name=baseUrl]").value, model: body.querySelector("[name=model]").value, ...credentialId ? { credentialId } : current?.apiKey ? { apiKey: current.apiKey } : {}, timeoutMs: Number(body.querySelector("[name=timeout]").value) * 1e3, temperature: Number(body.querySelector("[name=temperature]").value), streaming: body.querySelector("[name=streaming]").checked, jsonMode: body.querySelector("[name=jsonMode]").checked, enabled: body.querySelector("[name=enabled]").checked, order: current?.order ?? group.endpoints.length };
+      const parsed = generationEndpointGroupSchema.parse({ ...group, endpoints: current ? group.endpoints.map((item) => item.id === current.id ? endpoint : item) : [...group.endpoints, endpoint] });
+      const groupIndex = settings.generationGroups.findIndex((item) => item.id === group.id);
+      settings.generationGroups[groupIndex] = parsed;
+      saveSettings(settings);
+    }, { errorTitle: "\u751F\u6210\u7AEF\u70B9\u65E0\u6548" });
   }
   deleteEndpoint(groupId, endpointId) {
     if (!confirm("\u5220\u9664\u8BE5\u751F\u6210\u7AEF\u70B9\uFF1F")) return;
@@ -30327,6 +30343,7 @@ var StatusPanel = class {
       toggle.className = "echoes-switch";
       const input = document.createElement("input");
       input.type = "checkbox";
+      input.setAttribute("aria-label", `\u542F\u7528${title}`);
       input.checked = enabled;
       toggle.append(input, document.createElement("span"));
       row.append(toggle);
@@ -30530,6 +30547,10 @@ var StatusPanel = class {
       profile.injection.order = Number(this.root.querySelector("[data-status-order]").value);
       profile.injection.template = this.root.querySelector("[data-status-template]").value;
     }
+    await this.persistProfile(profile);
+  }
+  async persistProfile(profile) {
+    if (!this.state) return;
     validateStatusState(profile.initialState, profile.initialState, profile.validation);
     profile.version += 1;
     profile.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -30550,8 +30571,8 @@ var StatusPanel = class {
     previewDialog("\u72B6\u6001\u66F4\u65B0\u6700\u7EC8\u63D0\u793A\u8BCD", prepared.promptMessages.map((message2) => `[${message2.role}]
 ${message2.content}`).join("\n\n"));
   }
-  editPrompt(index) {
-    if (!this.state) return Promise.resolve();
+  async editPrompt(index) {
+    if (!this.state) return;
     const current = index === void 0 ? void 0 : this.state.catalog.profile.promptPreset.items[index];
     const element = dialogShell(current ? "\u7F16\u8F91\u72B6\u6001\u63D0\u793A\u8BCD" : "\u6DFB\u52A0\u72B6\u6001\u63D0\u793A\u8BCD");
     const body = element.querySelector(".echoes-dialog-body");
@@ -30560,29 +30581,24 @@ ${message2.content}`).join("\n\n"));
     body.querySelector("[name=kind]").value = current?.kind ?? "custom";
     body.querySelector("[name=role]").value = current?.role ?? "system";
     body.querySelector("[name=content]").value = current?.kind === "custom" ? current.content : "";
-    return new Promise((resolve) => {
-      element.querySelector("form").addEventListener("submit", (event) => {
-        event.preventDefault();
-        const kind = body.querySelector("[name=kind]").value;
-        const raw = {
-          id: current?.id ?? newStatusPromptItemId(),
-          title: body.querySelector("[name=title]").value,
-          kind,
-          role: body.querySelector("[name=role]").value,
-          enabled: current?.enabled ?? true,
-          ...kind === "custom" ? { content: body.querySelector("[name=content]").value } : {}
-        };
-        const item = statusPromptItemSchema.parse(raw);
-        if (index === void 0) this.state.catalog.profile.promptPreset.items.push(item);
-        else this.state.catalog.profile.promptPreset.items[index] = item;
-        element.close();
-        void this.saveProfile(false).then(resolve);
+    await submitDialog(element, async () => {
+      const kind = body.querySelector("[name=kind]").value;
+      const item = statusPromptItemSchema.parse({
+        id: current?.id ?? newStatusPromptItemId(),
+        title: body.querySelector("[name=title]").value,
+        kind,
+        role: body.querySelector("[name=role]").value,
+        enabled: current?.enabled ?? true,
+        ...kind === "custom" ? { content: body.querySelector("[name=content]").value } : {}
       });
-      element.showModal();
-    });
+      const profile = structuredClone(this.state.catalog.profile);
+      if (index === void 0) profile.promptPreset.items.push(item);
+      else profile.promptPreset.items[index] = item;
+      await this.persistProfile(profile);
+    }, { errorTitle: "\u72B6\u6001\u63D0\u793A\u8BCD\u65E0\u6548" });
   }
-  editCleaning(index) {
-    if (!this.state) return Promise.resolve();
+  async editCleaning(index) {
+    if (!this.state) return;
     const current = index === void 0 ? void 0 : this.state.catalog.profile.preprocessRules[index];
     const element = dialogShell(current ? "\u7F16\u8F91\u6D88\u606F\u6E05\u6D17" : "\u6DFB\u52A0\u6D88\u606F\u6E05\u6D17");
     const body = element.querySelector(".echoes-dialog-body");
@@ -30594,30 +30610,29 @@ ${message2.content}`).join("\n\n"));
     body.querySelector("[name=replacement]").value = current?.replacement ?? "";
     const roles = body.querySelector("[name=roles]");
     [...roles.options].forEach((option) => option.selected = (current?.roles ?? ["user", "assistant"]).includes(option.value));
-    return new Promise((resolve) => {
-      element.querySelector("form").addEventListener("submit", (event) => {
-        event.preventDefault();
-        const rule = summaryPreprocessRuleSchema.parse({
-          id: current?.id ?? id2("status_cleaning"),
-          name: body.querySelector("[name=name]").value,
-          type: body.querySelector("[name=type]").value,
-          pattern: body.querySelector("[name=pattern]").value,
-          flags: body.querySelector("[name=flags]").value,
-          replacement: body.querySelector("[name=replacement]").value,
-          roles: [...roles.selectedOptions].map((option) => option.value),
-          enabled: current?.enabled ?? true,
-          order: current?.order ?? this.state.catalog.profile.preprocessRules.length
-        });
-        if (index === void 0) this.state.catalog.profile.preprocessRules.push(rule);
-        else this.state.catalog.profile.preprocessRules[index] = rule;
-        element.close();
-        void this.saveProfile(false).then(resolve);
+    await submitDialog(element, async () => {
+      const pattern = body.querySelector("[name=pattern]").value;
+      const flags = body.querySelector("[name=flags]").value;
+      new RegExp(pattern, flags);
+      const rule = summaryPreprocessRuleSchema.parse({
+        id: current?.id ?? id2("status_cleaning"),
+        name: body.querySelector("[name=name]").value,
+        type: body.querySelector("[name=type]").value,
+        pattern,
+        flags,
+        replacement: body.querySelector("[name=replacement]").value,
+        roles: [...roles.selectedOptions].map((option) => option.value),
+        enabled: current?.enabled ?? true,
+        order: current?.order ?? this.state.catalog.profile.preprocessRules.length
       });
-      element.showModal();
-    });
+      const profile = structuredClone(this.state.catalog.profile);
+      if (index === void 0) profile.preprocessRules.push(rule);
+      else profile.preprocessRules[index] = rule;
+      await this.persistProfile(profile);
+    }, { errorTitle: "\u6D88\u606F\u6E05\u6D17\u89C4\u5219\u65E0\u6548" });
   }
-  editValidation(index) {
-    if (!this.state) return Promise.resolve();
+  async editValidation(index) {
+    if (!this.state) return;
     const current = index === void 0 ? void 0 : this.state.catalog.profile.validation.rules[index];
     const element = dialogShell(current ? "\u7F16\u8F91\u72B6\u6001\u6821\u9A8C" : "\u6DFB\u52A0\u72B6\u6001\u6821\u9A8C");
     const body = element.querySelector(".echoes-dialog-body");
@@ -30630,32 +30645,28 @@ ${message2.content}`).join("\n\n"));
     for (const [name, value] of [["minimum", current?.minimum], ["maximum", current?.maximum], ["delta", current?.maxDelta]]) {
       body.querySelector(`[name=${name}]`).value = value === void 0 ? "" : String(value);
     }
-    return new Promise((resolve) => {
-      element.querySelector("form").addEventListener("submit", (event) => {
-        event.preventDefault();
-        const numeric = (name) => {
-          const value = body.querySelector(`[name=${name}]`).value;
-          return value === "" ? void 0 : Number(value);
-        };
-        const enumText = body.querySelector("[name=enum]").value.trim();
-        const rule = statusValidationRuleSchema.parse({
-          id: current?.id ?? newStatusRuleId(),
-          name: body.querySelector("[name=name]").value,
-          path: body.querySelector("[name=path]").value.split(".").map((part) => part.trim()),
-          type: body.querySelector("[name=type]").value,
-          required: body.querySelector("[name=required]").checked,
-          ...enumText ? { enumValues: JSON.parse(enumText) } : {},
-          ...numeric("minimum") !== void 0 ? { minimum: numeric("minimum") } : {},
-          ...numeric("maximum") !== void 0 ? { maximum: numeric("maximum") } : {},
-          ...numeric("delta") !== void 0 ? { maxDelta: numeric("delta") } : {}
-        });
-        if (index === void 0) this.state.catalog.profile.validation.rules.push(rule);
-        else this.state.catalog.profile.validation.rules[index] = rule;
-        element.close();
-        void this.saveProfile(false).then(resolve);
+    await submitDialog(element, async () => {
+      const numeric = (name) => {
+        const value = body.querySelector(`[name=${name}]`).value;
+        return value === "" ? void 0 : Number(value);
+      };
+      const enumText = body.querySelector("[name=enum]").value.trim();
+      const rule = statusValidationRuleSchema.parse({
+        id: current?.id ?? newStatusRuleId(),
+        name: body.querySelector("[name=name]").value,
+        path: body.querySelector("[name=path]").value.split(".").map((part) => part.trim()),
+        type: body.querySelector("[name=type]").value,
+        required: body.querySelector("[name=required]").checked,
+        ...enumText ? { enumValues: JSON.parse(enumText) } : {},
+        ...numeric("minimum") !== void 0 ? { minimum: numeric("minimum") } : {},
+        ...numeric("maximum") !== void 0 ? { maximum: numeric("maximum") } : {},
+        ...numeric("delta") !== void 0 ? { maxDelta: numeric("delta") } : {}
       });
-      element.showModal();
-    });
+      const profile = structuredClone(this.state.catalog.profile);
+      if (index === void 0) profile.validation.rules.push(rule);
+      else profile.validation.rules[index] = rule;
+      await this.persistProfile(profile);
+    }, { errorTitle: "\u72B6\u6001\u6821\u9A8C\u89C4\u5219\u65E0\u6548" });
   }
   async applyTemplate() {
     if (!this.state) return;

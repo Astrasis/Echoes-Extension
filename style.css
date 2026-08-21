@@ -347,6 +347,11 @@
   transition: transform 150ms ease;
 }
 
+.echoes-switch input:focus + span {
+  outline: 2px solid var(--echoes-accent-strong);
+  outline-offset: 2px;
+}
+
 .echoes-switch input:checked + span {
   background: var(--echoes-accent) !important;
   border-color: var(--echoes-accent) !important;
@@ -1972,6 +1977,18 @@
 .echoes-dialog-body {
   overflow: auto;
   padding: 18px;
+}
+
+.echoes-dialog-error {
+  margin-top: 14px;
+  padding: 9px 11px;
+  color: #ffd5d5;
+  background: rgb(143 42 42 / 22%);
+  border: 1px solid rgb(219 88 88 / 58%);
+  border-radius: 5px;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .echoes-dialog-body label:not(.echoes-check):not(.menu_button),
