@@ -165,15 +165,15 @@ var init_client = __esm({
         });
         return result.credentials;
       },
-      async updateCredential(id3, input) {
+      async updateCredential(id2, input) {
         const result = await requestJson(
-          `/credentials/${encodeURIComponent(id3)}`,
+          `/credentials/${encodeURIComponent(id2)}`,
           { method: "PUT", body: JSON.stringify(input) }
         );
         return result.credential;
       },
-      deleteCredential(id3) {
-        return requestJson(`/credentials/${encodeURIComponent(id3)}`, { method: "DELETE" });
+      deleteCredential(id2) {
+        return requestJson(`/credentials/${encodeURIComponent(id2)}`, { method: "DELETE" });
       },
       async startExtraction(input) {
         const result = await requestJson("/memory/extractions", {
@@ -285,6 +285,59 @@ var init_client = __esm({
   }
 });
 
+// package.json
+var package_default = {
+  name: "echoes-memory-system",
+  version: "0.3.0",
+  private: true,
+  type: "module",
+  description: "A reliable structured and semantic memory system for SillyTavern.",
+  license: "CC-BY-NC-4.0",
+  engines: {
+    node: ">=20.9.0 <21 || >=22.0.0 <23 || >=24.0.0 <25"
+  },
+  scripts: {
+    build: "node scripts/build.mjs",
+    check: "npm run typecheck && npm run test && npm run build",
+    test: "vitest run",
+    "test:browser": "npm run build && playwright test",
+    "test:watch": "vitest",
+    "serve:harness": "node scripts/ui-harness-server.mjs",
+    "stress:retrieval": "node scripts/retrieval-stress.mjs 200000",
+    "audit:dependencies": "npm audit --registry=https://registry.npmjs.org/ --omit=dev --audit-level=high",
+    "audit:release": "node scripts/audit-release.mjs",
+    "package:github": "npm run build && npm run audit:release && npm run audit:dependencies && node scripts/package-github.mjs",
+    "test:release": "node scripts/release-install-test.mjs",
+    typecheck: "tsc --noEmit"
+  },
+  dependencies: {
+    "@lancedb/lancedb": "0.31.0",
+    "ipaddr.js": "2.2.0",
+    yaml: "^2.9.0",
+    zod: "^4.4.3"
+  },
+  overrides: {
+    sharp: "0.35.3",
+    tar: "7.5.22"
+  },
+  devDependencies: {
+    "@playwright/test": "^1.61.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.1.1",
+    esbuild: "^0.28.1",
+    typescript: "^7.0.2",
+    vitest: "^4.1.10"
+  }
+};
+
+// src/shared/build-info.ts
+init_domain();
+var ECHOES_BUILD_INFO = {
+  appVersion: package_default.version,
+  apiProtocolVersion: API_PROTOCOL_VERSION,
+  service: "echoes-memory"
+};
+
 // src/shared/extraction-core.ts
 function canonical(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
@@ -298,7 +351,7 @@ async function sha256(value) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 function structuredExtractionMessageHash(messages2) {
-  return sha256(messages2.map(({ id: id3, role: role2, content }) => ({ id: id3, role: role2, content })));
+  return sha256(messages2.map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content })));
 }
 function structuredExtractionContextHash(types, rows) {
   return sha256({
@@ -1514,14 +1567,14 @@ function prefixIssues(path, issues) {
     return iss;
   });
 }
-function unwrapMessage(message2) {
-  return typeof message2 === "string" ? message2 : message2?.message;
+function unwrapMessage(message3) {
+  return typeof message3 === "string" ? message3 : message3?.message;
 }
 function finalizeIssue(iss, ctx, config2) {
-  const message2 = iss.message ? iss.message : unwrapMessage(iss.inst?._zod.def?.error?.(iss)) ?? unwrapMessage(ctx?.error?.(iss)) ?? unwrapMessage(config2.customError?.(iss)) ?? unwrapMessage(config2.localeError?.(iss)) ?? "Invalid input";
+  const message3 = iss.message ? iss.message : unwrapMessage(iss.inst?._zod.def?.error?.(iss)) ?? unwrapMessage(ctx?.error?.(iss)) ?? unwrapMessage(config2.customError?.(iss)) ?? unwrapMessage(config2.localeError?.(iss)) ?? "Invalid input";
   const { inst: _inst, continue: _continue, input: _input, ...rest } = iss;
   rest.path ?? (rest.path = []);
-  rest.message = message2;
+  rest.message = message3;
   if (ctx?.reportInput) {
     rest.input = _input;
   }
@@ -3420,42 +3473,42 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
     }
     doc.write(`const newResult = {};`);
     for (const key of normalized.keys) {
-      const id3 = ids[key];
+      const id2 = ids[key];
       const k = esc(key);
       const schema4 = shape[key];
       const isOptionalIn = schema4?._zod?.optin === "optional";
       const isOptionalOut = schema4?._zod?.optout === "optional";
-      doc.write(`const ${id3} = ${parseStr(key)};`);
+      doc.write(`const ${id2} = ${parseStr(key)};`);
       if (isOptionalIn && isOptionalOut) {
         doc.write(`
-        if (${id3}.issues.length) {
+        if (${id2}.issues.length) {
           if (${k} in input) {
-            payload.issues = payload.issues.concat(${id3}.issues.map(iss => ({
+            payload.issues = payload.issues.concat(${id2}.issues.map(iss => ({
               ...iss,
               path: iss.path ? [${k}, ...iss.path] : [${k}]
             })));
           }
         }
         
-        if (${id3}.value === undefined) {
+        if (${id2}.value === undefined) {
           if (${k} in input) {
             newResult[${k}] = undefined;
           }
         } else {
-          newResult[${k}] = ${id3}.value;
+          newResult[${k}] = ${id2}.value;
         }
         
       `);
       } else if (!isOptionalIn) {
         doc.write(`
-        const ${id3}_present = ${k} in input;
-        if (${id3}.issues.length) {
-          payload.issues = payload.issues.concat(${id3}.issues.map(iss => ({
+        const ${id2}_present = ${k} in input;
+        if (${id2}.issues.length) {
+          payload.issues = payload.issues.concat(${id2}.issues.map(iss => ({
             ...iss,
             path: iss.path ? [${k}, ...iss.path] : [${k}]
           })));
         }
-        if (!${id3}_present && !${id3}.issues.length) {
+        if (!${id2}_present && !${id2}.issues.length) {
           payload.issues.push({
             code: "invalid_type",
             expected: "nonoptional",
@@ -3464,30 +3517,30 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
           });
         }
 
-        if (${id3}_present) {
-          if (${id3}.value === undefined) {
+        if (${id2}_present) {
+          if (${id2}.value === undefined) {
             newResult[${k}] = undefined;
           } else {
-            newResult[${k}] = ${id3}.value;
+            newResult[${k}] = ${id2}.value;
           }
         }
 
       `);
       } else {
         doc.write(`
-        if (${id3}.issues.length) {
-          payload.issues = payload.issues.concat(${id3}.issues.map(iss => ({
+        if (${id2}.issues.length) {
+          payload.issues = payload.issues.concat(${id2}.issues.map(iss => ({
             ...iss,
             path: iss.path ? [${k}, ...iss.path] : [${k}]
           })));
         }
         
-        if (${id3}.value === undefined) {
+        if (${id2}.value === undefined) {
           if (${k} in input) {
             newResult[${k}] = undefined;
           }
         } else {
-          newResult[${k}] = ${id3}.value;
+          newResult[${k}] = ${id2}.value;
         }
         
       `);
@@ -11819,26 +11872,26 @@ function extractDefs(ctx, schema4) {
     throw new Error("Unprocessed schema. This is a bug in Zod.");
   const idToSchema = /* @__PURE__ */ new Map();
   for (const entry of ctx.seen.entries()) {
-    const id3 = ctx.metadataRegistry.get(entry[0])?.id;
-    if (id3) {
-      const existing = idToSchema.get(id3);
+    const id2 = ctx.metadataRegistry.get(entry[0])?.id;
+    if (id2) {
+      const existing = idToSchema.get(id2);
       if (existing && existing !== entry[0]) {
-        throw new Error(`Duplicate schema id "${id3}" detected during JSON Schema conversion. Two different schemas cannot share the same id when converted together.`);
+        throw new Error(`Duplicate schema id "${id2}" detected during JSON Schema conversion. Two different schemas cannot share the same id when converted together.`);
       }
-      idToSchema.set(id3, entry[0]);
+      idToSchema.set(id2, entry[0]);
     }
   }
   const makeURI = (entry) => {
     const defsSegment = ctx.target === "draft-2020-12" ? "$defs" : "definitions";
     if (ctx.external) {
       const externalId = ctx.external.registry.get(entry[0])?.id;
-      const uriGenerator = ctx.external.uri ?? ((id4) => id4);
+      const uriGenerator = ctx.external.uri ?? ((id3) => id3);
       if (externalId) {
         return { ref: uriGenerator(externalId) };
       }
-      const id3 = entry[1].defId ?? entry[1].schema.id ?? `schema${ctx.counter++}`;
-      entry[1].defId = id3;
-      return { defId: id3, ref: `${uriGenerator("__shared")}#/${defsSegment}/${id3}` };
+      const id2 = entry[1].defId ?? entry[1].schema.id ?? `schema${ctx.counter++}`;
+      entry[1].defId = id2;
+      return { defId: id2, ref: `${uriGenerator("__shared")}#/${defsSegment}/${id2}` };
     }
     if (entry[1] === root) {
       return { ref: "#" };
@@ -11886,8 +11939,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         continue;
       }
     }
-    const id3 = ctx.metadataRegistry.get(entry[0])?.id;
-    if (id3) {
+    const id2 = ctx.metadataRegistry.get(entry[0])?.id;
+    if (id2) {
       extractToDef(entry);
       continue;
     }
@@ -11983,10 +12036,10 @@ function finalize(ctx, schema4) {
   } else {
   }
   if (ctx.external?.uri) {
-    const id3 = ctx.external.registry.get(schema4)?.id;
-    if (!id3)
+    const id2 = ctx.external.registry.get(schema4)?.id;
+    if (!id2)
       throw new Error("Schema is missing an `id` property");
-    result.$id = ctx.external.uri(id3);
+    result.$id = ctx.external.uri(id2);
   }
   Object.assign(result, root.def ?? root.schema);
   const rootMetaId = ctx.metadataRegistry.get(schema4)?.id;
@@ -15091,7 +15144,7 @@ var extractionRequestSchema = external_exports.object({
   failoverPolicy: failoverPolicySchema.default("confirm_ambiguous"),
   resumeAfterEndpointId: identifierSchema.optional()
 }).superRefine((request, context) => {
-  const requestMessageIds = request.messages.map((message2) => message2.id);
+  const requestMessageIds = request.messages.map((message3) => message3.id);
   if (JSON.stringify(requestMessageIds) !== JSON.stringify(request.batch.messageIds)) {
     context.addIssue({ code: "custom", path: ["batch", "messageIds"], message: "Batch messages must match request messages in order." });
   }
@@ -15271,13 +15324,13 @@ var summaryGenerationRequestSchema = external_exports.object({
   failoverPolicy: failoverPolicySchema.default("confirm_ambiguous"),
   resumeAfterEndpointId: identifierSchema.optional()
 }).superRefine((request, context) => {
-  if (!request.promptMessages.some((message2) => message2.content.trim())) {
+  if (!request.promptMessages.some((message3) => message3.content.trim())) {
     context.addIssue({ code: "custom", path: ["promptMessages"], message: "Summary prompt is empty." });
   }
   if (JSON.stringify({ promptMessages: request.promptMessages, messages: request.messages }).length > MAX_EXTRACTION_CHARACTERS) {
     context.addIssue({ code: "custom", path: ["messages"], message: "Summary input is too large." });
   }
-  const messageIds = request.messages.map((message2) => message2.id);
+  const messageIds = request.messages.map((message3) => message3.id);
   if (new Set(messageIds).size !== messageIds.length) {
     context.addIssue({ code: "custom", path: ["messages"], message: "Summary message IDs must be unique." });
   }
@@ -15388,7 +15441,7 @@ var statusUpdateRequestSchema = external_exports.object({
   failoverPolicy: failoverPolicySchema.default("confirm_ambiguous"),
   resumeAfterEndpointId: identifierSchema.optional()
 }).superRefine((request, context) => {
-  const ids = request.messages.map((message2) => message2.id);
+  const ids = request.messages.map((message3) => message3.id);
   if (new Set(ids).size !== ids.length) {
     context.addIssue({ code: "custom", path: ["messages"], message: "Status message IDs must be unique." });
   }
@@ -19648,22 +19701,22 @@ function assertCollection(contents) {
 
 // node_modules/yaml/browser/dist/errors.js
 var YAMLError = class extends Error {
-  constructor(name, pos, code, message2) {
+  constructor(name, pos, code, message3) {
     super();
     this.name = name;
     this.code = code;
-    this.message = message2;
+    this.message = message3;
     this.pos = pos;
   }
 };
 var YAMLParseError = class extends YAMLError {
-  constructor(pos, code, message2) {
-    super("YAMLParseError", pos, code, message2);
+  constructor(pos, code, message3) {
+    super("YAMLParseError", pos, code, message3);
   }
 };
 var YAMLWarning = class extends YAMLError {
-  constructor(pos, code, message2) {
-    super("YAMLWarning", pos, code, message2);
+  constructor(pos, code, message3) {
+    super("YAMLWarning", pos, code, message3);
   }
 };
 var prettifyError2 = (src, lc) => (error51) => {
@@ -20260,8 +20313,8 @@ function composeCollection(CN2, ctx, token, props, onError) {
     const { anchor, newlineAfterProp: nl } = props;
     const lastProp = anchor && tagToken ? anchor.offset > tagToken.offset ? anchor : tagToken : anchor ?? tagToken;
     if (lastProp && (!nl || nl.offset < lastProp.offset)) {
-      const message2 = "Missing newline after block sequence props";
-      onError(lastProp, "MISSING_CHAR", message2);
+      const message3 = "Missing newline after block sequence props";
+      onError(lastProp, "MISSING_CHAR", message3);
     }
   }
   const expType = token.type === "block-map" ? "map" : token.type === "block-seq" ? "seq" : token.start.source === "{" ? "map" : "seq";
@@ -20326,15 +20379,15 @@ function resolveBlockScalar(ctx, scalar, onError) {
         trimIndent = indent.length;
     } else {
       if (indent.length < trimIndent) {
-        const message2 = "Block scalars with more-indented leading empty lines must use an explicit indentation indicator";
-        onError(offset + indent.length, "MISSING_CHAR", message2);
+        const message3 = "Block scalars with more-indented leading empty lines must use an explicit indentation indicator";
+        onError(offset + indent.length, "MISSING_CHAR", message3);
       }
       if (header.indent === 0)
         trimIndent = indent.length;
       contentStart = i;
       if (trimIndent === 0 && !ctx.atRoot) {
-        const message2 = "Block scalar values in collections must be indented";
-        onError(offset, "BAD_INDENT", message2);
+        const message3 = "Block scalar values in collections must be indented";
+        onError(offset, "BAD_INDENT", message3);
       }
       break;
     }
@@ -20357,8 +20410,8 @@ function resolveBlockScalar(ctx, scalar, onError) {
       content = content.slice(0, -1);
     if (content && indent.length < trimIndent) {
       const src = header.indent ? "explicit indentation indicator" : "first line";
-      const message2 = `Block scalar lines must not be less indented than their ${src}`;
-      onError(offset - content.length - (crlf ? 2 : 1), "BAD_INDENT", message2);
+      const message3 = `Block scalar lines must not be less indented than their ${src}`;
+      onError(offset - content.length - (crlf ? 2 : 1), "BAD_INDENT", message3);
       indent = "";
     }
     if (type === Scalar.BLOCK_LITERAL) {
@@ -20436,8 +20489,8 @@ function parseBlockScalarHeader({ offset, props }, strict, onError) {
         break;
       case "comment":
         if (strict && !hasSpace) {
-          const message2 = "Comments must be separated from other tokens by white space characters";
-          onError(token, "MISSING_CHAR", message2);
+          const message3 = "Comments must be separated from other tokens by white space characters";
+          onError(token, "MISSING_CHAR", message3);
         }
         length += token.source.length;
         comment = token.source.substring(1);
@@ -20448,8 +20501,8 @@ function parseBlockScalarHeader({ offset, props }, strict, onError) {
         break;
       /* istanbul ignore next should not happen */
       default: {
-        const message2 = `Unexpected token in block scalar header: ${token.type}`;
-        onError(token, "UNEXPECTED_TOKEN", message2);
+        const message3 = `Unexpected token in block scalar header: ${token.type}`;
+        onError(token, "UNEXPECTED_TOKEN", message3);
         const ts = token.source;
         if (ts && typeof ts === "string")
           length += ts.length;
@@ -20805,13 +20858,13 @@ function composeNode(ctx, token, props, onError) {
         if (anchor)
           node.anchor = anchor.source.substring(1);
       } catch (error51) {
-        const message2 = error51 instanceof Error ? error51.message : String(error51);
-        onError(token, "RESOURCE_EXHAUSTION", message2);
+        const message3 = error51 instanceof Error ? error51.message : String(error51);
+        onError(token, "RESOURCE_EXHAUSTION", message3);
       }
       break;
     default: {
-      const message2 = token.type === "error" ? token.message : `Unsupported token (type: ${token.type})`;
-      onError(token, "UNEXPECTED_TOKEN", message2);
+      const message3 = token.type === "error" ? token.message : `Unsupported token (type: ${token.type})`;
+      onError(token, "UNEXPECTED_TOKEN", message3);
       isSrcToken = false;
     }
   }
@@ -20943,12 +20996,12 @@ var Composer = class {
     this.prelude = [];
     this.errors = [];
     this.warnings = [];
-    this.onError = (source, code, message2, warning) => {
+    this.onError = (source, code, message3, warning) => {
       const pos = getErrorPos(source);
       if (warning)
-        this.warnings.push(new YAMLWarning(pos, code, message2));
+        this.warnings.push(new YAMLWarning(pos, code, message3));
       else
-        this.errors.push(new YAMLParseError(pos, code, message2));
+        this.errors.push(new YAMLParseError(pos, code, message3));
     };
     this.directives = new Directives({ version: options.version || "1.2" });
     this.options = options;
@@ -21016,10 +21069,10 @@ ${cb}` : comment;
   *next(token) {
     switch (token.type) {
       case "directive":
-        this.directives.add(token.source, (offset, message2, warning) => {
+        this.directives.add(token.source, (offset, message3, warning) => {
           const pos = getErrorPos(token);
           pos[0] += offset;
-          this.onError(pos, "BAD_DIRECTIVE", message2, warning);
+          this.onError(pos, "BAD_DIRECTIVE", message3, warning);
         });
         this.prelude.push(token.source);
         this.atDirectives = true;
@@ -21960,8 +22013,8 @@ var Parser = class {
     }
     const type = tokenType(source);
     if (!type) {
-      const message2 = `Not a YAML token: ${source}`;
-      yield* this.pop({ type: "error", offset: this.offset, message: message2, source });
+      const message3 = `Not a YAML token: ${source}`;
+      yield* this.pop({ type: "error", offset: this.offset, message: message3, source });
       this.offset += source.length;
     } else if (type === "scalar") {
       this.atNewLine = false;
@@ -22051,8 +22104,8 @@ var Parser = class {
   *pop(error51) {
     const token = error51 ?? this.stack.pop();
     if (!token) {
-      const message2 = "Tried to pop an empty stack";
-      yield { type: "error", offset: this.offset, source: "", message: message2 };
+      const message3 = "Tried to pop an empty stack";
+      yield { type: "error", offset: this.offset, source: "", message: message3 };
     } else if (this.stack.length === 0) {
       yield token;
     } else {
@@ -23482,8 +23535,8 @@ var ExtractionCheckpointMissingError = class extends Error {
   code = "EXTRACTION_CHECKPOINT_MISSING";
 };
 var ExtractionBatchUnavailableError = class extends Error {
-  constructor(mode, message2) {
-    super(message2);
+  constructor(mode, message3) {
+    super(message3);
     this.mode = mode;
     this.name = "ExtractionBatchUnavailableError";
   }
@@ -23492,15 +23545,15 @@ var ExtractionBatchUnavailableError = class extends Error {
 };
 function currentExtractionMessages() {
   const seen = /* @__PURE__ */ new Set();
-  return SillyTavern.getContext().chat.flatMap((message2, index) => {
-    const content = String(message2.mes ?? message2.message ?? "").trim();
+  return SillyTavern.getContext().chat.flatMap((message3, index) => {
+    const content = String(message3.mes ?? message3.message ?? "").trim();
     if (!content) return [];
-    const rawId = String(message2.message_id ?? message2.id ?? index);
-    const id3 = seen.has(rawId) ? `${rawId}:${index}` : rawId;
-    seen.add(id3);
+    const rawId = String(message3.message_id ?? message3.id ?? index);
+    const id2 = seen.has(rawId) ? `${rawId}:${index}` : rawId;
+    seen.add(id2);
     return [{
-      id: id3,
-      role: message2.is_user === true || message2.role === "user" ? "user" : "assistant",
+      id: id2,
+      role: message3.is_user === true || message3.role === "user" ? "user" : "assistant",
       content
     }];
   });
@@ -23508,7 +23561,7 @@ function currentExtractionMessages() {
 function checkpointStart(state, messages2) {
   const checkpoint = state.catalog.lastProcessedMessageId;
   if (!checkpoint) return 0;
-  const index = messages2.findIndex((message2) => message2.id === checkpoint);
+  const index = messages2.findIndex((message3) => message3.id === checkpoint);
   if (index < 0) throw new ExtractionCheckpointMissingError(checkpoint);
   return index + 1;
 }
@@ -23532,7 +23585,7 @@ async function buildSelection(state, mode, messages2) {
     mode,
     startMessageId: messages2[0].id,
     endMessageId: messages2.at(-1).id,
-    messageIds: messages2.map((message2) => message2.id),
+    messageIds: messages2.map((message3) => message3.id),
     sourceHash,
     contextHash
   };
@@ -23550,7 +23603,7 @@ async function automaticExtractionBatch(state, limit, messages2 = currentExtract
   let end = -1;
   for (let index = boundary; index >= start; index -= 1) {
     if (messages2[index]?.role !== "assistant") continue;
-    if (!messages2.slice(index + 1).some((message2) => message2.role === "user")) continue;
+    if (!messages2.slice(index + 1).some((message3) => message3.role === "user")) continue;
     end = index;
     break;
   }
@@ -23677,9 +23730,9 @@ async function waitForJob(initial, onUpdate) {
 }
 function currentBatchMessages(prepared) {
   if (SillyTavern.getContext().chatId !== prepared.request.chatId) return null;
-  const byId = new Map(currentExtractionMessages().map((message2) => [message2.id, message2]));
-  const messages2 = prepared.batch.messageIds.map((id3) => byId.get(id3));
-  if (messages2.some((message2) => !message2)) return [];
+  const byId = new Map(currentExtractionMessages().map((message3) => [message3.id, message3]));
+  const messages2 = prepared.batch.messageIds.map((id2) => byId.get(id2));
+  if (messages2.some((message3) => !message3)) return [];
   return messages2;
 }
 var ExtractionCoordinator = class {
@@ -23824,9 +23877,9 @@ var ExtractionCoordinator = class {
           return;
         }
         if (this.pauses.get(lockedChatId)?.startsWith("\u7528\u6237\u505C\u6B62\u4E86")) return;
-        const message2 = error51 instanceof Error ? error51.message : String(error51);
+        const message3 = error51 instanceof Error ? error51.message : String(error51);
         const blocked = error51 instanceof ExtractionCheckpointMissingError;
-        this.pauses.set(lockedChatId, message2);
+        this.pauses.set(lockedChatId, message3);
         this.traces.set(lockedChatId, {
           chatId: lockedChatId,
           worldbookName: state?.worldbookName ?? window.TavernHelper?.getChatWorldbookName("current") ?? "",
@@ -23836,7 +23889,7 @@ var ExtractionCoordinator = class {
           applied: 0,
           rejected: 0,
           attempts: [],
-          message: message2
+          message: message3
         });
         this.emit();
         if (userInitiated) throw error51;
@@ -24056,8 +24109,8 @@ function submitDialog(dialog, submit, options = {}) {
         resolve(value);
         if (dialog.open) dialog.close("saved");
       }).catch((error51) => {
-        const message2 = error51 instanceof Error ? error51.message : String(error51);
-        errorHost.textContent = options.errorTitle ? `${options.errorTitle}\uFF1A${message2}` : message2;
+        const message3 = error51 instanceof Error ? error51.message : String(error51);
+        errorHost.textContent = options.errorTitle ? `${options.errorTitle}\uFF1A${message3}` : message3;
         errorHost.classList.remove("echoes-hidden");
         setSubmitting(false);
       });
@@ -24304,13 +24357,13 @@ function openRowDialog(type, current) {
       try {
         const values = {};
         for (const input of valuesHost.querySelectorAll("[data-column-id]")) {
-          const id3 = input.dataset.columnId;
+          const id2 = input.dataset.columnId;
           const columnType = input.dataset.columnType;
-          if (input instanceof HTMLInputElement && input.type === "checkbox") values[id3] = input.checked;
+          if (input instanceof HTMLInputElement && input.type === "checkbox") values[id2] = input.checked;
           else if (!input.value.trim()) continue;
-          else if (columnType === "number") values[id3] = Number(input.value);
-          else if (columnType === "json") values[id3] = JSON.parse(input.value);
-          else values[id3] = input.value;
+          else if (columnType === "number") values[id2] = Number(input.value);
+          else if (columnType === "json") values[id2] = JSON.parse(input.value);
+          else values[id2] = input.value;
         }
         const keywords = body.querySelector("[name=keywords]").value.split(/[,\n]/).map((keyword) => keyword.trim()).filter((keyword, index, all) => Boolean(keyword) && all.indexOf(keyword) === index);
         const parsed = memoryRowInputSchema.parse({
@@ -24326,79 +24379,6 @@ function openRowDialog(type, current) {
       } catch (error51) {
         toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u884C\u6570\u636E\u65E0\u6548");
       }
-    });
-    dialog.addEventListener("close", () => {
-      if (!settled) resolve(null);
-    }, { once: true });
-    dialog.showModal();
-  });
-}
-function openSettingsDialog(current) {
-  const dialog = dialogShell("\u5DE5\u4F5C\u6D41\u8BBE\u7F6E");
-  const body = dialog.querySelector(".echoes-dialog-body");
-  body.innerHTML = `
-    <div class="echoes-form-grid">
-      <label>\u7ED3\u6784\u5316\u8BB0\u5FC6\u7AEF\u70B9\u7EC4<select name="extractionGroup"></select></label>
-      <label>\u7ED3\u6784\u5316\u8BB0\u5FC6\u6545\u969C\u7B56\u7565<select name="extractionPolicy"><option value="confirm_ambiguous">\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4</option><option value="always">\u59CB\u7EC8\u5207\u6362</option><option value="definitive_only">\u4EC5\u660E\u786E\u5931\u8D25\u5207\u6362</option></select></label>
-      <label>\u7ED3\u6784\u5316\u63D0\u53D6\u6D88\u606F\u9608\u503C/\u4E0A\u9650<input name="messageCount" type="number" min="2" max="500"></label>
-      <label>\u603B\u7ED3\u7AEF\u70B9\u7EC4<select name="summaryGroup"></select></label>
-      <label>\u603B\u7ED3\u6545\u969C\u7B56\u7565<select name="summaryPolicy"><option value="confirm_ambiguous">\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4</option><option value="always">\u59CB\u7EC8\u5207\u6362</option><option value="definitive_only">\u4EC5\u660E\u786E\u5931\u8D25\u5207\u6362</option></select></label>
-      <label>\u72B6\u6001\u7AEF\u70B9\u7EC4<select name="statusGroup"></select></label>
-      <label>\u72B6\u6001\u6545\u969C\u7B56\u7565<select name="statusPolicy"><option value="confirm_ambiguous">\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4</option><option value="always">\u59CB\u7EC8\u5207\u6362</option><option value="definitive_only">\u4EC5\u660E\u786E\u5931\u8D25\u5207\u6362</option></select></label>
-      <label>\u603B\u7ED3\u6D88\u606F\u9608\u503C<input name="summaryCount" type="number" min="2" max="500"></label>
-      <label>\u603B\u7ED3\u5D4C\u5165\u7EC4<select name="embeddingGroup"><option value="">\u6682\u4E0D\u540C\u6B65\u5411\u91CF</option></select></label>
-    </div>`;
-  const extractionGroup = body.querySelector("[name=extractionGroup]");
-  const summaryGroup = body.querySelector("[name=summaryGroup]");
-  const statusGroup = body.querySelector("[name=statusGroup]");
-  for (const group of current.generationGroups) {
-    extractionGroup.append(new Option(group.name, group.id));
-    summaryGroup.append(new Option(group.name, group.id));
-    statusGroup.append(new Option(group.name, group.id));
-  }
-  extractionGroup.value = current.generationWorkflows.extraction.groupId;
-  summaryGroup.value = current.generationWorkflows.summary.groupId;
-  statusGroup.value = current.generationWorkflows.status.groupId;
-  body.querySelector("[name=extractionPolicy]").value = current.generationWorkflows.extraction.failoverPolicy;
-  body.querySelector("[name=summaryPolicy]").value = current.generationWorkflows.summary.failoverPolicy;
-  body.querySelector("[name=statusPolicy]").value = current.generationWorkflows.status.failoverPolicy;
-  body.querySelector("[name=messageCount]").value = String(current.extractionMessageCount);
-  body.querySelector("[name=summaryCount]").value = String(current.summary.messageCount);
-  const embeddingGroup = body.querySelector("[name=embeddingGroup]");
-  for (const group of current.retrieval.embeddingGroups) embeddingGroup.append(new Option(group.name, group.id));
-  embeddingGroup.value = current.summary.embeddingGroupId;
-  return new Promise((resolve) => {
-    let settled = false;
-    dialog.querySelector("form").addEventListener("submit", (event) => {
-      event.preventDefault();
-      settled = true;
-      resolve({
-        ...current,
-        generationWorkflows: {
-          extraction: {
-            groupId: extractionGroup.value,
-            failoverPolicy: body.querySelector("[name=extractionPolicy]").value
-          },
-          summary: {
-            groupId: summaryGroup.value,
-            failoverPolicy: body.querySelector("[name=summaryPolicy]").value
-          },
-          status: {
-            groupId: statusGroup.value,
-            failoverPolicy: body.querySelector("[name=statusPolicy]").value
-          }
-        },
-        extractionMessageCount: Math.max(
-          2,
-          Math.min(500, Math.floor(Number(body.querySelector("[name=messageCount]").value)))
-        ),
-        summary: {
-          ...current.summary,
-          messageCount: Number(body.querySelector("[name=summaryCount]").value),
-          embeddingGroupId: embeddingGroup.value
-        }
-      });
-      dialog.close("saved");
     });
     dialog.addEventListener("close", () => {
       if (!settled) resolve(null);
@@ -24666,11 +24646,6 @@ var RetrievalPanel = class {
       if (!target) return;
       void this.handleAction(target.dataset.retrievalAction ?? "", target);
     });
-    this.root.addEventListener("change", (event) => {
-      const target = event.target;
-      if (target.matches("[data-retrieval-endpoint-toggle]")) this.toggleEndpoint(target);
-      if (target.matches("[data-retrieval-policy]")) this.savePolicy(target);
-    });
     this.root.addEventListener("submit", (event) => {
       const form = event.target;
       if (form.matches("[data-retrieval-manual-form]")) {
@@ -24704,13 +24679,6 @@ var RetrievalPanel = class {
   async handleAction(action, target) {
     try {
       if (action === "retrieval-refresh") await this.render();
-      else if (action === "add-embedding-group") await this.editEndpointSet("embedding");
-      else if (action === "add-rerank-set") await this.editEndpointSet("rerank");
-      else if (action === "edit-endpoint-set") {
-        const kind = target.dataset.kind === "rerank" ? "rerank" : "embedding";
-        await this.editEndpointSet(kind, target.dataset.id);
-      } else if (action === "delete-endpoint-set") this.deleteEndpointSet(target);
-      else if (action === "test-endpoint") await this.testEndpoint(target);
       else if (action === "add-collection") await this.createCollection();
       else if (action === "delete-collection") await this.deleteCollection(target.dataset.id ?? "");
       else if (action === "repair-collection") await this.rebuildCollection(target.dataset.id ?? "", true);
@@ -24751,17 +24719,11 @@ var RetrievalPanel = class {
     const settings = getSettings();
     host.innerHTML = `
       <div class="echoes-retrieval-page">
-        <section class="echoes-retrieval-section" data-section="endpoints">
-          <div class="echoes-section-heading"><div><h2>\u7AEF\u70B9\u4E0E\u6545\u969C\u7B56\u7565</h2><span>\u8FDB\u7A0B\u5185\u7194\u65AD\u72B6\u6001\u4E0D\u4F1A\u5199\u5165\u78C1\u76D8</span></div><div data-endpoint-actions></div></div>
-          <label class="echoes-retrieval-policy">\u6545\u969C\u7B56\u7565
-            <select data-retrieval-policy>
-              <option value="confirm_ambiguous">\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4</option>
-              <option value="definitive_only">\u4EC5\u660E\u786E\u5931\u8D25\u8F6E\u6362</option>
-              <option value="always">\u59CB\u7EC8\u81EA\u52A8\u8F6E\u6362</option>
-            </select>
-          </label>
-          <div class="echoes-retrieval-warning echoes-hidden" data-always-warning>\u4E0D\u786E\u5B9A\u5931\u8D25\u4E5F\u4F1A\u81EA\u52A8\u521B\u5EFA\u4E0B\u4E00\u6B21\u8BF7\u6C42\uFF0C\u53EF\u80FD\u4EA7\u751F\u91CD\u590D\u8BA1\u8D39\u3002</div>
-          <div data-endpoint-tables></div>
+        <section class="echoes-retrieval-section echoes-api-binding-section">
+          <div class="echoes-section-heading"><div><h2>\u68C0\u7D22\u8FD0\u884C\u914D\u7F6E</h2><span>\u7AEF\u70B9\u3001\u6A21\u578B\u3001\u51ED\u636E\u548C\u6545\u969C\u7B56\u7565\u7EDF\u4E00\u5728 API\u914D\u7F6E\u4E2D\u7BA1\u7406</span></div><button type="button" class="menu_button" data-action="switch-view" data-view="api"><i class="fa-solid fa-plug"></i> \u524D\u5F80 API\u914D\u7F6E</button></div>
+          <div class="echoes-workflow-summary">
+            <span>\u603B\u7ED3 Embedding<strong data-retrieval-binding-embedding></strong></span><span>Rerank<strong data-retrieval-binding-rerank></strong></span><span>\u6545\u969C\u7B56\u7565<strong data-retrieval-binding-policy></strong></span>
+          </div>
         </section>
         <section class="echoes-retrieval-section" data-section="collections">
           <div class="echoes-section-heading"><div><h2>\u96C6\u5408\u4E0E\u7D22\u5F15</h2><span>\u6587\u6863\u5148\u6301\u4E45\u5316\uFF0C\u5411\u91CF\u72B6\u6001\u72EC\u7ACB\u4FEE\u590D</span></div><div data-collection-actions></div></div>
@@ -24786,7 +24748,6 @@ var RetrievalPanel = class {
               <label><input type="checkbox" name="vectorEnabled"> \u5411\u91CF</label>
               <label><input type="checkbox" name="bm25Enabled"> BM25</label>
               <label><input type="checkbox" name="rerankEnabled"> rerank</label>
-              <label>Rerank \u7EC4<select name="rerankSetId"></select></label>
               <label>\u7ED3\u679C\u6570<input type="number" name="finalTopK" min="1" max="100"></label>
             </div>
             <label class="echoes-query-text">\u67E5\u8BE2<textarea name="query" rows="3" required maxlength="20000"></textarea></label>
@@ -24796,98 +24757,18 @@ var RetrievalPanel = class {
           <div class="echoes-table-scroll" data-query-results></div>
         </section>
       </div>`;
-    const policy = host.querySelector("[data-retrieval-policy]");
-    policy.value = settings.retrieval.failoverPolicy;
-    host.querySelector("[data-always-warning]")?.classList.toggle(
-      "echoes-hidden",
-      settings.retrieval.failoverPolicy !== "always"
-    );
-    const endpointActions = host.querySelector("[data-endpoint-actions]");
-    endpointActions.append(
-      button("vector-square", "\u5D4C\u5165\u7EC4", "add-embedding-group", true),
-      button("arrow-down-wide-short", "\u91CD\u6392\u5E8F\u7EC4", "add-rerank-set")
-    );
+    const embeddingGroup = settings.retrieval.embeddingGroups.find((group) => group.id === settings.summary.embeddingGroupId);
+    const rerankSet = settings.retrieval.rerankSets.find((set3) => set3.id === settings.retrieval.recall.rerankSetId);
+    host.querySelector("[data-retrieval-binding-embedding]").textContent = embeddingGroup?.name ?? "\u672A\u914D\u7F6E";
+    host.querySelector("[data-retrieval-binding-rerank]").textContent = rerankSet?.name ?? "\u672A\u914D\u7F6E";
+    host.querySelector("[data-retrieval-binding-policy]").textContent = {
+      confirm_ambiguous: "\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4",
+      always: "\u59CB\u7EC8\u81EA\u52A8\u5207\u6362",
+      definitive_only: "\u4EC5\u660E\u786E\u5931\u8D25\u5207\u6362"
+    }[settings.retrieval.failoverPolicy];
     host.querySelector("[data-collection-actions]").append(button("plus", "\u65B0\u5EFA\u96C6\u5408", "add-collection", true));
-    this.renderEndpointTables(host.querySelector("[data-endpoint-tables]"));
     this.renderCollectionTable(host.querySelector("[data-collection-table]"));
     this.populateCollectionControls(host);
-  }
-  renderEndpointTables(host) {
-    const settings = getSettings();
-    host.replaceChildren();
-    for (const [kind, groups] of [
-      ["embedding", settings.retrieval.embeddingGroups],
-      ["rerank", settings.retrieval.rerankSets]
-    ]) {
-      const block = document.createElement("div");
-      block.className = "echoes-endpoint-block";
-      const heading = document.createElement("h3");
-      heading.textContent = kind === "embedding" ? "Embedding \u7AEF\u70B9\u7EC4" : "Rerank \u7AEF\u70B9\u7EC4";
-      block.append(heading);
-      if (groups.length === 0) {
-        const empty = document.createElement("p");
-        empty.className = "echoes-empty-note";
-        empty.textContent = "\u672A\u914D\u7F6E";
-        block.append(empty);
-      }
-      for (const group of groups) block.append(this.endpointSetTable(kind, group));
-      host.append(block);
-    }
-  }
-  endpointSetTable(kind, group) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "echoes-endpoint-set";
-    const header = document.createElement("header");
-    const title = document.createElement("div");
-    const strong = document.createElement("strong");
-    strong.textContent = group.name;
-    const meta3 = document.createElement("small");
-    meta3.textContent = kind === "embedding" ? `${group.embeddingSpaceId} \xB7 ${group.dimensions} \u7EF4` : `${group.endpoints.length} \u4E2A\u7AEF\u70B9`;
-    title.append(strong, meta3);
-    const actions = document.createElement("div");
-    const edit = iconButton("pen", "\u7F16\u8F91\u7AEF\u70B9\u7EC4", "edit-endpoint-set");
-    edit.dataset.kind = kind;
-    edit.dataset.id = group.id;
-    const remove = iconButton("trash", "\u5220\u9664\u7AEF\u70B9\u7EC4", "delete-endpoint-set");
-    remove.dataset.kind = kind;
-    remove.dataset.id = group.id;
-    actions.append(edit, remove);
-    header.append(title, actions);
-    wrapper.append(header);
-    const table = document.createElement("table");
-    table.className = "echoes-data-table echoes-endpoint-table";
-    table.innerHTML = "<thead><tr><th>\u542F\u7528</th><th>\u987A\u5E8F</th><th>\u7AEF\u70B9</th><th>\u6A21\u578B</th><th>\u5730\u5740</th><th>\u6D4B\u8BD5</th></tr></thead>";
-    const body = document.createElement("tbody");
-    for (const endpoint of [...group.endpoints].sort((a, b) => a.order - b.order)) {
-      const row = document.createElement("tr");
-      const enabled = document.createElement("input");
-      enabled.type = "checkbox";
-      enabled.checked = endpoint.enabled;
-      enabled.dataset.retrievalEndpointToggle = "true";
-      enabled.dataset.kind = kind;
-      enabled.dataset.groupId = group.id;
-      enabled.dataset.endpointId = endpoint.id;
-      const enabledCell = document.createElement("td");
-      enabledCell.append(enabled);
-      const values = [String(endpoint.order + 1), endpoint.name, endpoint.model, endpoint.baseUrl];
-      row.append(enabledCell, ...values.map((value) => {
-        const cell = document.createElement("td");
-        cell.textContent = value;
-        cell.title = value;
-        return cell;
-      }));
-      const testCell = document.createElement("td");
-      const test = iconButton("plug-circle-check", "\u6D4B\u8BD5\u7AEF\u70B9", "test-endpoint");
-      test.dataset.kind = kind;
-      test.dataset.groupId = group.id;
-      test.dataset.endpointId = endpoint.id;
-      testCell.append(test);
-      row.append(testCell);
-      body.append(row);
-    }
-    table.append(body);
-    wrapper.append(table);
-    return wrapper;
   }
   renderCollectionTable(host) {
     if (this.collections.length === 0) {
@@ -24952,226 +24833,10 @@ var RetrievalPanel = class {
       queryCollections.append(label);
     }
     const query = getSettings().retrieval.query;
-    const rerankSelect = host.querySelector("[name=rerankSetId]");
-    for (const set3 of getSettings().retrieval.rerankSets) {
-      rerankSelect.add(new Option(set3.name, set3.id));
-    }
     host.querySelector("[name=vectorEnabled]").checked = query.vectorEnabled;
     host.querySelector("[name=bm25Enabled]").checked = query.bm25Enabled;
     host.querySelector("[name=rerankEnabled]").checked = query.rerankEnabled;
     host.querySelector("[name=finalTopK]").value = String(query.finalTopK);
-  }
-  savePolicy(select) {
-    const settings = getSettings();
-    settings.retrieval.failoverPolicy = select.value;
-    saveSettings(settings);
-    this.root.querySelector("[data-always-warning]")?.classList.toggle(
-      "echoes-hidden",
-      select.value !== "always"
-    );
-  }
-  toggleEndpoint(input) {
-    const settings = getSettings();
-    const groups = input.dataset.kind === "rerank" ? settings.retrieval.rerankSets : settings.retrieval.embeddingGroups;
-    const endpoint = groups.find((group) => group.id === input.dataset.groupId)?.endpoints.find((item) => item.id === input.dataset.endpointId);
-    if (!endpoint) return;
-    endpoint.enabled = input.checked;
-    saveSettings(settings);
-  }
-  async editEndpointSet(kind, id3) {
-    const settings = getSettings();
-    const current = (kind === "embedding" ? settings.retrieval.embeddingGroups : settings.retrieval.rerankSets).find((group) => group.id === id3);
-    const result = await this.endpointSetDialog(kind, current);
-    if (!result) return;
-    if (kind === "embedding") {
-      const parsed = embeddingEndpointGroupSchema.parse(result);
-      const index = settings.retrieval.embeddingGroups.findIndex((group) => group.id === parsed.id);
-      if (index >= 0) settings.retrieval.embeddingGroups[index] = parsed;
-      else settings.retrieval.embeddingGroups.push(parsed);
-    } else {
-      const parsed = rerankEndpointSetSchema.parse(result);
-      const index = settings.retrieval.rerankSets.findIndex((group) => group.id === parsed.id);
-      if (index >= 0) settings.retrieval.rerankSets[index] = parsed;
-      else settings.retrieval.rerankSets.push(parsed);
-    }
-    saveSettings(settings);
-    this.renderEndpointTables(this.root.querySelector("[data-endpoint-tables]"));
-  }
-  async endpointSetDialog(kind, current) {
-    const credentials = await echoesApi.listCredentials().catch(() => []);
-    const dialog = document.createElement("dialog");
-    dialog.className = "echoes-dialog echoes-endpoint-dialog";
-    dialog.innerHTML = `
-      <form method="dialog" class="echoes-dialog-frame">
-        <header class="echoes-dialog-header"><h2>${kind === "embedding" ? "Embedding \u7AEF\u70B9\u7EC4" : "Rerank \u7AEF\u70B9\u7EC4"}</h2><button type="button" class="echoes-icon-button" data-close><i class="fa-solid fa-xmark"></i></button></header>
-        <div class="echoes-dialog-body">
-          <div class="echoes-form-grid">
-            <label>\u7EC4\u540D<input name="name" required maxlength="120"></label>
-            <label>\u7EC4 ID<input name="id" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label>
-            ${kind === "embedding" ? '<label>\u5D4C\u5165\u7A7A\u95F4 ID<input name="embeddingSpaceId" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label><label>\u7EF4\u5EA6<input name="dimensions" type="number" min="1" max="65536" required></label>' : ""}
-          </div>
-          <div class="echoes-section-heading"><h3>\u7AEF\u70B9</h3><button type="button" class="menu_button" data-add-endpoint><i class="fa-solid fa-plus"></i> \u6DFB\u52A0\u7AEF\u70B9</button></div>
-          <div class="echoes-endpoint-editor" data-endpoint-editor></div>
-          <p class="echoes-form-error echoes-hidden" data-error></p>
-        </div>
-        <footer class="echoes-dialog-footer"><button type="button" class="menu_button" data-close>\u53D6\u6D88</button><button type="submit" value="save" class="menu_button echoes-primary">\u4FDD\u5B58</button></footer>
-      </form>`;
-    document.body.append(dialog);
-    const form = dialog.querySelector("form");
-    form.elements.namedItem("name").value = current?.name ?? "";
-    form.elements.namedItem("id").value = current?.id ?? uid(kind);
-    if (kind === "embedding") {
-      const embedding = current;
-      form.elements.namedItem("embeddingSpaceId").value = embedding?.embeddingSpaceId ?? uid("space");
-      form.elements.namedItem("dimensions").value = String(embedding?.dimensions ?? 1536);
-    }
-    const editor = dialog.querySelector("[data-endpoint-editor]");
-    const rows = structuredClone(current?.endpoints ?? []);
-    const redraw = () => this.renderEndpointEditor(editor, rows, credentials, redraw);
-    redraw();
-    dialog.querySelector("[data-add-endpoint]").addEventListener("click", () => {
-      rows.push({
-        id: uid("endpoint"),
-        name: `\u7AEF\u70B9 ${rows.length + 1}`,
-        baseUrl: kind === "embedding" ? "https://" : "https://",
-        model: "",
-        timeoutMs: 3e4,
-        enabled: true,
-        order: rows.length
-      });
-      redraw();
-    });
-    dialog.querySelectorAll("[data-close]").forEach((element) => element.addEventListener("click", () => dialog.close("cancel")));
-    return new Promise((resolve) => {
-      form.addEventListener("submit", (event) => {
-        event.preventDefault();
-        try {
-          this.syncEndpointEditor(editor, rows);
-          if (rows.length === 0) throw new Error("\u81F3\u5C11\u9700\u8981\u4E00\u4E2A\u7AEF\u70B9\u3002");
-          const base = {
-            id: selectedValue(form, "[name=id]"),
-            name: selectedValue(form, "[name=name]"),
-            endpoints: rows.map((endpoint, index) => ({ ...endpoint, order: index }))
-          };
-          const value = kind === "embedding" ? {
-            ...base,
-            embeddingSpaceId: selectedValue(form, "[name=embeddingSpaceId]"),
-            dimensions: Number(selectedValue(form, "[name=dimensions]"))
-          } : base;
-          if (kind === "embedding") embeddingEndpointGroupSchema.parse(value);
-          else rerankEndpointSetSchema.parse(value);
-          dialog.close("save");
-          resolve(value);
-        } catch (error51) {
-          const message2 = dialog.querySelector("[data-error]");
-          message2.textContent = errorMessage(error51);
-          message2.classList.remove("echoes-hidden");
-        }
-      });
-      dialog.addEventListener("close", () => {
-        if (dialog.returnValue !== "save") resolve(null);
-        dialog.remove();
-      }, { once: true });
-      dialog.showModal();
-    });
-  }
-  renderEndpointEditor(host, rows, credentials, redraw) {
-    host.replaceChildren();
-    rows.forEach((endpoint, index) => {
-      const row = document.createElement("div");
-      row.className = "echoes-endpoint-editor-row";
-      row.dataset.index = String(index);
-      row.innerHTML = `
-        <label>\u540D\u79F0<input data-field="name" required></label>
-        <label>\u5730\u5740<input data-field="baseUrl" type="url" required></label>
-        <label>\u6A21\u578B<input data-field="model" required></label>
-        <label>\u670D\u52A1\u7AEF\u51ED\u636E<select data-field="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label>
-        <label>\u8D85\u65F6\uFF08\u79D2\uFF09<input data-field="timeout" type="number" min="1" max="600" required></label>
-        <label class="echoes-check"><input data-field="enabled" type="checkbox"> \u542F\u7528</label>
-        <div class="echoes-endpoint-editor-actions"></div>`;
-      row.querySelector("[data-field=name]").value = endpoint.name;
-      row.querySelector("[data-field=baseUrl]").value = endpoint.baseUrl;
-      row.querySelector("[data-field=model]").value = endpoint.model;
-      const credentialSelect = row.querySelector("[data-field=credentialId]");
-      for (const credential of credentials) credentialSelect.add(new Option(credential.name, credential.id));
-      if (endpoint.credentialId && !credentials.some((credential) => credential.id === endpoint.credentialId)) {
-        credentialSelect.add(new Option(`\u7F3A\u5931\uFF1A${endpoint.credentialId}`, endpoint.credentialId));
-      }
-      credentialSelect.value = endpoint.credentialId ?? "";
-      row.querySelector("[data-field=timeout]").value = String(endpoint.timeoutMs / 1e3);
-      row.querySelector("[data-field=enabled]").checked = endpoint.enabled;
-      const actions = row.querySelector(".echoes-endpoint-editor-actions");
-      const up = iconButton("arrow-up", "\u4E0A\u79FB", "noop");
-      const down = iconButton("arrow-down", "\u4E0B\u79FB", "noop");
-      const remove = iconButton("trash", "\u5220\u9664", "noop");
-      up.disabled = index === 0;
-      down.disabled = index === rows.length - 1;
-      up.addEventListener("click", () => {
-        this.syncEndpointEditor(host, rows);
-        [rows[index - 1], rows[index]] = [rows[index], rows[index - 1]];
-        redraw();
-      });
-      down.addEventListener("click", () => {
-        this.syncEndpointEditor(host, rows);
-        [rows[index], rows[index + 1]] = [rows[index + 1], rows[index]];
-        redraw();
-      });
-      remove.addEventListener("click", () => {
-        this.syncEndpointEditor(host, rows);
-        rows.splice(index, 1);
-        redraw();
-      });
-      actions.append(up, down, remove);
-      host.append(row);
-    });
-  }
-  syncEndpointEditor(host, rows) {
-    host.querySelectorAll(".echoes-endpoint-editor-row").forEach((row) => {
-      const index = Number(row.dataset.index);
-      const current = rows[index];
-      if (!current) return;
-      current.name = selectedValue(row, "[data-field=name]");
-      current.baseUrl = selectedValue(row, "[data-field=baseUrl]");
-      current.model = selectedValue(row, "[data-field=model]");
-      const credentialId = selectedValue(row, "[data-field=credentialId]");
-      if (credentialId) {
-        current.credentialId = credentialId;
-        delete current.apiKey;
-      } else {
-        delete current.credentialId;
-      }
-      current.timeoutMs = Number(selectedValue(row, "[data-field=timeout]")) * 1e3;
-      current.enabled = row.querySelector("[data-field=enabled]").checked;
-    });
-  }
-  deleteEndpointSet(target) {
-    if (!confirm("\u5220\u9664\u8FD9\u4E2A\u7AEF\u70B9\u7EC4\uFF1F")) return;
-    const settings = getSettings();
-    if (target.dataset.kind === "rerank") {
-      settings.retrieval.rerankSets = settings.retrieval.rerankSets.filter((set3) => set3.id !== target.dataset.id);
-    } else {
-      settings.retrieval.embeddingGroups = settings.retrieval.embeddingGroups.filter((group) => group.id !== target.dataset.id);
-    }
-    saveSettings(settings);
-    this.renderEndpointTables(this.root.querySelector("[data-endpoint-tables]"));
-  }
-  async testEndpoint(target) {
-    const settings = getSettings();
-    const groups = target.dataset.kind === "rerank" ? settings.retrieval.rerankSets : settings.retrieval.embeddingGroups;
-    const group = groups.find((item) => item.id === target.dataset.groupId);
-    const endpoint = group?.endpoints.find((item) => item.id === target.dataset.endpointId);
-    if (!group || !endpoint) throw new Error("\u7AEF\u70B9\u914D\u7F6E\u4E0D\u5B58\u5728\u3002");
-    const job = await echoesApi.testRetrievalEndpoint({
-      kind: target.dataset.kind === "rerank" ? "rerank" : "embedding",
-      endpoint,
-      ...target.dataset.kind === "embedding" ? { expectedDimensions: group.dimensions } : {}
-    });
-    const completed = await this.waitForJob(job);
-    if (completed.status !== "succeeded" || !completed.result) throw new Error(completed.error?.message ?? completed.message);
-    toastr.success(
-      `${completed.result.latencyMs} ms${completed.result.dimensions ? ` \xB7 ${completed.result.dimensions} \u7EF4` : ""}`,
-      "\u7AEF\u70B9\u6D4B\u8BD5\u5B8C\u6210"
-    );
   }
   async createCollection() {
     const groups = getSettings().retrieval.embeddingGroups;
@@ -25297,7 +24962,7 @@ var RetrievalPanel = class {
   }
   async submitDocuments(documents) {
     const collectionIds = [...new Set(documents.map((document2) => document2.collectionId))];
-    const groups = collectionIds.map((id3) => this.embeddingGroupForCollection(id3)).filter(Boolean);
+    const groups = collectionIds.map((id2) => this.embeddingGroupForCollection(id2)).filter(Boolean);
     const embeddingGroup = groups.length === collectionIds.length && groups.every((group) => group.id === groups[0].id) ? groups[0] : void 0;
     const settings = getSettings();
     let request = {
@@ -25321,14 +24986,13 @@ var RetrievalPanel = class {
     const vectorEnabled = form.querySelector("[name=vectorEnabled]").checked;
     const bm25Enabled = form.querySelector("[name=bm25Enabled]").checked;
     const rerankEnabled = form.querySelector("[name=rerankEnabled]").checked;
-    const embeddingGroups = collectionIds.map((id3) => this.embeddingGroupForCollection(id3));
+    const embeddingGroups = collectionIds.map((id2) => this.embeddingGroupForCollection(id2));
     const embeddingGroup = embeddingGroups[0];
     if (vectorEnabled && (!embeddingGroup || embeddingGroups.some((group) => group?.id !== embeddingGroup.id))) {
       throw new Error("\u5411\u91CF\u67E5\u8BE2\u8981\u6C42\u6240\u9009\u96C6\u5408\u4F7F\u7528\u540C\u4E00\u4E2A\u5DF2\u914D\u7F6E\u7684\u5D4C\u5165\u7A7A\u95F4\u3002");
     }
-    const rerankSetId = selectedValue(form, "[name=rerankSetId]");
-    const rerankSet = settings.retrieval.rerankSets.find((set3) => set3.id === rerankSetId);
-    if (rerankEnabled && !rerankSet) throw new Error("\u8BF7\u5148\u914D\u7F6E Rerank \u7AEF\u70B9\u7EC4\u3002");
+    const rerankSet = settings.retrieval.rerankSets.find((set3) => set3.id === settings.retrieval.recall.rerankSetId);
+    if (rerankEnabled && !rerankSet) throw new Error("\u8BF7\u5148\u5728 API\u914D\u7F6E\u4E2D\u7ED1\u5B9A Rerank \u7AEF\u70B9\u7EC4\u3002");
     const request = {
       collectionIds,
       query: selectedValue(form, "[name=query]"),
@@ -25456,27 +25120,649 @@ var RetrievalPanel = class {
   hideJob() {
     this.root.querySelector(".echoes-job-status")?.classList.add("echoes-hidden");
   }
-  setMessage(message2, error51 = false) {
+  setMessage(message3, error51 = false) {
     const host = this.root.querySelector(".echoes-grid-host");
     const note = document.createElement("div");
     note.className = `echoes-grid-message${error51 ? " error" : ""}`;
-    note.textContent = message2;
+    note.textContent = message3;
     host.replaceChildren(note);
+  }
+};
+
+// src/extension/ui/api-config-panel.ts
+init_client();
+var TERMINAL_STATES3 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
+function uid2(prefix) {
+  return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
+}
+function message(error51) {
+  return error51 instanceof Error ? error51.message : String(error51);
+}
+function iconButton2(icon, title, action) {
+  const button3 = document.createElement("button");
+  button3.type = "button";
+  button3.className = "echoes-icon-button";
+  button3.dataset.apiAction = action;
+  button3.title = title;
+  button3.setAttribute("aria-label", title);
+  button3.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
+  return button3;
+}
+function commandButton(icon, label, action, primary = false) {
+  const button3 = document.createElement("button");
+  button3.type = "button";
+  button3.className = `menu_button${primary ? " echoes-primary" : ""}`;
+  button3.dataset.apiAction = action;
+  button3.innerHTML = `<i class="fa-solid fa-${icon}"></i> ${label}`;
+  return button3;
+}
+async function waitJob(job) {
+  let current = job;
+  while (!TERMINAL_STATES3.has(current.status)) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    current = await echoesApi.getJob(job.id);
+  }
+  if (current.status !== "succeeded") throw new Error(current.error?.message ?? current.message);
+  return current;
+}
+function fieldValue(root, selector) {
+  return root.querySelector(selector)?.value.trim() ?? "";
+}
+var ApiConfigPanel = class {
+  constructor(root) {
+    this.root = root;
+    this.bindEvents();
+  }
+  root;
+  tab = "workflows";
+  credentials = [];
+  renderSequence = 0;
+  async render(tab = this.tab) {
+    this.tab = tab;
+    const sequence = ++this.renderSequence;
+    const host = this.root.querySelector(".echoes-grid-host");
+    host.innerHTML = '<div class="echoes-grid-message">\u6B63\u5728\u8BFB\u53D6 API \u914D\u7F6E...</div>';
+    this.credentials = await echoesApi.listCredentials().catch(() => []);
+    if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-api-view")) return;
+    host.innerHTML = `
+      <div class="echoes-api-page">
+        <nav class="echoes-section-tabs" aria-label="API \u914D\u7F6E\u5206\u7C7B">
+          <button type="button" data-api-action="tab" data-api-tab="workflows">\u5DE5\u4F5C\u6D41\u5206\u914D</button>
+          <button type="button" data-api-action="tab" data-api-tab="generation">\u751F\u6210\u6A21\u578B</button>
+          <button type="button" data-api-action="tab" data-api-tab="embedding">Embedding</button>
+          <button type="button" data-api-action="tab" data-api-tab="rerank">Rerank</button>
+          <button type="button" data-api-action="tab" data-api-tab="credentials">\u51ED\u636E</button>
+        </nav>
+        <div class="echoes-api-content" data-api-content></div>
+      </div>`;
+    host.querySelectorAll("[data-api-tab]").forEach((button3) => {
+      button3.classList.toggle("active", button3.dataset.apiTab === this.tab);
+    });
+    this.renderTab();
+  }
+  bindEvents() {
+    this.root.addEventListener("click", (event) => {
+      const target = event.target.closest("[data-api-action]");
+      if (!target) return;
+      void this.handleAction(target.dataset.apiAction ?? "", target).catch((error51) => {
+        toastr.error(message(error51), "Echoes API\u914D\u7F6E");
+      });
+    });
+    this.root.addEventListener("change", (event) => {
+      const target = event.target;
+      if (target.matches("[data-api-workflow]")) this.saveWorkflowBindings();
+      else if (target.matches("[data-api-generation-toggle]")) this.toggleGenerationEndpoint(target);
+      else if (target.matches("[data-api-retrieval-toggle]")) this.toggleRetrievalEndpoint(target);
+    });
+    this.root.addEventListener("submit", (event) => {
+      const form = event.target;
+      if (!form.matches("[data-api-credential-form]")) return;
+      event.preventDefault();
+      void this.addCredential(form).catch((error51) => toastr.error(message(error51), "Echoes \u51ED\u636E"));
+    });
+  }
+  async handleAction(action, target) {
+    if (action === "tab") await this.render(target.dataset.apiTab);
+    else if (action === "refresh") await this.render();
+    else if (action === "add-generation-group") await this.addGenerationGroup();
+    else if (action === "delete-generation-group") this.deleteGenerationGroup(target.dataset.groupId ?? "");
+    else if (action === "add-generation-endpoint") await this.editGenerationEndpoint(target.dataset.groupId ?? "");
+    else if (action === "edit-generation-endpoint") await this.editGenerationEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId);
+    else if (action === "delete-generation-endpoint") this.deleteGenerationEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId ?? "");
+    else if (action === "generation-up") this.moveGenerationEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId ?? "", -1);
+    else if (action === "generation-down") this.moveGenerationEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId ?? "", 1);
+    else if (action === "test-generation") await this.testGenerationEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId ?? "");
+    else if (action === "add-retrieval-group") await this.editRetrievalGroup(target.dataset.kind);
+    else if (action === "edit-retrieval-group") await this.editRetrievalGroup(target.dataset.kind, target.dataset.groupId);
+    else if (action === "delete-retrieval-group") this.deleteRetrievalGroup(target.dataset.kind, target.dataset.groupId ?? "");
+    else if (action === "test-retrieval") await this.testRetrievalEndpoint(target);
+    else if (action === "delete-credential") await this.deleteCredential(target.dataset.id ?? "");
+    else if (action === "migrate-credentials") await this.migrateCredentials();
+  }
+  renderTab() {
+    if (this.tab === "workflows") this.renderWorkflows();
+    else if (this.tab === "generation") this.renderGenerationGroups();
+    else if (this.tab === "embedding") this.renderRetrievalGroups("embedding");
+    else if (this.tab === "rerank") this.renderRetrievalGroups("rerank");
+    else this.renderCredentials();
+  }
+  content() {
+    return this.root.querySelector("[data-api-content]");
+  }
+  renderWorkflows() {
+    const settings = getSettings();
+    const host = this.content();
+    host.innerHTML = `
+      <section class="echoes-settings-section">
+        <div class="echoes-section-heading"><div><h2>\u5DE5\u4F5C\u6D41\u5206\u914D</h2><span>\u6240\u6709\u6A21\u578B\u3001\u7AEF\u70B9\u7EC4\u548C\u6545\u969C\u7B56\u7565\u7EDF\u4E00\u5728\u6B64\u7ED1\u5B9A</span></div></div>
+        <div class="echoes-workflow-grid">
+          <div class="echoes-workflow-row"><strong>\u7ED3\u6784\u5316\u8BB0\u5FC6\u63D0\u53D6</strong><label>\u751F\u6210\u7AEF\u70B9\u7EC4<select data-api-workflow="extractionGroup"></select></label><label>\u6545\u969C\u7B56\u7565<select data-api-workflow="extractionPolicy"></select></label></div>
+          <div class="echoes-workflow-row"><strong>\u603B\u7ED3\u8BB0\u5FC6\u751F\u6210</strong><label>\u751F\u6210\u7AEF\u70B9\u7EC4<select data-api-workflow="summaryGroup"></select></label><label>\u6545\u969C\u7B56\u7565<select data-api-workflow="summaryPolicy"></select></label></div>
+          <div class="echoes-workflow-row"><strong>\u603B\u7ED3\u5411\u91CF\u5316</strong><label>Embedding \u7EC4<select data-api-workflow="summaryEmbedding"><option value="">\u6682\u4E0D\u540C\u6B65\u5411\u91CF</option></select></label><span></span></div>
+          <div class="echoes-workflow-row"><strong>\u603B\u7ED3\u53EC\u56DE\u91CD\u6392\u5E8F</strong><label>Rerank \u7EC4<select data-api-workflow="recallRerank"><option value="">\u4E0D\u4F7F\u7528 Rerank</option></select></label><span></span></div>
+          <div class="echoes-workflow-row"><strong>\u72B6\u6001\u8BB0\u5FC6\u66F4\u65B0</strong><label>\u751F\u6210\u7AEF\u70B9\u7EC4<select data-api-workflow="statusGroup"></select></label><label>\u6545\u969C\u7B56\u7565<select data-api-workflow="statusPolicy"></select></label></div>
+          <div class="echoes-workflow-row"><strong>\u901A\u7528\u68C0\u7D22\u8C03\u7528</strong><label>\u6545\u969C\u7B56\u7565<select data-api-workflow="retrievalPolicy"></select></label><span></span></div>
+        </div>
+        <div class="echoes-api-binding-status" data-api-binding-status></div>
+      </section>`;
+    const groupOptions = (select, current) => {
+      select.add(new Option("\u672A\u9009\u62E9", ""));
+      settings.generationGroups.forEach((group) => select.add(new Option(group.name, group.id)));
+      select.value = current;
+    };
+    groupOptions(host.querySelector("[data-api-workflow=extractionGroup]"), settings.generationWorkflows.extraction.groupId);
+    groupOptions(host.querySelector("[data-api-workflow=summaryGroup]"), settings.generationWorkflows.summary.groupId);
+    groupOptions(host.querySelector("[data-api-workflow=statusGroup]"), settings.generationWorkflows.status.groupId);
+    const policyOptions = (select, current) => {
+      select.add(new Option("\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4", "confirm_ambiguous"));
+      select.add(new Option("\u59CB\u7EC8\u81EA\u52A8\u5207\u6362", "always"));
+      select.add(new Option("\u4EC5\u660E\u786E\u5931\u8D25\u5207\u6362", "definitive_only"));
+      select.value = current;
+    };
+    policyOptions(host.querySelector("[data-api-workflow=extractionPolicy]"), settings.generationWorkflows.extraction.failoverPolicy);
+    policyOptions(host.querySelector("[data-api-workflow=summaryPolicy]"), settings.generationWorkflows.summary.failoverPolicy);
+    policyOptions(host.querySelector("[data-api-workflow=statusPolicy]"), settings.generationWorkflows.status.failoverPolicy);
+    policyOptions(host.querySelector("[data-api-workflow=retrievalPolicy]"), settings.retrieval.failoverPolicy);
+    const embedding = host.querySelector("[data-api-workflow=summaryEmbedding]");
+    settings.retrieval.embeddingGroups.forEach((group) => embedding.add(new Option(group.name, group.id)));
+    embedding.value = settings.summary.embeddingGroupId;
+    const rerank = host.querySelector("[data-api-workflow=recallRerank]");
+    settings.retrieval.rerankSets.forEach((group) => rerank.add(new Option(group.name, group.id)));
+    rerank.value = settings.retrieval.recall.rerankSetId;
+    this.renderBindingStatus();
+  }
+  renderBindingStatus() {
+    const host = this.root.querySelector("[data-api-binding-status]");
+    if (!host) return;
+    const settings = getSettings();
+    const generationIds = new Set(settings.generationGroups.map((group) => group.id));
+    const embeddingIds = new Set(settings.retrieval.embeddingGroups.map((group) => group.id));
+    const rerankIds = new Set(settings.retrieval.rerankSets.map((group) => group.id));
+    const states = [
+      ["\u7ED3\u6784\u5316\u8BB0\u5FC6", generationIds.has(settings.generationWorkflows.extraction.groupId)],
+      ["\u603B\u7ED3\u751F\u6210", generationIds.has(settings.generationWorkflows.summary.groupId)],
+      ["\u603B\u7ED3\u5411\u91CF", !settings.summary.embeddingGroupId || embeddingIds.has(settings.summary.embeddingGroupId)],
+      ["\u603B\u7ED3\u91CD\u6392\u5E8F", !settings.retrieval.recall.rerankSetId || rerankIds.has(settings.retrieval.recall.rerankSetId)],
+      ["\u72B6\u6001\u66F4\u65B0", generationIds.has(settings.generationWorkflows.status.groupId)]
+    ];
+    host.replaceChildren(...states.map(([label, ready]) => {
+      const item = document.createElement("span");
+      item.dataset.state = ready ? "ready" : "missing";
+      item.innerHTML = `<i class="fa-solid fa-${ready ? "circle-check" : "triangle-exclamation"}"></i> ${label}\uFF1A${ready ? "\u5DF2\u914D\u7F6E" : "\u672A\u914D\u7F6E"}`;
+      return item;
+    }));
+  }
+  saveWorkflowBindings() {
+    const settings = getSettings();
+    const value = (key) => this.root.querySelector(`[data-api-workflow=${key}]`)?.value ?? "";
+    settings.generationWorkflows.extraction = { groupId: value("extractionGroup"), failoverPolicy: value("extractionPolicy") };
+    settings.generationWorkflows.summary = { groupId: value("summaryGroup"), failoverPolicy: value("summaryPolicy") };
+    settings.generationWorkflows.status = { groupId: value("statusGroup"), failoverPolicy: value("statusPolicy") };
+    settings.summary.embeddingGroupId = value("summaryEmbedding");
+    settings.retrieval.recall.rerankSetId = value("recallRerank");
+    settings.retrieval.failoverPolicy = value("retrievalPolicy");
+    saveSettings(settings);
+    this.renderBindingStatus();
+  }
+  renderGenerationGroups() {
+    const host = this.content();
+    host.innerHTML = '<section class="echoes-settings-section"><div class="echoes-section-heading"><div><h2>\u751F\u6210\u6A21\u578B\u7AEF\u70B9\u7EC4</h2><span>\u4F9B\u7ED3\u6784\u5316\u63D0\u53D6\u3001\u603B\u7ED3\u751F\u6210\u548C\u72B6\u6001\u66F4\u65B0\u590D\u7528</span></div><div data-api-section-actions></div></div><div data-generation-groups></div></section>';
+    host.querySelector("[data-api-section-actions]").append(commandButton("plus", "\u65B0\u589E\u7AEF\u70B9\u7EC4", "add-generation-group", true));
+    const list = host.querySelector("[data-generation-groups]");
+    const groups = getSettings().generationGroups;
+    if (groups.length === 0) list.innerHTML = '<p class="echoes-empty-note">\u5C1A\u672A\u914D\u7F6E\u751F\u6210\u7AEF\u70B9\u7EC4\u3002</p>';
+    groups.forEach((group) => list.append(this.generationGroup(group)));
+  }
+  generationGroup(group) {
+    const section = document.createElement("article");
+    section.className = "echoes-api-group";
+    const header = document.createElement("header");
+    header.innerHTML = `<div><strong></strong><small>${group.endpoints.length} \u4E2A\u7AEF\u70B9</small></div><div data-actions></div>`;
+    header.querySelector("strong").textContent = group.name;
+    const add = commandButton("plus", "\u6DFB\u52A0\u7AEF\u70B9", "add-generation-endpoint");
+    add.dataset.groupId = group.id;
+    const remove = iconButton2("trash", "\u5220\u9664\u7AEF\u70B9\u7EC4", "delete-generation-group");
+    remove.dataset.groupId = group.id;
+    header.querySelector("[data-actions]").append(add, remove);
+    section.append(header);
+    const table = document.createElement("table");
+    table.className = "echoes-data-table echoes-endpoint-table";
+    table.innerHTML = "<thead><tr><th>\u542F\u7528</th><th>\u987A\u5E8F</th><th>\u540D\u79F0</th><th>\u6A21\u578B</th><th>\u5730\u5740</th><th>\u64CD\u4F5C</th></tr></thead>";
+    const body = document.createElement("tbody");
+    const endpoints = [...group.endpoints].sort((a, b) => a.order - b.order);
+    endpoints.forEach((endpoint, index) => {
+      const row = document.createElement("tr");
+      const enabledCell = document.createElement("td");
+      const enabled = document.createElement("input");
+      enabled.type = "checkbox";
+      enabled.checked = endpoint.enabled;
+      enabled.dataset.apiGenerationToggle = endpoint.id;
+      enabled.dataset.groupId = group.id;
+      enabled.setAttribute("aria-label", `\u542F\u7528${endpoint.name}`);
+      enabledCell.append(enabled);
+      row.append(enabledCell);
+      [String(index + 1), endpoint.name, endpoint.model, endpoint.baseUrl].forEach((value) => {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        cell.title = value;
+        row.append(cell);
+      });
+      const actions = document.createElement("td");
+      actions.className = "echoes-row-actions";
+      for (const [icon, title, action] of [
+        ["arrow-up", "\u4E0A\u79FB", "generation-up"],
+        ["arrow-down", "\u4E0B\u79FB", "generation-down"],
+        ["vial", "\u6D4B\u8BD5", "test-generation"],
+        ["pen", "\u7F16\u8F91", "edit-generation-endpoint"],
+        ["trash", "\u5220\u9664", "delete-generation-endpoint"]
+      ]) {
+        const control = iconButton2(icon, title, action);
+        control.dataset.groupId = group.id;
+        control.dataset.endpointId = endpoint.id;
+        if (action === "generation-up") control.disabled = index === 0;
+        if (action === "generation-down") control.disabled = index === endpoints.length - 1;
+        actions.append(control);
+      }
+      row.append(actions);
+      body.append(row);
+    });
+    table.append(body);
+    section.append(table);
+    return section;
+  }
+  async addGenerationGroup() {
+    const dialog = dialogShell("\u65B0\u589E\u751F\u6210\u7AEF\u70B9\u7EC4");
+    dialog.querySelector(".echoes-dialog-body").innerHTML = '<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required maxlength="120"></label></div>';
+    const saved = await submitDialog(dialog, () => {
+      const name = fieldValue(dialog, "[name=name]");
+      if (!name) throw new Error("\u7AEF\u70B9\u7EC4\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002");
+      return { id: uid2("generation_group"), name, endpoints: [] };
+    }, { errorTitle: "\u751F\u6210\u7AEF\u70B9\u7EC4\u65E0\u6548" });
+    if (!saved) return;
+    const settings = getSettings();
+    settings.generationGroups.push(saved);
+    saveSettings(settings);
+    await this.render("generation");
+  }
+  async editGenerationEndpoint(groupId, endpointId) {
+    const settings = getSettings();
+    const group = settings.generationGroups.find((item) => item.id === groupId);
+    const current = group?.endpoints.find((item) => item.id === endpointId);
+    if (!group) throw new Error("\u751F\u6210\u7AEF\u70B9\u7EC4\u4E0D\u5B58\u5728\u3002");
+    const dialog = dialogShell(current ? "\u7F16\u8F91\u751F\u6210\u7AEF\u70B9" : "\u6DFB\u52A0\u751F\u6210\u7AEF\u70B9");
+    const body = dialog.querySelector(".echoes-dialog-body");
+    body.innerHTML = `<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required></label><label class="echoes-form-span">API \u5730\u5740<input name="baseUrl" type="url" required></label><label>\u6A21\u578B<input name="model" required></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select name="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input name="timeout" type="number" min="10" max="1800"></label><label>\u6E29\u5EA6<input name="temperature" type="number" min="0" max="2" step="0.1"></label><label class="echoes-check"><input name="streaming" type="checkbox">\u6D41\u5F0F</label><label class="echoes-check"><input name="jsonMode" type="checkbox">JSON \u6A21\u5F0F</label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label></div>`;
+    const credential = body.querySelector("[name=credentialId]");
+    this.credentials.forEach((item) => credential.add(new Option(item.name, item.id)));
+    if (current?.credentialId && !this.credentials.some((item) => item.id === current.credentialId)) credential.add(new Option(`\u7F3A\u5931\uFF1A${current.credentialId}`, current.credentialId));
+    const set3 = (name, value) => {
+      body.querySelector(`[name=${name}]`).value = value;
+    };
+    set3("name", current?.name ?? "\u65B0\u7AEF\u70B9");
+    set3("baseUrl", current?.baseUrl ?? "");
+    set3("model", current?.model ?? "");
+    set3("timeout", String((current?.timeoutMs ?? 3e5) / 1e3));
+    set3("temperature", String(current?.temperature ?? 0.1));
+    credential.value = current?.credentialId ?? "";
+    body.querySelector("[name=streaming]").checked = current?.streaming ?? true;
+    body.querySelector("[name=jsonMode]").checked = current?.jsonMode ?? true;
+    body.querySelector("[name=enabled]").checked = current?.enabled ?? true;
+    const endpoint = await submitDialog(dialog, () => {
+      const credentialId = credential.value;
+      return {
+        id: current?.id ?? uid2("generation_endpoint"),
+        name: fieldValue(body, "[name=name]"),
+        baseUrl: fieldValue(body, "[name=baseUrl]"),
+        model: fieldValue(body, "[name=model]"),
+        ...credentialId ? { credentialId } : current?.apiKey ? { apiKey: current.apiKey } : {},
+        timeoutMs: Number(fieldValue(body, "[name=timeout]")) * 1e3,
+        temperature: Number(fieldValue(body, "[name=temperature]")),
+        streaming: body.querySelector("[name=streaming]").checked,
+        jsonMode: body.querySelector("[name=jsonMode]").checked,
+        enabled: body.querySelector("[name=enabled]").checked,
+        order: current?.order ?? group.endpoints.length
+      };
+    }, { errorTitle: "\u751F\u6210\u7AEF\u70B9\u65E0\u6548" });
+    if (!endpoint) return;
+    const parsed = generationEndpointGroupSchema.parse({ ...group, endpoints: current ? group.endpoints.map((item) => item.id === current.id ? endpoint : item) : [...group.endpoints, endpoint] });
+    settings.generationGroups[settings.generationGroups.findIndex((item) => item.id === group.id)] = parsed;
+    saveSettings(settings);
+    await this.render("generation");
+  }
+  deleteGenerationGroup(groupId) {
+    if (!confirm("\u5220\u9664\u8BE5\u751F\u6210\u7AEF\u70B9\u7EC4\uFF1F\u6240\u6709\u5F15\u7528\u5B83\u7684\u5DE5\u4F5C\u6D41\u4F1A\u53D8\u4E3A\u672A\u914D\u7F6E\u3002")) return;
+    const settings = getSettings();
+    settings.generationGroups = settings.generationGroups.filter((group) => group.id !== groupId);
+    for (const workflow of Object.values(settings.generationWorkflows)) if (workflow.groupId === groupId) workflow.groupId = "";
+    saveSettings(settings);
+    void this.render("generation");
+  }
+  deleteGenerationEndpoint(groupId, endpointId) {
+    if (!confirm("\u5220\u9664\u8BE5\u751F\u6210\u7AEF\u70B9\uFF1F")) return;
+    const settings = getSettings();
+    const group = settings.generationGroups.find((item) => item.id === groupId);
+    if (!group) return;
+    group.endpoints = group.endpoints.filter((item) => item.id !== endpointId);
+    group.endpoints.forEach((item, index) => {
+      item.order = index;
+    });
+    saveSettings(settings);
+    void this.render("generation");
+  }
+  moveGenerationEndpoint(groupId, endpointId, offset) {
+    const settings = getSettings();
+    const group = settings.generationGroups.find((item) => item.id === groupId);
+    if (!group) return;
+    group.endpoints.sort((a, b) => a.order - b.order);
+    const index = group.endpoints.findIndex((item) => item.id === endpointId);
+    const target = index + offset;
+    if (index < 0 || target < 0 || target >= group.endpoints.length) return;
+    const [endpoint] = group.endpoints.splice(index, 1);
+    group.endpoints.splice(target, 0, endpoint);
+    group.endpoints.forEach((item, position) => {
+      item.order = position;
+    });
+    saveSettings(settings);
+    void this.render("generation");
+  }
+  toggleGenerationEndpoint(input) {
+    const settings = getSettings();
+    const endpoint = settings.generationGroups.find((group) => group.id === input.dataset.groupId)?.endpoints.find((item) => item.id === input.dataset.apiGenerationToggle);
+    if (!endpoint) return;
+    endpoint.enabled = input.checked;
+    saveSettings(settings);
+  }
+  async testGenerationEndpoint(groupId, endpointId) {
+    const endpoint = getSettings().generationGroups.find((group) => group.id === groupId)?.endpoints.find((item) => item.id === endpointId);
+    if (!endpoint) throw new Error("\u751F\u6210\u7AEF\u70B9\u4E0D\u5B58\u5728\u3002");
+    const completed = await waitJob(await echoesApi.testGenerationEndpoint(endpoint));
+    toastr.success(`\u8FDE\u63A5\u6210\u529F\uFF1A${completed.result?.latencyMs ?? 0} ms`, "\u751F\u6210\u7AEF\u70B9");
+  }
+  renderRetrievalGroups(kind) {
+    const settings = getSettings();
+    const groups = kind === "embedding" ? settings.retrieval.embeddingGroups : settings.retrieval.rerankSets;
+    const title = kind === "embedding" ? "Embedding \u7AEF\u70B9\u7EC4" : "Rerank \u7AEF\u70B9\u7EC4";
+    const host = this.content();
+    host.innerHTML = `<section class="echoes-settings-section"><div class="echoes-section-heading"><div><h2>${title}</h2><span>${kind === "embedding" ? "\u5D4C\u5165\u7A7A\u95F4\u548C\u7EF4\u5EA6\u5FC5\u987B\u4E0E\u6A21\u578B\u4FDD\u6301\u4E00\u81F4" : "\u7528\u4E8E\u603B\u7ED3\u53EC\u56DE\u7ED3\u679C\u91CD\u6392\u5E8F"}</span></div><div data-api-section-actions></div></div><div data-retrieval-groups></div></section>`;
+    const add = commandButton("plus", `\u65B0\u589E${kind === "embedding" ? "\u5D4C\u5165" : "\u91CD\u6392\u5E8F"}\u7EC4`, "add-retrieval-group", true);
+    add.dataset.kind = kind;
+    host.querySelector("[data-api-section-actions]").append(add);
+    const list = host.querySelector("[data-retrieval-groups]");
+    if (groups.length === 0) list.innerHTML = `<p class="echoes-empty-note">\u5C1A\u672A\u914D\u7F6E${title}\u3002</p>`;
+    groups.forEach((group) => list.append(this.retrievalGroup(kind, group)));
+  }
+  retrievalGroup(kind, group) {
+    const section = document.createElement("article");
+    section.className = "echoes-api-group";
+    const header = document.createElement("header");
+    const detail = kind === "embedding" ? `${group.embeddingSpaceId} \xB7 ${group.dimensions} \u7EF4` : `${group.endpoints.length} \u4E2A\u7AEF\u70B9`;
+    header.innerHTML = `<div><strong></strong><small>${detail}</small></div><div data-actions></div>`;
+    header.querySelector("strong").textContent = group.name;
+    const edit = iconButton2("pen", "\u7F16\u8F91\u7AEF\u70B9\u7EC4", "edit-retrieval-group");
+    const remove = iconButton2("trash", "\u5220\u9664\u7AEF\u70B9\u7EC4", "delete-retrieval-group");
+    for (const control of [edit, remove]) {
+      control.dataset.kind = kind;
+      control.dataset.groupId = group.id;
+    }
+    header.querySelector("[data-actions]").append(edit, remove);
+    section.append(header);
+    const table = document.createElement("table");
+    table.className = "echoes-data-table echoes-endpoint-table";
+    table.innerHTML = "<thead><tr><th>\u542F\u7528</th><th>\u987A\u5E8F</th><th>\u540D\u79F0</th><th>\u6A21\u578B</th><th>\u5730\u5740</th><th>\u6D4B\u8BD5</th></tr></thead>";
+    const body = document.createElement("tbody");
+    [...group.endpoints].sort((a, b) => a.order - b.order).forEach((endpoint, index) => {
+      const row = document.createElement("tr");
+      const enabledCell = document.createElement("td");
+      const enabled = document.createElement("input");
+      enabled.type = "checkbox";
+      enabled.checked = endpoint.enabled;
+      enabled.dataset.apiRetrievalToggle = endpoint.id;
+      enabled.dataset.kind = kind;
+      enabled.dataset.groupId = group.id;
+      enabled.setAttribute("aria-label", `\u542F\u7528${endpoint.name}`);
+      enabledCell.append(enabled);
+      row.append(enabledCell);
+      [String(index + 1), endpoint.name, endpoint.model, endpoint.baseUrl].forEach((value) => {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        cell.title = value;
+        row.append(cell);
+      });
+      const testCell = document.createElement("td");
+      const test = iconButton2("vial", "\u6D4B\u8BD5\u7AEF\u70B9", "test-retrieval");
+      test.dataset.kind = kind;
+      test.dataset.groupId = group.id;
+      test.dataset.endpointId = endpoint.id;
+      testCell.append(test);
+      row.append(testCell);
+      body.append(row);
+    });
+    table.append(body);
+    section.append(table);
+    return section;
+  }
+  async editRetrievalGroup(kind, groupId) {
+    const settings = getSettings();
+    const current = (kind === "embedding" ? settings.retrieval.embeddingGroups : settings.retrieval.rerankSets).find((group) => group.id === groupId);
+    const saved = await this.retrievalGroupDialog(kind, current);
+    if (!saved) return;
+    if (kind === "embedding") {
+      const parsed = embeddingEndpointGroupSchema.parse(saved);
+      const index = settings.retrieval.embeddingGroups.findIndex((group) => group.id === parsed.id);
+      if (index >= 0) settings.retrieval.embeddingGroups[index] = parsed;
+      else settings.retrieval.embeddingGroups.push(parsed);
+    } else {
+      const parsed = rerankEndpointSetSchema.parse(saved);
+      const index = settings.retrieval.rerankSets.findIndex((group) => group.id === parsed.id);
+      if (index >= 0) settings.retrieval.rerankSets[index] = parsed;
+      else settings.retrieval.rerankSets.push(parsed);
+    }
+    saveSettings(settings);
+    await this.render(kind);
+  }
+  async retrievalGroupDialog(kind, current) {
+    const dialog = dialogShell(kind === "embedding" ? "Embedding \u7AEF\u70B9\u7EC4" : "Rerank \u7AEF\u70B9\u7EC4");
+    const body = dialog.querySelector(".echoes-dialog-body");
+    body.innerHTML = `<div class="echoes-form-grid"><label>\u7EC4\u540D<input name="name" required maxlength="120"></label><label>\u7EC4 ID<input name="id" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label>${kind === "embedding" ? '<label>\u5D4C\u5165\u7A7A\u95F4 ID<input name="embeddingSpaceId" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label><label>\u7EF4\u5EA6<input name="dimensions" type="number" min="1" max="65536" required></label>' : ""}</div><div class="echoes-section-heading"><h3>\u7AEF\u70B9</h3><button type="button" class="menu_button" data-add-retrieval-endpoint><i class="fa-solid fa-plus"></i> \u6DFB\u52A0\u7AEF\u70B9</button></div><div class="echoes-endpoint-editor" data-endpoint-editor></div>`;
+    body.querySelector("[name=name]").value = current?.name ?? "";
+    body.querySelector("[name=id]").value = current?.id ?? uid2(kind);
+    if (kind === "embedding") {
+      const embedding = current;
+      body.querySelector("[name=embeddingSpaceId]").value = embedding?.embeddingSpaceId ?? uid2("space");
+      body.querySelector("[name=dimensions]").value = String(embedding?.dimensions ?? 1536);
+    }
+    const rows = structuredClone(current?.endpoints ?? []);
+    const editor = body.querySelector("[data-endpoint-editor]");
+    const redraw = () => this.renderRetrievalEndpointEditor(editor, rows, redraw);
+    redraw();
+    body.querySelector("[data-add-retrieval-endpoint]").addEventListener("click", () => {
+      this.syncRetrievalEndpointEditor(editor, rows);
+      rows.push({ id: uid2("endpoint"), name: `\u7AEF\u70B9 ${rows.length + 1}`, baseUrl: "https://", model: "", timeoutMs: 3e4, enabled: true, order: rows.length });
+      redraw();
+    });
+    return submitDialog(dialog, () => {
+      this.syncRetrievalEndpointEditor(editor, rows);
+      if (rows.length === 0) throw new Error("\u81F3\u5C11\u9700\u8981\u4E00\u4E2A\u7AEF\u70B9\u3002");
+      const base = { id: fieldValue(body, "[name=id]"), name: fieldValue(body, "[name=name]"), endpoints: rows.map((endpoint, index) => ({ ...endpoint, order: index })) };
+      return kind === "embedding" ? { ...base, embeddingSpaceId: fieldValue(body, "[name=embeddingSpaceId]"), dimensions: Number(fieldValue(body, "[name=dimensions]")) } : base;
+    }, { errorTitle: `${kind === "embedding" ? "Embedding" : "Rerank"} \u7AEF\u70B9\u7EC4\u65E0\u6548` });
+  }
+  renderRetrievalEndpointEditor(host, rows, redraw) {
+    host.replaceChildren();
+    rows.forEach((endpoint, index) => {
+      const row = document.createElement("div");
+      row.className = "echoes-endpoint-editor-row";
+      row.dataset.index = String(index);
+      row.innerHTML = '<label>\u540D\u79F0<input data-field="name" required></label><label>\u5730\u5740<input data-field="baseUrl" type="url" required></label><label>\u6A21\u578B<input data-field="model" required></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select data-field="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input data-field="timeout" type="number" min="1" max="600" required></label><label class="echoes-check"><input data-field="enabled" type="checkbox">\u542F\u7528</label><div class="echoes-endpoint-editor-actions"></div>';
+      row.querySelector("[data-field=name]").value = endpoint.name;
+      row.querySelector("[data-field=baseUrl]").value = endpoint.baseUrl;
+      row.querySelector("[data-field=model]").value = endpoint.model;
+      const credential = row.querySelector("[data-field=credentialId]");
+      this.credentials.forEach((item) => credential.add(new Option(item.name, item.id)));
+      if (endpoint.credentialId && !this.credentials.some((item) => item.id === endpoint.credentialId)) credential.add(new Option(`\u7F3A\u5931\uFF1A${endpoint.credentialId}`, endpoint.credentialId));
+      credential.value = endpoint.credentialId ?? "";
+      row.querySelector("[data-field=timeout]").value = String(endpoint.timeoutMs / 1e3);
+      row.querySelector("[data-field=enabled]").checked = endpoint.enabled;
+      const up = iconButton2("arrow-up", "\u4E0A\u79FB", "noop");
+      const down = iconButton2("arrow-down", "\u4E0B\u79FB", "noop");
+      const remove = iconButton2("trash", "\u5220\u9664", "noop");
+      delete up.dataset.apiAction;
+      delete down.dataset.apiAction;
+      delete remove.dataset.apiAction;
+      up.disabled = index === 0;
+      down.disabled = index === rows.length - 1;
+      up.addEventListener("click", () => {
+        this.syncRetrievalEndpointEditor(host, rows);
+        [rows[index - 1], rows[index]] = [rows[index], rows[index - 1]];
+        redraw();
+      });
+      down.addEventListener("click", () => {
+        this.syncRetrievalEndpointEditor(host, rows);
+        [rows[index], rows[index + 1]] = [rows[index + 1], rows[index]];
+        redraw();
+      });
+      remove.addEventListener("click", () => {
+        this.syncRetrievalEndpointEditor(host, rows);
+        rows.splice(index, 1);
+        redraw();
+      });
+      row.querySelector(".echoes-endpoint-editor-actions").append(up, down, remove);
+      host.append(row);
+    });
+  }
+  syncRetrievalEndpointEditor(host, rows) {
+    host.querySelectorAll(".echoes-endpoint-editor-row").forEach((row) => {
+      const endpoint = rows[Number(row.dataset.index)];
+      if (!endpoint) return;
+      endpoint.name = fieldValue(row, "[data-field=name]");
+      endpoint.baseUrl = fieldValue(row, "[data-field=baseUrl]");
+      endpoint.model = fieldValue(row, "[data-field=model]");
+      const credentialId = fieldValue(row, "[data-field=credentialId]");
+      if (credentialId) {
+        endpoint.credentialId = credentialId;
+        delete endpoint.apiKey;
+      } else delete endpoint.credentialId;
+      endpoint.timeoutMs = Number(fieldValue(row, "[data-field=timeout]")) * 1e3;
+      endpoint.enabled = row.querySelector("[data-field=enabled]").checked;
+    });
+  }
+  deleteRetrievalGroup(kind, groupId) {
+    if (!confirm("\u5220\u9664\u8BE5\u7AEF\u70B9\u7EC4\uFF1F\u6240\u6709\u5F15\u7528\u5B83\u7684\u5DE5\u4F5C\u6D41\u4F1A\u53D8\u4E3A\u672A\u914D\u7F6E\u3002")) return;
+    const settings = getSettings();
+    if (kind === "embedding") {
+      settings.retrieval.embeddingGroups = settings.retrieval.embeddingGroups.filter((group) => group.id !== groupId);
+      if (settings.summary.embeddingGroupId === groupId) settings.summary.embeddingGroupId = "";
+    } else {
+      settings.retrieval.rerankSets = settings.retrieval.rerankSets.filter((group) => group.id !== groupId);
+      if (settings.retrieval.recall.rerankSetId === groupId) settings.retrieval.recall.rerankSetId = "";
+    }
+    saveSettings(settings);
+    void this.render(kind);
+  }
+  toggleRetrievalEndpoint(input) {
+    const settings = getSettings();
+    const groups = input.dataset.kind === "rerank" ? settings.retrieval.rerankSets : settings.retrieval.embeddingGroups;
+    const endpoint = groups.find((group) => group.id === input.dataset.groupId)?.endpoints.find((item) => item.id === input.dataset.apiRetrievalToggle);
+    if (!endpoint) return;
+    endpoint.enabled = input.checked;
+    saveSettings(settings);
+  }
+  async testRetrievalEndpoint(target) {
+    const settings = getSettings();
+    const kind = target.dataset.kind === "rerank" ? "rerank" : "embedding";
+    const groups = kind === "rerank" ? settings.retrieval.rerankSets : settings.retrieval.embeddingGroups;
+    const group = groups.find((item) => item.id === target.dataset.groupId);
+    const endpoint = group?.endpoints.find((item) => item.id === target.dataset.endpointId);
+    if (!group || !endpoint) throw new Error("\u7AEF\u70B9\u914D\u7F6E\u4E0D\u5B58\u5728\u3002");
+    const completed = await waitJob(await echoesApi.testRetrievalEndpoint({ kind, endpoint, ...kind === "embedding" ? { expectedDimensions: group.dimensions } : {} }));
+    toastr.success(`${completed.result?.latencyMs ?? 0} ms${completed.result?.dimensions ? ` \xB7 ${completed.result.dimensions} \u7EF4` : ""}`, "\u7AEF\u70B9\u6D4B\u8BD5\u5B8C\u6210");
+  }
+  renderCredentials() {
+    const legacy = legacyCredentialEndpoints();
+    const host = this.content();
+    host.innerHTML = `<section class="echoes-settings-section"><div class="echoes-section-heading"><div><h2>\u670D\u52A1\u7AEF\u51ED\u636E</h2><span>\u5BC6\u94A5\u4E0D\u4F1A\u56DE\u4F20\u5230\u6D4F\u89C8\u5668\uFF1B\u7EF4\u62A4\u9875\u4E2D\u7684\u51ED\u636E\u5165\u53E3\u6682\u65F6\u4FDD\u7559</span></div><button type="button" class="echoes-icon-button" data-api-action="refresh" title="\u5237\u65B0" aria-label="\u5237\u65B0"><i class="fa-solid fa-rotate"></i></button></div>${legacy.length ? `<div class="echoes-warning-band"><strong>\u68C0\u6D4B\u5230 ${legacy.length} \u4E2A\u524D\u7AEF\u660E\u6587\u5BC6\u94A5</strong><button type="button" class="menu_button echoes-primary" data-api-action="migrate-credentials">\u539F\u5B50\u8FC1\u79FB</button></div>` : ""}<form class="echoes-inline-form" data-api-credential-form><input name="name" placeholder="\u51ED\u636E\u540D\u79F0" required maxlength="120"><input name="secret" type="password" placeholder="API \u5BC6\u94A5" required autocomplete="new-password"><button type="submit" class="menu_button echoes-primary"><i class="fa-solid fa-key"></i> \u6DFB\u52A0\u51ED\u636E</button></form><div class="echoes-credential-list" data-credential-list></div></section>`;
+    const list = host.querySelector("[data-credential-list]");
+    if (this.credentials.length === 0) list.innerHTML = '<p class="echoes-empty-note">\u5C1A\u65E0\u670D\u52A1\u7AEF\u51ED\u636E\u3002</p>';
+    this.credentials.forEach((credential) => {
+      const row = document.createElement("div");
+      row.className = "echoes-credential-row";
+      const meta3 = document.createElement("span");
+      const name = document.createElement("strong");
+      name.textContent = credential.name;
+      const id2 = document.createElement("small");
+      id2.textContent = credential.id;
+      meta3.append(name, id2);
+      const time3 = document.createElement("time");
+      time3.textContent = new Date(credential.updatedAt).toLocaleString();
+      const remove = iconButton2("trash", "\u5220\u9664\u51ED\u636E", "delete-credential");
+      remove.dataset.id = credential.id;
+      row.append(meta3, time3, remove);
+      list.append(row);
+    });
+  }
+  async addCredential(form) {
+    const name = fieldValue(form, "[name=name]");
+    const secret = form.querySelector("[name=secret]").value;
+    if (!name || !secret) throw new Error("\u51ED\u636E\u540D\u79F0\u548C\u5BC6\u94A5\u4E0D\u80FD\u4E3A\u7A7A\u3002");
+    await echoesApi.createCredential({ name, secret });
+    form.reset();
+    await this.render("credentials");
+  }
+  async deleteCredential(id2) {
+    if (!confirm("\u5220\u9664\u8BE5\u670D\u52A1\u7AEF\u51ED\u636E\uFF1F\u5F15\u7528\u5B83\u7684\u7AEF\u70B9\u5C06\u65E0\u6CD5\u8C03\u7528\u3002")) return;
+    await echoesApi.deleteCredential(id2);
+    await this.render("credentials");
+  }
+  async migrateCredentials() {
+    const legacy = legacyCredentialEndpoints();
+    if (legacy.length === 0 || !confirm(`\u5C06 ${legacy.length} \u4E2A\u660E\u6587\u5BC6\u94A5\u8FC1\u79FB\u5230\u670D\u52A1\u7AEF\u51ED\u636E\u5E93\uFF1F`)) return;
+    const inputs = legacy.map((endpoint) => ({ id: `credential_${crypto.randomUUID().replaceAll("-", "")}`, name: `${endpoint.endpointName} (${endpoint.kind})`, secret: endpoint.apiKey }));
+    const previous = structuredClone(getSettings());
+    const created = await echoesApi.migrateCredentials(inputs);
+    try {
+      if (created.length !== inputs.length || created.some((credential, index) => credential.id !== inputs[index].id)) throw new Error("\u670D\u52A1\u7AEF\u672A\u80FD\u9A8C\u8BC1\u5168\u90E8\u8FC1\u79FB\u51ED\u636E\u3002");
+      applyCredentialMigration(legacy.map((endpoint, index) => ({ kind: endpoint.kind, containerId: endpoint.containerId, endpointId: endpoint.endpointId, credentialId: created[index].id })));
+    } catch (error51) {
+      saveSettings(previous);
+      await Promise.allSettled(created.map((credential) => echoesApi.deleteCredential(credential.id)));
+      throw error51;
+    }
+    await this.render("credentials");
   }
 };
 
 // src/extension/recall-query.ts
 function messages(chat) {
   const seen = /* @__PURE__ */ new Set();
-  return chat.flatMap((message2, index) => {
-    const content = String(message2.mes ?? message2.message ?? message2.content ?? "").trim();
+  return chat.flatMap((message3, index) => {
+    const content = String(message3.mes ?? message3.message ?? message3.content ?? "").trim();
     if (!content) return [];
-    const rawId = String(message2.message_id ?? message2.id ?? index);
-    const id3 = seen.has(rawId) ? `${rawId}:${index}` : rawId;
-    seen.add(id3);
+    const rawId = String(message3.message_id ?? message3.id ?? index);
+    const id2 = seen.has(rawId) ? `${rawId}:${index}` : rawId;
+    seen.add(id2);
     return [{
-      id: id3,
-      role: message2.is_user === true || message2.role === "user" ? "user" : "assistant",
+      id: id2,
+      role: message3.is_user === true || message3.role === "user" ? "user" : "assistant",
       content
     }];
   });
@@ -25493,8 +25779,8 @@ function itemContent(item, chatMessages2, input) {
     const count = Math.max(0, item.count);
     const selected = chatMessages2.slice(Math.max(0, chatMessages2.length - count - 1), -1);
     return {
-      content: selected.map((message2) => `${message2.role}: ${message2.content}`).join("\n"),
-      messageIds: selected.map((message2) => message2.id)
+      content: selected.map((message3) => `${message3.role}: ${message3.content}`).join("\n"),
+      messageIds: selected.map((message3) => message3.id)
     };
   }
   if (item.kind === "character") {
@@ -25525,7 +25811,7 @@ function prepareRecallQuery(input) {
   const blocks = input.preset.items.flatMap((item) => {
     if (!item.enabled) return [];
     const prepared = itemContent(item, chatMessages2, input);
-    for (const id3 of prepared.messageIds) usedMessageIds.add(id3);
+    for (const id2 of prepared.messageIds) usedMessageIds.add(id2);
     return prepared.content ? [{ id: item.id, title: item.title, content: prepared.content }] : [];
   });
   return {
@@ -25581,10 +25867,10 @@ function uniqueBatches(slices) {
   }));
 }
 function exactMessageRange(messages2, batch) {
-  const startIndex = messages2.findIndex((message2) => message2.id === batch.startMessageId);
+  const startIndex = messages2.findIndex((message3) => message3.id === batch.startMessageId);
   if (startIndex < 0) return null;
   const selected = messages2.slice(startIndex, startIndex + batch.messageIds.length);
-  if (selected.length !== batch.messageIds.length || selected.some((message2, index) => message2.id !== batch.messageIds[index])) {
+  if (selected.length !== batch.messageIds.length || selected.some((message3, index) => message3.id !== batch.messageIds[index])) {
     return null;
   }
   const endIndex = startIndex + selected.length - 1;
@@ -25592,7 +25878,7 @@ function exactMessageRange(messages2, batch) {
 }
 function continuousSummaryCoverage(messages2, slices, lastCommittedMessageId) {
   if (messages2.length === 0 || !lastCommittedMessageId) return [];
-  const committedIndex = messages2.findIndex((message2) => message2.id === lastCommittedMessageId);
+  const committedIndex = messages2.findIndex((message3) => message3.id === lastCommittedMessageId);
   if (committedIndex < 0) return [];
   const candidates = uniqueBatches(slices).filter(({ batch }) => batch.state !== "stale" && batch.source?.kind !== "imported").flatMap(({ batch, slices: batchSlices }) => {
     const range = exactMessageRange(messages2, batch);
@@ -25826,7 +26112,7 @@ var SummaryWorldbookStore = class {
           }
         }));
         const desiredIds = new Set(slices.map((slice) => slice.id));
-        const removedIds = existing.map((slice) => slice.id).filter((id3) => !desiredIds.has(id3));
+        const removedIds = existing.map((slice) => slice.id).filter((id2) => !desiredIds.has(id2));
         const existingIds = new Set(existing.map((slice) => slice.id));
         const nextCatalog = summaryCatalogSchema.parse({
           ...currentState.catalog,
@@ -25995,7 +26281,7 @@ var SummaryWorldbookStore = class {
     const removed = new Set(deletedIds);
     return this.updateState(worldbookName, (catalog) => ({
       ...catalog,
-      pendingRetrievalDeletes: catalog.pendingRetrievalDeletes.filter((id3) => !removed.has(id3))
+      pendingRetrievalDeletes: catalog.pendingRetrievalDeletes.filter((id2) => !removed.has(id2))
     }));
   }
   updateState(worldbookName, updater) {
@@ -26123,8 +26409,8 @@ var RecallWorldbookStore = class {
 var BLOCKED_SEGMENTS = /* @__PURE__ */ new Set(["__proto__", "prototype", "constructor"]);
 var StatusValidationError = class extends Error {
   code = "INVALID_STATUS_UPDATE";
-  constructor(message2) {
-    super(message2);
+  constructor(message3) {
+    super(message3);
     this.name = "StatusValidationError";
   }
 };
@@ -26149,7 +26435,7 @@ function pathsOverlap(left, right) {
 function assertOperations(operations, evidenceMessageIds) {
   for (const [index, operation] of operations.entries()) {
     assertPath(operation.path);
-    if (operation.evidenceMessageIds.length === 0 || operation.evidenceMessageIds.some((id3) => !evidenceMessageIds.has(id3))) {
+    if (operation.evidenceMessageIds.length === 0 || operation.evidenceMessageIds.some((id2) => !evidenceMessageIds.has(id2))) {
       throw new StatusValidationError(`Operation ${index + 1} cites evidence outside this update.`);
     }
     for (let previous = 0; previous < index; previous += 1) {
@@ -26495,7 +26781,7 @@ var StatusWorldbookStore = class {
 
 // src/shared/source-hash.ts
 async function sourceMessagesHash(messages2) {
-  const value = JSON.stringify(messages2.map(({ id: id3, role: role2, content }) => ({ id: id3, role: role2, content })));
+  const value = JSON.stringify(messages2.map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content })));
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -26516,17 +26802,17 @@ function extract(text, rule) {
 }
 function applySummaryPreprocess(messages2, rules) {
   const ordered = [...rules].filter((rule) => rule.enabled).sort((left, right) => left.order - right.order || left.id.localeCompare(right.id));
-  return messages2.flatMap((message2) => {
-    if (message2.role !== "user" && message2.role !== "assistant") return [message2];
-    let content = message2.content;
+  return messages2.flatMap((message3) => {
+    if (message3.role !== "user" && message3.role !== "assistant") return [message3];
+    let content = message3.content;
     for (const rule of ordered) {
-      if (!rule.roles.includes(message2.role)) continue;
+      if (!rule.roles.includes(message3.role)) continue;
       if (rule.type === "extract") content = extract(content, rule);
       else if (rule.type === "remove") content = content.replace(expression(rule), "");
       else content = content.replace(expression(rule), rule.replacement);
     }
     content = content.trim();
-    return content ? [{ ...message2, content }] : [];
+    return content ? [{ ...message3, content }] : [];
   });
 }
 
@@ -26574,24 +26860,24 @@ function helper4() {
   }
   return api;
 }
-function statusMessageId(message2, index) {
-  return String(message2.message_id ?? message2.id ?? index);
+function statusMessageId(message3, index) {
+  return String(message3.message_id ?? message3.id ?? index);
 }
-function statusSwipeId(message2) {
-  const value = Number(message2.swipe_id ?? 0);
+function statusSwipeId(message3) {
+  const value = Number(message3.swipe_id ?? 0);
   return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 function parseSnapshot(value, namespaceId) {
   const parsed = statusSnapshotSchema.safeParse(value);
   return parsed.success && parsed.data.namespaceId === namespaceId ? parsed.data : null;
 }
-function rawSwipeVariables(message2, swipeId) {
-  const variables = message2.variables;
+function rawSwipeVariables(message3, swipeId) {
+  const variables = message3.variables;
   if (Array.isArray(variables)) return variables[swipeId] ?? null;
   if (variables && typeof variables === "object") {
     return variables[swipeId] ?? null;
   }
-  const swipeData = Array.isArray(message2.swipes_data) ? message2.swipes_data[swipeId] : void 0;
+  const swipeData = Array.isArray(message3.swipes_data) ? message3.swipes_data[swipeId] : void 0;
   const nested = swipeData?.variables;
   return nested && typeof nested === "object" ? nested : null;
 }
@@ -26603,16 +26889,16 @@ var StatusSnapshotStore = class {
   history(namespaceId) {
     const messages2 = SillyTavern.getContext().chat;
     const records = /* @__PURE__ */ new Map();
-    for (const [messageIndex, message2] of messages2.entries()) {
-      const messageId = statusMessageId(message2, messageIndex);
-      const selectedSwipe = statusSwipeId(message2);
+    for (const [messageIndex, message3] of messages2.entries()) {
+      const messageId = statusMessageId(message3, messageIndex);
+      const selectedSwipe = statusSwipeId(message3);
       const swipeCount = Math.max(
         1,
-        Array.isArray(message2.swipes) ? message2.swipes.length : 0,
-        Array.isArray(message2.variables) ? message2.variables.length : 0
+        Array.isArray(message3.swipes) ? message3.swipes.length : 0,
+        Array.isArray(message3.variables) ? message3.variables.length : 0
       );
       for (let swipeId = 0; swipeId < swipeCount; swipeId += 1) {
-        const variables = swipeId === selectedSwipe ? helper4().getVariables({ type: "message", message_id: messageIndex }) : rawSwipeVariables(message2, swipeId);
+        const variables = swipeId === selectedSwipe ? helper4().getVariables({ type: "message", message_id: messageIndex }) : rawSwipeVariables(message3, swipeId);
         const snapshot = parseSnapshot(variables?.echoes_status, namespaceId);
         if (!snapshot) continue;
         records.set(snapshot.snapshotId, {
@@ -26629,14 +26915,14 @@ var StatusSnapshotStore = class {
   latestBefore(messageIndex, namespaceId) {
     const messages2 = SillyTavern.getContext().chat;
     for (let index = Math.min(messageIndex - 1, messages2.length - 1); index >= 0; index -= 1) {
-      const message2 = messages2[index];
-      if (message2.is_user === true || message2.role === "user") continue;
+      const message3 = messages2[index];
+      if (message3.is_user === true || message3.role === "user") continue;
       const snapshot = this.selected(index, namespaceId);
       if (snapshot) {
         return {
           messageIndex: index,
-          messageId: statusMessageId(message2, index),
-          swipeId: statusSwipeId(message2),
+          messageId: statusMessageId(message3, index),
+          swipeId: statusSwipeId(message3),
           selected: true,
           snapshot
         };
@@ -26650,8 +26936,8 @@ var StatusSnapshotStore = class {
   async write(options) {
     await messageWriteCoordinator.run(async () => {
       const context = SillyTavern.getContext();
-      const message2 = context.chat[options.messageIndex];
-      if (context.chatId !== options.lockedChatId || !message2 || statusMessageId(message2, options.messageIndex) !== options.messageId || statusSwipeId(message2) !== options.swipeId) {
+      const message3 = context.chat[options.messageIndex];
+      if (context.chatId !== options.lockedChatId || !message3 || statusMessageId(message3, options.messageIndex) !== options.messageId || statusSwipeId(message3) !== options.swipeId) {
         throw new Error("The target chat or swipe changed before the status snapshot could be saved.");
       }
       const parsed = statusSnapshotSchema.parse(options.snapshot);
@@ -26665,13 +26951,13 @@ var StatusSnapshotStore = class {
 
 // src/extension/status/status-request.ts
 function currentStatusMessages() {
-  return SillyTavern.getContext().chat.flatMap((message2, messageIndex) => {
-    const content = String(message2.mes ?? message2.message ?? "").trim();
+  return SillyTavern.getContext().chat.flatMap((message3, messageIndex) => {
+    const content = String(message3.mes ?? message3.message ?? "").trim();
     if (!content) return [];
     return [{
-      id: statusMessageId(message2, messageIndex),
+      id: statusMessageId(message3, messageIndex),
       messageIndex,
-      role: message2.is_user === true || message2.role === "user" ? "user" : "assistant",
+      role: message3.is_user === true || message3.role === "user" ? "user" : "assistant",
       content
     }];
   });
@@ -26703,15 +26989,15 @@ ${description}` : "";
   }
   if (item.kind === "current_state") return `Current complete state:
 ${renderStatusYaml(state)}`;
-  return messages2.map((message2) => {
-    const name = message2.role === "user" ? userName : charName;
-    return `[${message2.id}] ${name}: ${message2.content}`;
+  return messages2.map((message3) => {
+    const name = message3.role === "user" ? userName : charName;
+    return `[${message3.id}] ${name}: ${message3.content}`;
   }).join("\n\n");
 }
 async function prepareStatusRequest(options) {
   const all = currentStatusMessages();
-  const baseIndex = options.baseSnapshot ? all.find((message2) => message2.id === options.baseSnapshot.targetMessageId)?.messageIndex ?? -1 : -1;
-  const selected = all.filter((message2) => message2.messageIndex > baseIndex && message2.messageIndex <= options.targetMessageIndex).map(({ id: id3, role: role2, content }) => ({ id: id3, role: role2, content }));
+  const baseIndex = options.baseSnapshot ? all.find((message3) => message3.id === options.baseSnapshot.targetMessageId)?.messageIndex ?? -1 : -1;
+  const selected = all.filter((message3) => message3.messageIndex > baseIndex && message3.messageIndex <= options.targetMessageIndex).map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content }));
   if (selected.length === 0 || selected.length > 500) {
     throw new Error("Status updates require between 1 and 500 incremental messages.");
   }
@@ -26736,7 +27022,7 @@ async function prepareStatusRequest(options) {
 }
 
 // src/extension/status/status-coordinator.ts
-var TERMINAL_STATES3 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
+var TERMINAL_STATES4 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
 var MAIN_GENERATION_TYPES = /* @__PURE__ */ new Set(["chat", "normal", "continue", "regenerate", "swipe", "impersonate"]);
 function sleep2(durationMs) {
   return new Promise((resolve) => setTimeout(resolve, durationMs));
@@ -26744,11 +27030,11 @@ function sleep2(durationMs) {
 async function waitForJob2(job) {
   const deadline = Date.now() + 2 * 60 * 6e4;
   let current = job;
-  while (!TERMINAL_STATES3.has(current.status) && Date.now() < deadline) {
+  while (!TERMINAL_STATES4.has(current.status) && Date.now() < deadline) {
     await sleep2(600);
     current = await echoesApi.getJob(current.id);
   }
-  if (!TERMINAL_STATES3.has(current.status)) throw new Error("Waiting for the status task timed out.");
+  if (!TERMINAL_STATES4.has(current.status)) throw new Error("Waiting for the status task timed out.");
   if (current.status !== "succeeded" || !current.result) {
     throw new Error(current.error?.message ?? current.message);
   }
@@ -26769,8 +27055,8 @@ function snapshotId(namespaceId, messageIndex, swipeId) {
 function lastAssistantIndex() {
   const chat = SillyTavern.getContext().chat;
   for (let index = chat.length - 1; index >= 0; index -= 1) {
-    const message2 = chat[index];
-    if (message2.is_user !== true && message2.role !== "user" && String(message2.mes ?? message2.message ?? "").trim()) return index;
+    const message3 = chat[index];
+    if (message3.is_user !== true && message3.role !== "user" && String(message3.mes ?? message3.message ?? "").trim()) return index;
   }
   return -1;
 }
@@ -26830,7 +27116,7 @@ var StatusCoordinator = class {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const existing = this.snapshots.selected(targetIndex, state.catalog.namespaceId);
     const previousIndex = previous ? previousRecord.messageIndex : -1;
-    const sourceMessages = currentStatusMessages().filter((message2) => message2.messageIndex > previousIndex && message2.messageIndex <= targetIndex).map(({ id: id3, role: role2, content }) => ({ id: id3, role: role2, content }));
+    const sourceMessages = currentStatusMessages().filter((message3) => message3.messageIndex > previousIndex && message3.messageIndex <= targetIndex).map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content }));
     const snapshot = {
       formatVersion: 1,
       namespaceId: state.catalog.namespaceId,
@@ -26839,7 +27125,7 @@ var StatusCoordinator = class {
       targetSwipeId,
       ...previous ? { parentSnapshotId: previous.snapshotId } : {},
       baseStateHash: await statusStateHash(baseState),
-      sourceMessageIds: sourceMessages.map((message2) => message2.id),
+      sourceMessageIds: sourceMessages.map((message3) => message3.id),
       sourceHash: await statusSourceHash(sourceMessages),
       state: candidate,
       stateHash: await statusStateHash(candidate),
@@ -26964,7 +27250,7 @@ ${yaml}`;
       baseSnapshot: previous,
       targetMessageIndex: targetIndex
     });
-    traceContext.sourceMessageIds = prepared.originalMessages.map((message2) => message2.id);
+    traceContext.sourceMessageIds = prepared.originalMessages.map((message3) => message3.id);
     const existing = this.snapshots.selected(targetIndex, state.catalog.namespaceId);
     if (existing?.sourceHash === prepared.sourceHash && existing.targetMessageId === targetMessageId && existing.targetSwipeId === targetSwipeId) {
       this.setTrace({
@@ -26972,7 +27258,7 @@ ${yaml}`;
         namespaceId: state.catalog.namespaceId,
         targetMessageId,
         targetSwipeId,
-        sourceMessageIds: prepared.originalMessages.map((message2) => message2.id),
+        sourceMessageIds: prepared.originalMessages.map((message3) => message3.id),
         startedAt,
         completedAt: (/* @__PURE__ */ new Date()).toISOString(),
         outcome: "unchanged",
@@ -27014,7 +27300,7 @@ ${yaml}`;
           namespaceId: state.catalog.namespaceId,
           targetMessageId,
           targetSwipeId,
-          sourceMessageIds: prepared.originalMessages.map((message2) => message2.id),
+          sourceMessageIds: prepared.originalMessages.map((message3) => message3.id),
           startedAt,
           completedAt: (/* @__PURE__ */ new Date()).toISOString(),
           outcome: "decision_required",
@@ -27030,7 +27316,7 @@ ${yaml}`;
     const recomputed = applyStatusOperations({
       baseState,
       operations: result.operations,
-      evidenceMessageIds: prepared.originalMessages.map((message2) => message2.id),
+      evidenceMessageIds: prepared.originalMessages.map((message3) => message3.id),
       validation: state.catalog.profile.validation
     });
     const recomputedHash = await statusStateHash(recomputed);
@@ -27043,7 +27329,7 @@ ${yaml}`;
         namespaceId: state.catalog.namespaceId,
         targetMessageId,
         targetSwipeId,
-        sourceMessageIds: prepared.originalMessages.map((message2) => message2.id),
+        sourceMessageIds: prepared.originalMessages.map((message3) => message3.id),
         startedAt,
         completedAt: (/* @__PURE__ */ new Date()).toISOString(),
         outcome: "discarded",
@@ -27076,7 +27362,7 @@ ${yaml}`;
         namespaceId: state.catalog.namespaceId,
         targetMessageId,
         targetSwipeId,
-        sourceMessageIds: prepared.originalMessages.map((message2) => message2.id),
+        sourceMessageIds: prepared.originalMessages.map((message3) => message3.id),
         startedAt,
         completedAt: (/* @__PURE__ */ new Date()).toISOString(),
         outcome: "discarded",
@@ -27095,7 +27381,7 @@ ${yaml}`;
       targetSwipeId,
       ...previous ? { parentSnapshotId: previous.snapshotId } : {},
       baseStateHash,
-      sourceMessageIds: prepared.originalMessages.map((message2) => message2.id),
+      sourceMessageIds: prepared.originalMessages.map((message3) => message3.id),
       sourceHash: prepared.sourceHash,
       state: recomputed,
       stateHash: recomputedHash,
@@ -27136,7 +27422,7 @@ ${yaml}`;
 var statusCoordinator = new StatusCoordinator();
 
 // src/extension/recall-coordinator.ts
-var TERMINAL_STATES4 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
+var TERMINAL_STATES5 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
 var GENERATION_TYPES = /* @__PURE__ */ new Set(["chat", "normal", "continue", "regenerate", "swipe", "impersonate"]);
 var DISABLED_BRANCHES = {
   vector: { state: "disabled", durationMs: 0, attempts: [] },
@@ -27179,11 +27465,11 @@ function sleep3(durationMs) {
 async function waitForJob3(initial, maxWaitMs) {
   let job = initial;
   const deadline = Date.now() + maxWaitMs;
-  while (!TERMINAL_STATES4.has(job.status) && Date.now() < deadline) {
+  while (!TERMINAL_STATES5.has(job.status) && Date.now() < deadline) {
     await sleep3(400);
     job = await echoesApi.getJob(job.id);
   }
-  if (!TERMINAL_STATES4.has(job.status)) {
+  if (!TERMINAL_STATES5.has(job.status)) {
     await echoesApi.cancelJob(job.id).catch(() => void 0);
     return null;
   }
@@ -27279,14 +27565,14 @@ var RecallCoordinator = class {
       await this.retrieve(chat, generationType, sequence, true, abort);
     } catch (error51) {
       await this.clear();
-      const message2 = error51 instanceof Error ? error51.message : String(error51);
+      const message3 = error51 instanceof Error ? error51.message : String(error51);
       const decision = await openDecisionDialog({
-        message: message2,
+        message: message3,
         canContinue: false,
         degradedLabel: "\u65E0\u8BB0\u5FC6\u7EE7\u7EED"
       });
       if (decision === "abort") abort?.();
-      else toastr.warning(message2, "Echoes \u53EC\u56DE\u5DF2\u964D\u7EA7");
+      else toastr.warning(message3, "Echoes \u53EC\u56DE\u5DF2\u964D\u7EA7");
     }
   }
   async preview(chat = SillyTavern.getContext().chat) {
@@ -27345,8 +27631,8 @@ var RecallCoordinator = class {
       collectionStats = await echoesApi.listRetrievalCollections();
     } catch (error51) {
       if (recentSlices.length === 0) throw error51;
-      const message2 = error51 instanceof Error ? error51.message : String(error51);
-      toastr.warning(message2, "Echoes \u8BED\u4E49\u53EC\u56DE\u5931\u8D25");
+      const message3 = error51 instanceof Error ? error51.message : String(error51);
+      toastr.warning(message3, "Echoes \u8BED\u4E49\u53EC\u56DE\u5931\u8D25");
       return this.finalizeRecall({
         current,
         sequence,
@@ -27356,15 +27642,15 @@ var RecallCoordinator = class {
         query: prepared.query,
         sources: [],
         branches: {
-          vector: { state: "failed", durationMs: 0, attempts: [], message: message2 },
-          bm25: { state: "failed", durationMs: 0, attempts: [], message: message2 },
+          vector: { state: "failed", durationMs: 0, attempts: [], message: message3 },
+          bm25: { state: "failed", durationMs: 0, attempts: [], message: message3 },
           rerank: { state: "disabled", durationMs: 0, attempts: [] }
         },
         rawReturned: 0,
         semanticHits: [],
         semanticSliceById: /* @__PURE__ */ new Map(),
         recentSlices,
-        message: message2
+        message: message3
       });
     }
     const collectionMap = new Map(collectionStats.map((item) => [item.collection.id, item.collection]));
@@ -27397,7 +27683,7 @@ var RecallCoordinator = class {
     for (const slice of recentSlices) excludeSourceIds.add(slice.id);
     const recentIds = new Set(prepared.messageIds);
     for (const source of resolved.active) {
-      for (const id3 of source.state.catalog.pendingRetrievalDeletes) excludeSourceIds.add(id3);
+      for (const id2 of source.state.catalog.pendingRetrievalDeletes) excludeSourceIds.add(id2);
       for (const slice of source.state.slices) {
         if (slice.batch.state === "stale" || slice.batch.source?.kind !== "imported" && slice.batch.messageIds.some((messageId) => recentIds.has(messageId))) {
           excludeSourceIds.add(slice.id);
@@ -27469,8 +27755,8 @@ var RecallCoordinator = class {
     } catch (error51) {
       this.activeJobId = null;
       if (recentSlices.length === 0) throw error51;
-      const message2 = error51 instanceof Error ? error51.message : String(error51);
-      toastr.warning(message2, "Echoes \u8BED\u4E49\u53EC\u56DE\u5931\u8D25");
+      const message3 = error51 instanceof Error ? error51.message : String(error51);
+      toastr.warning(message3, "Echoes \u8BED\u4E49\u53EC\u56DE\u5931\u8D25");
       return this.finalizeRecall({
         current,
         sequence,
@@ -27480,15 +27766,15 @@ var RecallCoordinator = class {
         query: prepared.query,
         sources: resolved.traces,
         branches: {
-          vector: { state: "failed", durationMs: 0, attempts: [], message: message2 },
-          bm25: { state: "failed", durationMs: 0, attempts: [], message: message2 },
+          vector: { state: "failed", durationMs: 0, attempts: [], message: message3 },
+          bm25: { state: "failed", durationMs: 0, attempts: [], message: message3 },
           rerank: { state: "disabled", durationMs: 0, attempts: [] }
         },
         rawReturned: 0,
         semanticHits: [],
         semanticSliceById: /* @__PURE__ */ new Map(),
         recentSlices,
-        message: message2
+        message: message3
       });
     }
     if (!completed) {
@@ -27557,8 +27843,8 @@ var RecallCoordinator = class {
         if (!completed) break;
         result = completed.result;
       } catch (error51) {
-        const message2 = error51 instanceof Error ? error51.message : String(error51);
-        toastr.warning(message2, "Echoes \u53EC\u56DE\u7EED\u63A5\u5931\u8D25");
+        const message3 = error51 instanceof Error ? error51.message : String(error51);
+        toastr.warning(message3, "Echoes \u53EC\u56DE\u7EED\u63A5\u5931\u8D25");
         break;
       }
     }
@@ -27782,14 +28068,14 @@ var RecallPanel = class {
     host.innerHTML = '<div class="echoes-grid-message">\u6B63\u5728\u8BFB\u53D6\u53EC\u56DE\u914D\u7F6E...</div>';
     try {
       const overview = await recallCoordinator.sourceOverview();
-      if (sequence !== this.renderSequence || !this.root.querySelector('[data-view="recall"].active') || SillyTavern.getContext().chatId !== chatId || overview.current.catalog.chatId !== chatId) return;
+      if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-recall-view") || SillyTavern.getContext().chatId !== chatId || overview.current.catalog.chatId !== chatId) return;
       this.current = overview.current;
       this.available = overview.available;
       this.sourceTraces = overview.sources;
       this.renderSidebar();
       this.renderContent();
     } catch (error51) {
-      if (sequence !== this.renderSequence || !this.root.querySelector('[data-view="recall"].active') || SillyTavern.getContext().chatId !== chatId) return;
+      if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-recall-view") || SillyTavern.getContext().chatId !== chatId) return;
       const note = document.createElement("div");
       note.className = "echoes-grid-message error";
       note.textContent = error51 instanceof Error ? error51.message : String(error51);
@@ -27885,9 +28171,7 @@ var RecallPanel = class {
         <label class="echoes-check"><input type="checkbox" data-recall-setting="vectorEnabled">\u5411\u91CF</label>
         <label class="echoes-check"><input type="checkbox" data-recall-setting="bm25Enabled">BM25</label>
         <label class="echoes-check"><input type="checkbox" data-recall-setting="rerankEnabled">Rerank</label>
-        <label>Rerank \u7AEF\u70B9\u7EC4
-          <select data-recall-setting="rerankSetId"></select>
-        </label>
+        <div class="echoes-api-binding-inline"><span>Rerank \u7EC4<strong data-recall-rerank-binding></strong></span><button type="button" class="menu_button" data-action="switch-view" data-view="api"><i class="fa-solid fa-plug"></i> API\u914D\u7F6E</button></div>
         <button type="button" class="menu_button" data-recall-action="preview">
           <i class="fa-solid fa-flask"></i> \u68C0\u7D22\u9884\u89C8
         </button>
@@ -27948,18 +28232,8 @@ var RecallPanel = class {
     for (const key of ["finalTopK", "vectorTopK", "bm25TopK", "rerankTopK"]) {
       page.querySelector(`[data-recall-setting=${key}]`).value = String(recall[key]);
     }
-    const rerankSelect = page.querySelector("[data-recall-setting=rerankSetId]");
-    const none = document.createElement("option");
-    none.value = "";
-    none.textContent = "\u672A\u9009\u62E9";
-    rerankSelect.append(none);
-    for (const set3 of settings.retrieval.rerankSets) {
-      const option = document.createElement("option");
-      option.value = set3.id;
-      option.textContent = set3.name;
-      rerankSelect.append(option);
-    }
-    rerankSelect.value = recall.rerankSetId;
+    const rerankSet = settings.retrieval.rerankSets.find((set3) => set3.id === recall.rerankSetId);
+    page.querySelector("[data-recall-rerank-binding]").textContent = rerankSet?.name ?? (recall.rerankEnabled ? "\u672A\u914D\u7F6E" : "\u672A\u542F\u7528");
     page.querySelector("[data-recall-setting=position]").value = recall.injection.position;
     page.querySelector("[data-recall-setting=role]").value = recall.injection.role;
     page.querySelector("[data-recall-setting=depth]").value = String(recall.injection.depth);
@@ -28203,7 +28477,6 @@ var RecallPanel = class {
     recall.vectorTopK = Math.max(1, Math.min(200, Number(input("vectorTopK").value)));
     recall.bm25TopK = Math.max(1, Math.min(200, Number(input("bm25TopK").value)));
     recall.rerankTopK = Math.max(1, Math.min(100, Number(input("rerankTopK").value)));
-    recall.rerankSetId = input("rerankSetId").value;
     recall.injection.position = input("position").value;
     recall.injection.role = input("role").value;
     recall.injection.depth = Math.max(0, Math.min(100, Number(input("depth").value)));
@@ -28371,9 +28644,6 @@ RRF=${hit.rrfScore} rerank=${hit.rerankScore ?? "-"} weighted=${hit.weightedScor
   }
 };
 
-// src/extension/ui/summary-panel.ts
-init_client();
-
 // src/extension/summary/summary-coordinator.ts
 init_client();
 
@@ -28383,15 +28653,15 @@ var SUMMARY_OUTPUT_PROTOCOL = `\u8F93\u51FA\u5FC5\u987B\u662F\u4E00\u4E2A JSON \
 \u751F\u6210 1 \u81F3 50 \u4E2A\u5207\u7247\uFF0C\u4E0D\u8981\u8F93\u51FA Markdown \u4EE3\u7801\u56F4\u680F\u6216 JSON \u4E4B\u5916\u7684\u6587\u5B57\u3002`;
 function currentChatMessages() {
   const seen = /* @__PURE__ */ new Set();
-  return SillyTavern.getContext().chat.flatMap((message2, index) => {
-    const content = String(message2.mes ?? message2.message ?? "").trim();
+  return SillyTavern.getContext().chat.flatMap((message3, index) => {
+    const content = String(message3.mes ?? message3.message ?? "").trim();
     if (!content) return [];
-    const rawId = String(message2.message_id ?? message2.id ?? index);
-    const id3 = seen.has(rawId) ? `${rawId}:${index}` : rawId;
-    seen.add(id3);
+    const rawId = String(message3.message_id ?? message3.id ?? index);
+    const id2 = seen.has(rawId) ? `${rawId}:${index}` : rawId;
+    seen.add(id2);
     return [{
-      id: id3,
-      role: message2.is_user === true || message2.role === "user" ? "user" : "assistant",
+      id: id2,
+      role: message3.is_user === true || message3.role === "user" ? "user" : "assistant",
       content
     }];
   });
@@ -28400,7 +28670,7 @@ async function summarySourceHash(messages2) {
   return sourceMessagesHash(messages2);
 }
 async function automaticSummaryBatch(messages2, catalog, messageCount) {
-  const checkpointIndex = catalog.lastCommittedMessageId ? messages2.findIndex((message2) => message2.id === catalog.lastCommittedMessageId) : -1;
+  const checkpointIndex = catalog.lastCommittedMessageId ? messages2.findIndex((message3) => message3.id === catalog.lastCommittedMessageId) : -1;
   if (catalog.lastCommittedMessageId && checkpointIndex < 0) return null;
   const start = checkpointIndex + 1;
   const threshold = Math.max(2, Math.min(500, Math.floor(messageCount)));
@@ -28409,7 +28679,7 @@ async function automaticSummaryBatch(messages2, catalog, messageCount) {
   let end = -1;
   for (let index = boundary; index >= start; index -= 1) {
     if (messages2[index]?.role !== "assistant") continue;
-    if (!messages2.slice(index + 1).some((message2) => message2.role === "user")) continue;
+    if (!messages2.slice(index + 1).some((message3) => message3.role === "user")) continue;
     end = index;
     break;
   }
@@ -28423,7 +28693,7 @@ async function automaticSummaryBatch(messages2, catalog, messageCount) {
       batchNumber,
       startMessageId: selected[0].id,
       endMessageId: selected.at(-1).id,
-      messageIds: selected.map((message2) => message2.id),
+      messageIds: selected.map((message3) => message3.id),
       sourceHash: await summarySourceHash(selected)
     }
   };
@@ -28442,7 +28712,7 @@ async function manualSummaryBatch(messages2, catalog, startIndex, endIndex, exis
       batchNumber,
       startMessageId: selected[0].id,
       endMessageId: selected.at(-1).id,
-      messageIds: selected.map((message2) => message2.id),
+      messageIds: selected.map((message3) => message3.id),
       sourceHash: await summarySourceHash(selected)
     }
   };
@@ -28469,9 +28739,9 @@ ${description}` : "";
   if (item.kind === "previous_summaries") {
     return previousSlices.slice(-item.count).map((slice) => `[${slice.title}] ${slice.content}`).join("\n\n");
   }
-  return cleanedMessages.map((message2) => {
-    const name = message2.role === "user" ? userName : charName;
-    return `[${message2.id}] ${name}: ${message2.content}`;
+  return cleanedMessages.map((message3) => {
+    const name = message3.role === "user" ? userName : charName;
+    return `[${message3.id}] ${name}: ${message3.content}`;
   }).join("\n\n");
 }
 async function prepareSummaryRequest(options) {
@@ -28495,13 +28765,13 @@ async function prepareSummaryRequest(options) {
   };
 }
 async function firstStaleBatchNumber(state, messages2) {
-  const byId = new Map(messages2.map((message2) => [message2.id, message2]));
+  const byId = new Map(messages2.map((message3) => [message3.id, message3]));
   const batches = [...new Map(state.slices.map((slice) => [slice.batch.id, slice.batch])).values()].sort((left, right) => left.batchNumber - right.batchNumber);
   for (const batch of batches) {
     if (batch.source?.kind === "imported") continue;
     if (batch.state === "stale") return batch.batchNumber;
-    const current = batch.messageIds.map((id3) => byId.get(id3));
-    if (current.some((message2) => !message2)) return batch.batchNumber;
+    const current = batch.messageIds.map((id2) => byId.get(id2));
+    if (current.some((message3) => !message3)) return batch.batchNumber;
     if (await summarySourceHash(current) !== batch.sourceHash) return batch.batchNumber;
   }
   return null;
@@ -28555,33 +28825,33 @@ function requiredHelper2() {
   return window.TavernHelper;
 }
 function chatMessages(raw) {
-  return raw.flatMap((message2) => {
-    const content = String(message2.message ?? "").trim();
-    if (!content || message2.role !== "user" && message2.role !== "assistant") return [];
+  return raw.flatMap((message3) => {
+    const content = String(message3.message ?? "").trim();
+    if (!content || message3.role !== "user" && message3.role !== "assistant") return [];
     return [{
-      id: String(message2.message_id),
-      role: message2.role,
+      id: String(message3.message_id),
+      role: message3.role,
       content
     }];
   });
 }
-function marker(message2) {
+function marker(message3) {
   const parsed = messageCompressionMarkerSchema.safeParse(
-    message2.extra?.echoes?.compression
+    message3.extra?.echoes?.compression
   );
   return parsed.success ? parsed.data : null;
 }
-function withMarker(message2, value) {
+function withMarker(message3, value) {
   return {
-    ...message2.extra ?? {},
+    ...message3.extra ?? {},
     echoes: {
-      ...message2.extra?.echoes ?? {},
+      ...message3.extra?.echoes ?? {},
       compression: value
     }
   };
 }
-function nextMarker(message2, namespaceId, batchId, changes) {
-  const current = marker(message2);
+function nextMarker(message3, namespaceId, batchId, changes) {
+  const current = marker(message3);
   const now = (/* @__PURE__ */ new Date()).toISOString();
   return {
     version: 1,
@@ -28620,20 +28890,20 @@ var CompressionCoordinator = class {
       }
       const safeEnd = this.safeCoverageEnd(snapshot.plan.chain, snapshot.safeBatchIds);
       const targetEnd = Math.min(snapshot.plan.hideThroughIndex, safeEnd);
-      const messageIndexById = new Map(snapshot.messages.map((message2, index) => [message2.id, index]));
+      const messageIndexById = new Map(snapshot.messages.map((message3, index) => [message3.id, index]));
       const updates = [];
-      for (const message2 of snapshot.raw) {
-        const id3 = String(message2.message_id);
-        const index = messageIndexById.get(id3);
+      for (const message3 of snapshot.raw) {
+        const id2 = String(message3.message_id);
+        const index = messageIndexById.get(id2);
         if (index === void 0) continue;
-        const item = marker(message2);
+        const item = marker(message3);
         const currentOwned = item?.namespaceId === snapshot.state.catalog.namespaceId;
-        const targetBatchId = snapshot.plan.batchByMessageId.get(id3);
+        const targetBatchId = snapshot.plan.batchByMessageId.get(id2);
         const shouldHide = index <= targetEnd && Boolean(targetBatchId) && snapshot.safeBatchIds.has(targetBatchId) && !(currentOwned && item.pinnedVisible);
         const shouldRestoreForCutoff = index > targetEnd && index <= safeEnd;
-        if (shouldHide && !message2.is_hidden) {
+        if (shouldHide && !message3.is_hidden) {
           const compression2 = nextMarker(
-            message2,
+            message3,
             snapshot.state.catalog.namespaceId,
             targetBatchId,
             {
@@ -28643,21 +28913,21 @@ var CompressionCoordinator = class {
             }
           );
           updates.push({
-            message_id: message2.message_id,
+            message_id: message3.message_id,
             is_hidden: true,
-            extra: withMarker(message2, compression2)
+            extra: withMarker(message3, compression2)
           });
-        } else if (shouldRestoreForCutoff && message2.is_hidden && currentOwned && item.hiddenByEchoes && snapshot.plan.coveredMessageIds.has(id3) && snapshot.plan.chain.some((coverage) => coverage.batch.id === item.batchId)) {
+        } else if (shouldRestoreForCutoff && message3.is_hidden && currentOwned && item.hiddenByEchoes && snapshot.plan.coveredMessageIds.has(id2) && snapshot.plan.chain.some((coverage) => coverage.batch.id === item.batchId)) {
           const compression2 = nextMarker(
-            message2,
+            message3,
             snapshot.state.catalog.namespaceId,
             item.batchId,
             { hiddenByEchoes: false }
           );
           updates.push({
-            message_id: message2.message_id,
+            message_id: message3.message_id,
             is_hidden: false,
-            extra: withMarker(message2, compression2)
+            extra: withMarker(message3, compression2)
           });
         }
       }
@@ -28666,8 +28936,8 @@ var CompressionCoordinator = class {
     });
   }
   restoreBatch(state, batchIds, pinVisible = true) {
-    return this.restore(state, (message2, item, plan) => {
-      const batchId = item?.batchId ?? plan.batchByMessageId.get(String(message2.message_id));
+    return this.restore(state, (message3, item, plan) => {
+      const batchId = item?.batchId ?? plan.batchByMessageId.get(String(message3.message_id));
       return Boolean(batchId && batchIds.includes(batchId));
     }, pinVisible);
   }
@@ -28676,7 +28946,7 @@ var CompressionCoordinator = class {
     const end = Math.max(startMessageId, endMessageId);
     return this.restore(
       state,
-      (message2) => message2.message_id >= start && message2.message_id <= end,
+      (message3) => message3.message_id >= start && message3.message_id <= end,
       pinVisible
     );
   }
@@ -28687,17 +28957,17 @@ var CompressionCoordinator = class {
     return this.serialize(async () => {
       const snapshot = await this.snapshot(state);
       const updates = [];
-      for (const message2 of snapshot.raw) {
-        const item = marker(message2);
-        const batchId = item?.batchId ?? snapshot.plan.batchByMessageId.get(String(message2.message_id));
+      for (const message3 of snapshot.raw) {
+        const item = marker(message3);
+        const batchId = item?.batchId ?? snapshot.plan.batchByMessageId.get(String(message3.message_id));
         if (!batchId || !batchIds.includes(batchId) || !item?.pinnedVisible) continue;
         const compression2 = nextMarker(
-          message2,
+          message3,
           state.catalog.namespaceId,
           batchId,
           { pinnedVisible: false }
         );
-        updates.push({ message_id: message2.message_id, extra: withMarker(message2, compression2) });
+        updates.push({ message_id: message3.message_id, extra: withMarker(message3, compression2) });
       }
       await this.apply(state, updates);
       return this.reconcileUnlocked(state);
@@ -28706,9 +28976,9 @@ var CompressionCoordinator = class {
   hiddenCountForBatches(state, batchIds) {
     return this.serialize(async () => {
       const snapshot = await this.snapshot(state);
-      return snapshot.raw.filter((message2) => {
-        const item = marker(message2);
-        return message2.is_hidden && item?.hiddenByEchoes && batchIds.includes(item.batchId);
+      return snapshot.raw.filter((message3) => {
+        const item = marker(message3);
+        return message3.is_hidden && item?.hiddenByEchoes && batchIds.includes(item.batchId);
       }).length;
     });
   }
@@ -28716,16 +28986,16 @@ var CompressionCoordinator = class {
     return this.serialize(async () => {
       const snapshot = await this.snapshot(state);
       const updates = [];
-      for (const message2 of snapshot.raw) {
-        const item = marker(message2);
-        const batchId = item?.batchId ?? snapshot.plan.batchByMessageId.get(String(message2.message_id));
-        if (!batchId || !matches(message2, item, snapshot.plan)) continue;
+      for (const message3 of snapshot.raw) {
+        const item = marker(message3);
+        const batchId = item?.batchId ?? snapshot.plan.batchByMessageId.get(String(message3.message_id));
+        if (!batchId || !matches(message3, item, snapshot.plan)) continue;
         if (item && !includeOtherNamespaces && item.namespaceId !== state.catalog.namespaceId) continue;
         const owned = Boolean(item?.hiddenByEchoes);
-        const covered = snapshot.plan.coveredMessageIds.has(String(message2.message_id));
+        const covered = snapshot.plan.coveredMessageIds.has(String(message3.message_id));
         if (!owned && !covered) continue;
         const compression2 = nextMarker(
-          message2,
+          message3,
           state.catalog.namespaceId,
           batchId,
           {
@@ -28734,9 +29004,9 @@ var CompressionCoordinator = class {
           }
         );
         updates.push({
-          message_id: message2.message_id,
-          ...owned && message2.is_hidden ? { is_hidden: false } : {},
-          extra: withMarker(message2, compression2)
+          message_id: message3.message_id,
+          ...owned && message3.is_hidden ? { is_hidden: false } : {},
+          extra: withMarker(message3, compression2)
         });
       }
       await this.apply(state, updates);
@@ -28745,16 +29015,16 @@ var CompressionCoordinator = class {
   }
   async reconcileExternalUnhides(snapshot) {
     const updates = [];
-    for (const message2 of snapshot.raw) {
-      const item = marker(message2);
-      if (!item || item.namespaceId !== snapshot.state.catalog.namespaceId || !item.hiddenByEchoes || message2.is_hidden) continue;
+    for (const message3 of snapshot.raw) {
+      const item = marker(message3);
+      if (!item || item.namespaceId !== snapshot.state.catalog.namespaceId || !item.hiddenByEchoes || message3.is_hidden) continue;
       const compression2 = nextMarker(
-        message2,
+        message3,
         item.namespaceId,
         item.batchId,
         { hiddenByEchoes: false, pinnedVisible: true }
       );
-      updates.push({ message_id: message2.message_id, extra: withMarker(message2, compression2) });
+      updates.push({ message_id: message3.message_id, extra: withMarker(message3, compression2) });
     }
     await this.apply(snapshot.state, updates);
     return updates.length > 0;
@@ -28766,23 +29036,23 @@ var CompressionCoordinator = class {
     }
     const safeEnd = this.safeCoverageEnd(snapshot.plan.chain, snapshot.safeBatchIds);
     const targetEnd = Math.min(snapshot.plan.hideThroughIndex, safeEnd);
-    const messageIndexById = new Map(snapshot.messages.map((message2, index) => [message2.id, index]));
+    const messageIndexById = new Map(snapshot.messages.map((message3, index) => [message3.id, index]));
     const updates = [];
-    for (const message2 of snapshot.raw) {
-      const index = messageIndexById.get(String(message2.message_id));
+    for (const message3 of snapshot.raw) {
+      const index = messageIndexById.get(String(message3.message_id));
       if (index === void 0) continue;
-      const item = marker(message2);
-      const batchId = snapshot.plan.batchByMessageId.get(String(message2.message_id));
-      if (index > targetEnd || !batchId || !snapshot.safeBatchIds.has(batchId) || item?.pinnedVisible || message2.is_hidden) continue;
-      const compression2 = nextMarker(message2, state.catalog.namespaceId, batchId, {
+      const item = marker(message3);
+      const batchId = snapshot.plan.batchByMessageId.get(String(message3.message_id));
+      if (index > targetEnd || !batchId || !snapshot.safeBatchIds.has(batchId) || item?.pinnedVisible || message3.is_hidden) continue;
+      const compression2 = nextMarker(message3, state.catalog.namespaceId, batchId, {
         hiddenByEchoes: true,
         pinnedVisible: false,
         hiddenAt: (/* @__PURE__ */ new Date()).toISOString()
       });
       updates.push({
-        message_id: message2.message_id,
+        message_id: message3.message_id,
         is_hidden: true,
-        extra: withMarker(message2, compression2)
+        extra: withMarker(message3, compression2)
       });
     }
     await this.apply(state, updates);
@@ -28855,32 +29125,32 @@ var CompressionCoordinator = class {
     const active = snapshot.state.catalog.recallEnabled && snapshot.state.catalog.compression.enabled;
     const batchStatus = snapshot.plan.chain.map((coverage) => {
       const messageIds = new Set(coverage.batch.messageIds);
-      const messages2 = snapshot.raw.filter((message2) => messageIds.has(String(message2.message_id)));
+      const messages2 = snapshot.raw.filter((message3) => messageIds.has(String(message3.message_id)));
       return {
         batchId: coverage.batch.id,
         batchNumber: coverage.batch.batchNumber,
         covered: messages2.length,
-        hidden: messages2.filter((message2) => {
-          const item = marker(message2);
-          return message2.is_hidden && item?.hiddenByEchoes;
+        hidden: messages2.filter((message3) => {
+          const item = marker(message3);
+          return message3.is_hidden && item?.hiddenByEchoes;
         }).length,
-        pinned: messages2.filter((message2) => marker(message2)?.pinnedVisible).length,
+        pinned: messages2.filter((message3) => marker(message3)?.pinnedVisible).length,
         indexSafe: snapshot.safeBatchIds.has(coverage.batch.id)
       };
     });
     const safeEnd = this.safeCoverageEnd(snapshot.plan.chain, snapshot.safeBatchIds);
     const targetEnd = Math.min(snapshot.plan.hideThroughIndex, safeEnd);
-    const messageIndexById = new Map(snapshot.messages.map((message2, index) => [message2.id, index]));
-    const hidden = snapshot.raw.filter((message2) => {
-      const item = marker(message2);
-      return message2.is_hidden && item?.hiddenByEchoes;
+    const messageIndexById = new Map(snapshot.messages.map((message3, index) => [message3.id, index]));
+    const hidden = snapshot.raw.filter((message3) => {
+      const item = marker(message3);
+      return message3.is_hidden && item?.hiddenByEchoes;
     }).length;
-    const pinned = snapshot.raw.filter((message2) => marker(message2)?.pinnedVisible).length;
-    const compressible = active ? snapshot.raw.filter((message2) => {
-      const index = messageIndexById.get(String(message2.message_id));
-      const item = marker(message2);
-      const batchId = snapshot.plan.batchByMessageId.get(String(message2.message_id));
-      return index !== void 0 && index <= targetEnd && Boolean(batchId) && !message2.is_hidden && !item?.pinnedVisible;
+    const pinned = snapshot.raw.filter((message3) => marker(message3)?.pinnedVisible).length;
+    const compressible = active ? snapshot.raw.filter((message3) => {
+      const index = messageIndexById.get(String(message3.message_id));
+      const item = marker(message3);
+      const batchId = snapshot.plan.batchByMessageId.get(String(message3.message_id));
+      return index !== void 0 && index <= targetEnd && Boolean(batchId) && !message3.is_hidden && !item?.pinnedVisible;
     }).length : 0;
     return {
       active,
@@ -28918,7 +29188,7 @@ var CompressionCoordinator = class {
 var compressionCoordinator = new CompressionCoordinator();
 
 // src/extension/summary/summary-coordinator.ts
-var TERMINAL_STATES5 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
+var TERMINAL_STATES6 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
 async function hashIdentifier2(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -28926,11 +29196,11 @@ async function hashIdentifier2(value) {
 async function waitForJob4(job) {
   const deadline = Date.now() + 2 * 60 * 6e4;
   let current = job;
-  while (!TERMINAL_STATES5.has(current.status) && Date.now() < deadline) {
+  while (!TERMINAL_STATES6.has(current.status) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 1e3));
     current = await echoesApi.getJob(current.id);
   }
-  if (!TERMINAL_STATES5.has(current.status)) throw new Error("\u7B49\u5F85\u540E\u53F0\u4EFB\u52A1\u8D85\u65F6\u3002");
+  if (!TERMINAL_STATES6.has(current.status)) throw new Error("\u7B49\u5F85\u540E\u53F0\u4EFB\u52A1\u8D85\u65F6\u3002");
   if (current.status !== "succeeded" || !current.result) {
     throw new Error(current.error?.message ?? current.message);
   }
@@ -29068,7 +29338,7 @@ var SummaryCoordinator = class {
       startIndex,
       endIndex
     );
-    const checkpointIndex = state.catalog.lastCommittedMessageId ? messages2.findIndex((message2) => message2.id === state.catalog.lastCommittedMessageId) : -1;
+    const checkpointIndex = state.catalog.lastCommittedMessageId ? messages2.findIndex((message3) => message3.id === state.catalog.lastCommittedMessageId) : -1;
     const advancesCheckpoint = startIndex === checkpointIndex + 1;
     return this.generate(state, candidate.batch, candidate.messages, decide, advancesCheckpoint);
   }
@@ -29093,8 +29363,8 @@ var SummaryCoordinator = class {
     const existing = state.slices.find((slice) => slice.batch.batchNumber === batchNumber)?.batch;
     if (!existing) throw new Error("\u603B\u7ED3\u6279\u6B21\u4E0D\u5B58\u5728\u3002");
     const messages2 = currentChatMessages();
-    const start = messages2.findIndex((message2) => message2.id === existing.startMessageId);
-    const end = messages2.findIndex((message2) => message2.id === existing.endMessageId);
+    const start = messages2.findIndex((message3) => message3.id === existing.startMessageId);
+    const end = messages2.findIndex((message3) => message3.id === existing.endMessageId);
     if (start < 0 || end < start) throw new Error("\u539F\u6D88\u606F\u8303\u56F4\u5DF2\u4E0D\u5B58\u5728\uFF0C\u8BF7\u4ECE\u8BE5\u6279\u6B21\u91CD\u7F6E\u540E\u91CD\u65B0\u603B\u7ED3\u3002");
     const candidate = await manualSummaryBatch(messages2, state.catalog, start, end, existing);
     return this.generate(state, candidate.batch, candidate.messages, decide, false);
@@ -29199,10 +29469,10 @@ var SummaryCoordinator = class {
   async assertCurrentSourceUnchanged(state, batch) {
     if (SillyTavern.getContext().chatId !== state.catalog.chatId) return;
     const current = currentChatMessages();
-    const start = current.findIndex((message2) => message2.id === batch.startMessageId);
-    const end = current.findIndex((message2) => message2.id === batch.endMessageId);
+    const start = current.findIndex((message3) => message3.id === batch.startMessageId);
+    const end = current.findIndex((message3) => message3.id === batch.endMessageId);
     const selected = start >= 0 && end >= start ? current.slice(start, end + 1) : [];
-    if (selected.length !== batch.messageIds.length || selected.some((message2, index) => message2.id !== batch.messageIds[index]) || await summarySourceHash(selected) !== batch.sourceHash) {
+    if (selected.length !== batch.messageIds.length || selected.some((message3, index) => message3.id !== batch.messageIds[index]) || await summarySourceHash(selected) !== batch.sourceHash) {
       throw new Error("The summary source messages changed while the generation task was running.");
     }
   }
@@ -29223,7 +29493,7 @@ var SummaryCoordinator = class {
       if (state2.catalog.retrievalCollectionId) {
         for (let offset = 0; offset < deletedSliceIds.length; offset += 1e3) {
           const sliceIds = deletedSliceIds.slice(offset, offset + 1e3);
-          const deleteDocumentIds2 = await Promise.all(sliceIds.map((id3) => summaryRetrievalDocumentId(state2.catalog.retrievalCollectionId, id3)));
+          const deleteDocumentIds2 = await Promise.all(sliceIds.map((id2) => summaryRetrievalDocumentId(state2.catalog.retrievalCollectionId, id2)));
           await waitForJob4(await echoesApi.syncRetrievalDocuments({
             documents: [],
             deleteDocumentIds: deleteDocumentIds2,
@@ -29258,7 +29528,7 @@ var SummaryCoordinator = class {
     }
     const batches = [...new Set(targetSlices.map((slice) => slice.batch.id))];
     const documents = await Promise.all(targetSlices.map((slice) => summaryRetrievalDocument(collectionId, slice, state.catalog.chatId)));
-    const deleteDocumentIds = await Promise.all(deletedSliceIds.map((id3) => summaryRetrievalDocumentId(collectionId, id3)));
+    const deleteDocumentIds = await Promise.all(deletedSliceIds.map((id2) => summaryRetrievalDocumentId(collectionId, id2)));
     let resumeAfterEndpointId;
     let result;
     try {
@@ -29320,10 +29590,6 @@ var SummaryCoordinator = class {
 };
 
 // src/extension/ui/summary-panel.ts
-var TERMINAL_STATES6 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
-function id(prefix) {
-  return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
-}
 function actionButton2(icon, title, action) {
   const button3 = document.createElement("button");
   button3.type = "button";
@@ -29334,15 +29600,6 @@ function actionButton2(icon, title, action) {
   button3.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
   return button3;
 }
-async function waitJob(job) {
-  let current = job;
-  while (!TERMINAL_STATES6.has(current.status)) {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    current = await echoesApi.getJob(job.id);
-  }
-  if (current.status !== "succeeded") throw new Error(current.error?.message ?? current.message);
-  return current;
-}
 function stateLabel(slice) {
   return {
     ready: "\u5C31\u7EEA",
@@ -29352,10 +29609,10 @@ function stateLabel(slice) {
     stale: "\u5DF2\u5931\u6548"
   }[slice.batch.state];
 }
-function coveredDeletionDialog(message2) {
+function coveredDeletionDialog(message3) {
   const modal = dialogShell("\u603B\u7ED3\u8986\u76D6\u4E86\u9690\u85CF\u6D88\u606F");
   modal.querySelector(".echoes-dialog-body").innerHTML = "<p data-message></p>";
-  modal.querySelector("[data-message]").textContent = message2;
+  modal.querySelector("[data-message]").textContent = message3;
   modal.querySelector(".echoes-dialog-footer").innerHTML = `
     <button type="button" class="menu_button" data-choice="cancel">\u53D6\u6D88</button>
     <button type="button" class="menu_button" data-choice="keep">\u4FDD\u6301\u9690\u85CF\u5E76\u5220\u9664</button>
@@ -29392,21 +29649,28 @@ var SummaryPanel = class {
   busy = false;
   acknowledgedUnsafeKey = "";
   renderSequence = 0;
-  async render() {
+  mode = "memory";
+  async render(mode = this.mode) {
+    this.mode = mode;
     const sequence = ++this.renderSequence;
-    const chatId = SillyTavern.getContext().chatId;
     const host = this.root.querySelector(".echoes-grid-host");
     host.innerHTML = '<div class="echoes-grid-message">\u6B63\u5728\u8BFB\u53D6\u603B\u7ED3\u4E16\u754C\u4E66...</div>';
+    if (mode === "settings") {
+      if (!this.root.classList.contains("echoes-summary-generation-view")) return;
+      this.renderSettingsContent();
+      return;
+    }
+    const chatId = SillyTavern.getContext().chatId;
     try {
       const state = await this.coordinator.checkIntegrity();
       const compressionStatus = await this.coordinator.compression.inspect(state);
-      if (sequence !== this.renderSequence || !this.root.querySelector('[data-view="summary"].active') || SillyTavern.getContext().chatId !== chatId || state.catalog.chatId !== chatId) return;
+      if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-summary-view") || SillyTavern.getContext().chatId !== chatId || state.catalog.chatId !== chatId) return;
       this.state = state;
       this.compressionStatus = compressionStatus;
       this.renderSidebar();
-      this.renderContent();
+      this.renderMemoryContent();
     } catch (error51) {
-      if (sequence !== this.renderSequence || !this.root.querySelector('[data-view="summary"].active') || SillyTavern.getContext().chatId !== chatId) return;
+      if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-summary-view") || SillyTavern.getContext().chatId !== chatId) return;
       this.compressionStatus = null;
       host.innerHTML = "";
       const note = document.createElement("div");
@@ -29422,7 +29686,7 @@ var SummaryPanel = class {
       if (state && SillyTavern.getContext().chatId === chatId && state.catalog.chatId === chatId) {
         this.state = state;
       }
-      if (this.root.querySelector('[data-view="summary"].active')) await this.render();
+      if (this.root.classList.contains("echoes-summary-view")) await this.render("memory");
     } catch (error51) {
       toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u81EA\u52A8\u603B\u7ED3\u5931\u8D25");
     }
@@ -29450,18 +29714,15 @@ var SummaryPanel = class {
       list.append(item);
     }
   }
-  renderContent() {
+  renderMemoryContent() {
     if (!this.state) return;
-    const settings = getSettings();
     const host = this.root.querySelector(".echoes-grid-host");
     host.innerHTML = `
       <div class="echoes-summary-page">
         <section class="echoes-summary-controls">
           <div class="echoes-summary-control-row">
             <label class="echoes-check"><input type="checkbox" data-summary-auto>\u81EA\u52A8\u603B\u7ED3</label>
-            <label>\u6D88\u606F\u9608\u503C<input type="number" min="2" max="500" data-summary-count></label>
-            <label>\u751F\u6210\u7AEF\u70B9\u7EC4<select data-summary-workflow-group></select></label>
-            <label>\u5D4C\u5165\u7EC4<select data-summary-embedding><option value="">\u6682\u4E0D\u540C\u6B65</option></select></label>
+            <span class="echoes-inline-note">\u81EA\u52A8\u9608\u503C\u4E0E\u6A21\u578B\u7ED1\u5B9A\u5728\u201C\u603B\u7ED3\u8BB0\u5FC6\u8BBE\u7F6E\u201D\u548C\u201CAPI\u914D\u7F6E\u201D\u4E2D\u7BA1\u7406\u3002</span>
           </div>
           <form class="echoes-summary-manual" data-summary-manual>
             <label>\u8D77\u59CB\u6D88\u606F<input type="number" name="start" min="0" required></label>
@@ -29494,9 +29755,6 @@ var SummaryPanel = class {
           <div class="echoes-compression-warning echoes-hidden" data-compression-warning></div>
         </section>
         <section class="echoes-summary-section"><header><h2>\u603B\u7ED3\u8BB0\u5F55</h2><button type="button" class="menu_button" data-summary-action="repair"><i class="fa-solid fa-screwdriver-wrench"></i> \u4FEE\u590D\u7D22\u5F15</button></header><div data-summary-table></div></section>
-        <section class="echoes-summary-section"><header><h2>\u603B\u7ED3\u63D0\u793A\u8BCD</h2><button type="button" class="menu_button" data-summary-action="add-prompt"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-summary-prompts></div></section>
-        <section class="echoes-summary-section"><header><h2>\u6D88\u606F\u6E05\u6D17</h2><button type="button" class="menu_button" data-summary-action="add-rule"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-summary-rules></div></section>
-        <section class="echoes-summary-section"><header><h2>\u751F\u6210\u7AEF\u70B9\u7EC4</h2><button type="button" class="menu_button" data-summary-action="add-group"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-generation-groups></div></section>
       </div>`;
     host.querySelector("[data-summary-auto]").checked = this.state.catalog.autoRun;
     host.querySelector("[data-compression-recall]").checked = this.state.catalog.recallEnabled;
@@ -29507,21 +29765,42 @@ var SummaryPanel = class {
     host.querySelector("[data-compression-keep]").value = String(compression2.keepRecentMessages);
     host.querySelector("[data-compression-recent]").value = String(compression2.recentBatchCount);
     host.querySelector("[data-compression-deletion]").value = compression2.deletionPolicy;
-    host.querySelector("[data-summary-count]").value = String(settings.summary.messageCount);
-    const workflowGroup = host.querySelector("[data-summary-workflow-group]");
-    for (const group of settings.generationGroups) workflowGroup.append(new Option(group.name, group.id));
-    workflowGroup.value = settings.generationWorkflows.summary.groupId;
-    const embedding = host.querySelector("[data-summary-embedding]");
-    for (const group of settings.retrieval.embeddingGroups) embedding.append(new Option(group.name, group.id));
-    embedding.value = settings.summary.embeddingGroupId;
     const end = Math.max(0, SillyTavern.getContext().chat.length - 1);
     host.querySelector("[name=start]").value = "0";
     host.querySelector("[name=end]").value = String(end);
     this.renderSummaryTable();
     this.renderCompressionStatus();
+  }
+  renderSettingsContent() {
+    const settings = getSettings();
+    const workflow = settings.generationWorkflows.summary;
+    const generationGroup = settings.generationGroups.find((group) => group.id === workflow.groupId);
+    const embeddingGroup = settings.retrieval.embeddingGroups.find((group) => group.id === settings.summary.embeddingGroupId);
+    const host = this.root.querySelector(".echoes-grid-host");
+    host.innerHTML = `
+      <div class="echoes-summary-page echoes-summary-settings-page">
+        <section class="echoes-summary-section">
+          <header><div><h2>\u603B\u7ED3\u751F\u6210\u89C4\u5219</h2><small>\u6A21\u578B\u3001API\u3001\u51ED\u636E\u548C\u6545\u969C\u7B56\u7565\u7EDF\u4E00\u5728 API\u914D\u7F6E\u4E2D\u7BA1\u7406</small></div><button type="button" class="menu_button" data-action="switch-view" data-view="api"><i class="fa-solid fa-plug"></i> \u524D\u5F80 API\u914D\u7F6E</button></header>
+          <div class="echoes-workflow-summary">
+            <span>\u751F\u6210\u7AEF\u70B9\u7EC4<strong data-summary-binding-group></strong></span>
+            <span>\u6545\u969C\u7B56\u7565<strong data-summary-binding-policy></strong></span>
+            <span>Embedding \u7EC4<strong data-summary-binding-embedding></strong></span>
+            <label>\u81EA\u52A8\u603B\u7ED3\u6D88\u606F\u9608\u503C<input type="number" min="2" max="500" data-summary-count></label>
+          </div>
+        </section>
+        <section class="echoes-summary-section"><header><h2>\u603B\u7ED3\u63D0\u793A\u8BCD</h2><button type="button" class="menu_button" data-summary-action="add-prompt"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-summary-prompts></div></section>
+        <section class="echoes-summary-section"><header><h2>\u6D88\u606F\u6E05\u6D17</h2><button type="button" class="menu_button" data-summary-action="add-rule"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-summary-rules></div></section>
+      </div>`;
+    host.querySelector("[data-summary-binding-group]").textContent = generationGroup?.name ?? "\u672A\u914D\u7F6E";
+    host.querySelector("[data-summary-binding-policy]").textContent = {
+      confirm_ambiguous: "\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4",
+      always: "\u59CB\u7EC8\u81EA\u52A8\u5207\u6362",
+      definitive_only: "\u4EC5\u660E\u786E\u5931\u8D25\u5207\u6362"
+    }[workflow.failoverPolicy];
+    host.querySelector("[data-summary-binding-embedding]").textContent = embeddingGroup?.name ?? "\u4EC5\u540C\u6B65 BM25";
+    host.querySelector("[data-summary-count]").value = String(settings.summary.messageCount);
     this.renderPrompts();
     this.renderRules();
-    this.renderGroups();
   }
   renderSummaryTable() {
     const host = this.root.querySelector("[data-summary-table]");
@@ -29679,46 +29958,6 @@ var SummaryPanel = class {
       host.append(row);
     });
   }
-  renderGroups() {
-    const host = this.root.querySelector("[data-generation-groups]");
-    host.replaceChildren();
-    for (const group of getSettings().generationGroups) {
-      const section = document.createElement("div");
-      section.className = "echoes-generation-group";
-      const header = document.createElement("header");
-      const title = document.createElement("strong");
-      title.textContent = group.name;
-      const add = actionButton2("plus", "\u6DFB\u52A0\u7AEF\u70B9", "add-endpoint");
-      add.dataset.groupId = group.id;
-      const remove = actionButton2("trash", "\u5220\u9664\u7AEF\u70B9\u7EC4", "delete-group");
-      remove.dataset.groupId = group.id;
-      header.append(title, add, remove);
-      section.append(header);
-      for (const [index, endpoint] of [...group.endpoints].sort((a, b) => a.order - b.order).entries()) {
-        const row = this.configRow(endpoint.name, `${endpoint.model} \xB7 ${endpoint.baseUrl}`, endpoint.enabled);
-        const controls = row.querySelector("[data-controls]");
-        for (const [icon, label, action] of [
-          ["arrow-up", "\u4E0A\u79FB", "endpoint-up"],
-          ["arrow-down", "\u4E0B\u79FB", "endpoint-down"],
-          ["vial", "\u6D4B\u8BD5", "test-endpoint"],
-          ["pen", "\u7F16\u8F91", "edit-endpoint"],
-          ["trash", "\u5220\u9664", "delete-endpoint"]
-        ]) {
-          const button3 = actionButton2(icon, label, action);
-          button3.dataset.groupId = group.id;
-          button3.dataset.endpointId = endpoint.id;
-          if (action === "endpoint-up") button3.disabled = index === 0;
-          if (action === "endpoint-down") button3.disabled = index === group.endpoints.length - 1;
-          controls.append(button3);
-        }
-        const toggle = row.querySelector("input");
-        toggle.dataset.endpointToggle = endpoint.id;
-        toggle.dataset.groupId = group.id;
-        section.append(row);
-      }
-      host.append(section);
-    }
-  }
   configRow(title, detail, enabled) {
     const row = document.createElement("article");
     row.className = "echoes-summary-config-row";
@@ -29773,14 +30012,6 @@ var SummaryPanel = class {
       else if (action === "delete-rule") this.deleteRule(Number(target.dataset.index));
       else if (action === "rule-up") this.moveRule(Number(target.dataset.index), -1);
       else if (action === "rule-down") this.moveRule(Number(target.dataset.index), 1);
-      else if (action === "add-group") await this.addGroup();
-      else if (action === "delete-group") this.deleteGroup(target.dataset.groupId ?? "");
-      else if (action === "add-endpoint") await this.editEndpoint(target.dataset.groupId ?? "");
-      else if (action === "edit-endpoint") await this.editEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId);
-      else if (action === "delete-endpoint") this.deleteEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId ?? "");
-      else if (action === "endpoint-up") this.moveEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId ?? "", -1);
-      else if (action === "endpoint-down") this.moveEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId ?? "", 1);
-      else if (action === "test-endpoint") await this.testEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId ?? "");
       else if (action === "edit-slice") await this.editSlice(target.dataset.sliceId ?? "");
       else if (action === "delete-slice") await this.deleteSlice(target.dataset.sliceId ?? "");
       else if (action === "rebuild-batch") await this.withBusy(() => this.coordinator.rebuildBatch(Number(target.dataset.batchNumber)));
@@ -29836,14 +30067,9 @@ var SummaryPanel = class {
       return;
     }
     if (target.matches("[data-summary-count]")) settings.summary.messageCount = Math.max(2, Math.min(500, Number(target.value)));
-    else if (target.matches("[data-summary-workflow-group]")) settings.generationWorkflows.summary.groupId = target.value;
-    else if (target.matches("[data-summary-embedding]")) settings.summary.embeddingGroupId = target.value;
     else if (target.dataset.promptToggle !== void 0) settings.summary.promptPreset.items[Number(target.dataset.promptToggle)].enabled = target.checked;
     else if (target.dataset.ruleToggle !== void 0) settings.summary.preprocessRules[Number(target.dataset.ruleToggle)].enabled = target.checked;
-    else if (target.dataset.endpointToggle) {
-      const endpoint = settings.generationGroups.find((group) => group.id === target.dataset.groupId)?.endpoints.find((item) => item.id === target.dataset.endpointToggle);
-      if (endpoint) endpoint.enabled = target.checked;
-    } else return;
+    else return;
     saveSettings(settings);
   }
   async runManual(form) {
@@ -30047,96 +30273,10 @@ var SummaryPanel = class {
       rule.order = index;
     });
   }
-  async addGroup() {
-    const modal = dialogShell("\u6DFB\u52A0\u751F\u6210\u7AEF\u70B9\u7EC4");
-    modal.querySelector(".echoes-dialog-body").innerHTML = '<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required></label></div>';
-    await submitDialog(modal, () => {
-      const settings = getSettings();
-      const name = modal.querySelector("[name=name]").value.trim();
-      if (!name) throw new Error("\u7AEF\u70B9\u7EC4\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002");
-      const group = { id: id("generation_group"), name, endpoints: [] };
-      settings.generationGroups.push(group);
-      saveSettings(settings);
-    }, { errorTitle: "\u751F\u6210\u7AEF\u70B9\u7EC4\u65E0\u6548" });
-  }
-  deleteGroup(groupId) {
-    if (!confirm("\u5220\u9664\u8BE5\u751F\u6210\u7AEF\u70B9\u7EC4\uFF1F")) return;
-    const settings = getSettings();
-    settings.generationGroups = settings.generationGroups.filter((group) => group.id !== groupId);
-    if (settings.generationWorkflows.summary.groupId === groupId) settings.generationWorkflows.summary.groupId = settings.generationGroups[0]?.id ?? "";
-    if (settings.generationWorkflows.extraction.groupId === groupId) settings.generationWorkflows.extraction.groupId = settings.generationGroups[0]?.id ?? "";
-    saveSettings(settings);
-  }
-  async editEndpoint(groupId, endpointId) {
-    const settings = getSettings();
-    const group = settings.generationGroups.find((item) => item.id === groupId);
-    const current = group?.endpoints.find((item) => item.id === endpointId);
-    if (!group) return;
-    const modal = dialogShell(current ? "\u7F16\u8F91\u751F\u6210\u7AEF\u70B9" : "\u6DFB\u52A0\u751F\u6210\u7AEF\u70B9");
-    const body = modal.querySelector(".echoes-dialog-body");
-    body.innerHTML = `<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required></label><label class="echoes-form-span">API \u5730\u5740<input name="baseUrl" type="url" required></label><label>\u6A21\u578B<input name="model" required></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select name="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input name="timeout" type="number" min="10" max="1800"></label><label>\u6E29\u5EA6<input name="temperature" type="number" min="0" max="2" step="0.1"></label><label class="echoes-check"><input name="streaming" type="checkbox">\u6D41\u5F0F</label><label class="echoes-check"><input name="jsonMode" type="checkbox">JSON \u6A21\u5F0F</label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label></div><p class="echoes-empty-note">\u51ED\u636E\u5728\u201C\u7EF4\u62A4\u201D\u9875\u7BA1\u7406\uFF1B0.2.x \u4EC5\u517C\u5BB9\u8BFB\u53D6\u5C1A\u672A\u8FC1\u79FB\u7684\u65E7\u5BC6\u94A5\u3002</p>`;
-    const credentials = await echoesApi.listCredentials().catch(() => []);
-    const credentialSelect = body.querySelector("[name=credentialId]");
-    for (const credential of credentials) credentialSelect.add(new Option(credential.name, credential.id));
-    if (current?.credentialId && !credentials.some((credential) => credential.id === current.credentialId)) {
-      credentialSelect.add(new Option(`\u7F3A\u5931\uFF1A${current.credentialId}`, current.credentialId));
-    }
-    const value = (name, data) => {
-      body.querySelector(`[name=${name}]`).value = data;
-    };
-    value("name", current?.name ?? "\u65B0\u7AEF\u70B9");
-    value("baseUrl", current?.baseUrl ?? "");
-    value("model", current?.model ?? "");
-    value("timeout", String((current?.timeoutMs ?? 3e5) / 1e3));
-    value("temperature", String(current?.temperature ?? 0.1));
-    credentialSelect.value = current?.credentialId ?? "";
-    body.querySelector("[name=streaming]").checked = current?.streaming ?? true;
-    body.querySelector("[name=jsonMode]").checked = current?.jsonMode ?? true;
-    body.querySelector("[name=enabled]").checked = current?.enabled ?? true;
-    await submitDialog(modal, () => {
-      const credentialId = credentialSelect.value;
-      const endpoint = { id: current?.id ?? id("generation_endpoint"), name: body.querySelector("[name=name]").value, baseUrl: body.querySelector("[name=baseUrl]").value, model: body.querySelector("[name=model]").value, ...credentialId ? { credentialId } : current?.apiKey ? { apiKey: current.apiKey } : {}, timeoutMs: Number(body.querySelector("[name=timeout]").value) * 1e3, temperature: Number(body.querySelector("[name=temperature]").value), streaming: body.querySelector("[name=streaming]").checked, jsonMode: body.querySelector("[name=jsonMode]").checked, enabled: body.querySelector("[name=enabled]").checked, order: current?.order ?? group.endpoints.length };
-      const parsed = generationEndpointGroupSchema.parse({ ...group, endpoints: current ? group.endpoints.map((item) => item.id === current.id ? endpoint : item) : [...group.endpoints, endpoint] });
-      const groupIndex = settings.generationGroups.findIndex((item) => item.id === group.id);
-      settings.generationGroups[groupIndex] = parsed;
-      saveSettings(settings);
-    }, { errorTitle: "\u751F\u6210\u7AEF\u70B9\u65E0\u6548" });
-  }
-  deleteEndpoint(groupId, endpointId) {
-    if (!confirm("\u5220\u9664\u8BE5\u751F\u6210\u7AEF\u70B9\uFF1F")) return;
-    const settings = getSettings();
-    const group = settings.generationGroups.find((item) => item.id === groupId);
-    if (!group) return;
-    group.endpoints = group.endpoints.filter((item) => item.id !== endpointId);
-    group.endpoints.forEach((item, index) => {
-      item.order = index;
-    });
-    saveSettings(settings);
-  }
-  moveEndpoint(groupId, endpointId, offset) {
-    const settings = getSettings();
-    const group = settings.generationGroups.find((item) => item.id === groupId);
-    if (!group) return;
-    group.endpoints.sort((a, b) => a.order - b.order);
-    const index = group.endpoints.findIndex((item) => item.id === endpointId);
-    const [endpoint] = group.endpoints.splice(index, 1);
-    if (!endpoint) return;
-    group.endpoints.splice(index + offset, 0, endpoint);
-    group.endpoints.forEach((item, position) => {
-      item.order = position;
-    });
-    saveSettings(settings);
-  }
-  async testEndpoint(groupId, endpointId) {
-    const endpoint = getSettings().generationGroups.find((group) => group.id === groupId)?.endpoints.find((item) => item.id === endpointId);
-    if (!endpoint) return;
-    const completed = await waitJob(await echoesApi.testGenerationEndpoint(endpoint));
-    toastr.success(`\u8FDE\u63A5\u6210\u529F\uFF1A${completed.result?.latencyMs ?? 0} ms`, "\u751F\u6210\u7AEF\u70B9");
-  }
 };
 
 // src/extension/ui/status-panel.ts
-function id2(prefix) {
+function id(prefix) {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
 }
 function button2(icon, title, action) {
@@ -30183,13 +30323,13 @@ var StatusPanel = class {
     host.innerHTML = '<div class="echoes-grid-message">\u6B63\u5728\u8BFB\u53D6\u666E\u901A\u72B6\u6001...</div>';
     try {
       const state = await statusCoordinator.load();
-      if (sequence !== this.renderSequence || !this.root.querySelector('[data-view="status"].active') || SillyTavern.getContext().chatId !== chatId || state.catalog.chatId !== chatId) return;
+      if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-status-view") || SillyTavern.getContext().chatId !== chatId || state.catalog.chatId !== chatId) return;
       this.state = state;
       this.records = statusCoordinator.history(state);
       this.renderSidebar();
       this.renderContent();
     } catch (error51) {
-      if (sequence !== this.renderSequence || !this.root.querySelector('[data-view="status"].active') || SillyTavern.getContext().chatId !== chatId) return;
+      if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-status-view") || SillyTavern.getContext().chatId !== chatId) return;
       host.innerHTML = "";
       const note = document.createElement("div");
       note.className = "echoes-grid-message error";
@@ -30222,6 +30362,8 @@ var StatusPanel = class {
   renderContent() {
     if (!this.state) return;
     const settings = getSettings();
+    const workflow = settings.generationWorkflows.status;
+    const workflowGroup = settings.generationGroups.find((group) => group.id === workflow.groupId);
     const current = statusCoordinator.current(this.state);
     const currentState = current?.snapshot.state ?? this.state.catalog.profile.initialState;
     const host = this.root.querySelector(".echoes-grid-host");
@@ -30231,7 +30373,7 @@ var StatusPanel = class {
           <div class="echoes-summary-control-row">
             <label class="echoes-check"><input type="checkbox" data-status-enabled>\u72B6\u6001\u6CE8\u5165</label>
             <label class="echoes-check"><input type="checkbox" data-status-auto>\u81EA\u52A8\u66F4\u65B0</label>
-            <label>\u72B6\u6001\u7AEF\u70B9\u7EC4<select data-status-group><option value="">\u672A\u9009\u62E9</option></select></label>
+            <div class="echoes-api-binding-inline"><span>\u72B6\u6001\u5DE5\u4F5C\u6D41<strong data-status-binding></strong></span><button type="button" class="menu_button" data-action="switch-view" data-view="api"><i class="fa-solid fa-plug"></i> API\u914D\u7F6E</button></div>
             <button type="button" class="menu_button echoes-primary" data-status-action="sync"><i class="fa-solid fa-arrows-rotate"></i> \u624B\u52A8\u540C\u6B65</button>
             <button type="button" class="menu_button" data-status-action="refresh"><i class="fa-solid fa-rotate"></i> \u5237\u65B0</button>
           </div>
@@ -30262,9 +30404,7 @@ var StatusPanel = class {
       </div>`;
     host.querySelector("[data-status-enabled]").checked = this.state.catalog.enabled;
     host.querySelector("[data-status-auto]").checked = this.state.catalog.autoUpdate;
-    const group = host.querySelector("[data-status-group]");
-    for (const item of settings.generationGroups) group.append(new Option(item.name, item.id));
-    group.value = settings.generationWorkflows.status.groupId;
+    host.querySelector("[data-status-binding]").textContent = `${workflowGroup?.name ?? "\u672A\u914D\u7F6E"} \xB7 ${{ confirm_ambiguous: "\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4", always: "\u59CB\u7EC8\u81EA\u52A8\u5207\u6362", definitive_only: "\u4EC5\u660E\u786E\u5931\u8D25\u5207\u6362" }[workflow.failoverPolicy]}`;
     host.querySelector("[data-status-yaml]").value = renderStatusYaml(currentState);
     this.fillProfile();
     this.renderHistory();
@@ -30432,7 +30572,6 @@ var StatusPanel = class {
       if (!target.matches([
         "[data-status-enabled]",
         "[data-status-auto]",
-        "[data-status-group]",
         "[data-status-prompt-toggle]",
         "[data-status-cleaning-toggle]"
       ].join(","))) return;
@@ -30468,10 +30607,6 @@ var StatusPanel = class {
       this.state = await statusCoordinator.worldbook.saveConfiguration(this.state.worldbookName, { enabled: target.checked });
     } else if (target.matches("[data-status-auto]")) {
       this.state = await statusCoordinator.worldbook.saveConfiguration(this.state.worldbookName, { autoUpdate: target.checked });
-    } else if (target.matches("[data-status-group]")) {
-      const settings = getSettings();
-      settings.generationWorkflows.status.groupId = target.value;
-      saveSettings(settings);
     } else if (target.dataset.statusPromptToggle !== void 0) {
       const index = Number(target.dataset.statusPromptToggle);
       this.state.catalog.profile.promptPreset.items[index].enabled = target.checked;
@@ -30561,15 +30696,15 @@ var StatusPanel = class {
     const chat = SillyTavern.getContext().chat;
     let targetIndex = chat.length - 1;
     while (targetIndex >= 0) {
-      const message2 = chat[targetIndex];
-      if (message2.is_user !== true && message2.role !== "user" && String(message2.mes ?? message2.message ?? "").trim()) break;
+      const message3 = chat[targetIndex];
+      if (message3.is_user !== true && message3.role !== "user" && String(message3.mes ?? message3.message ?? "").trim()) break;
       targetIndex -= 1;
     }
     if (targetIndex < 0) throw new Error("The chat has no assistant message to preview.");
     const previous = statusCoordinator.snapshots.latestBefore(targetIndex, this.state.catalog.namespaceId)?.snapshot ?? null;
     const prepared = await prepareStatusRequest({ catalog: this.state.catalog, baseSnapshot: previous, targetMessageIndex: targetIndex });
-    previewDialog("\u72B6\u6001\u66F4\u65B0\u6700\u7EC8\u63D0\u793A\u8BCD", prepared.promptMessages.map((message2) => `[${message2.role}]
-${message2.content}`).join("\n\n"));
+    previewDialog("\u72B6\u6001\u66F4\u65B0\u6700\u7EC8\u63D0\u793A\u8BCD", prepared.promptMessages.map((message3) => `[${message3.role}]
+${message3.content}`).join("\n\n"));
   }
   async editPrompt(index) {
     if (!this.state) return;
@@ -30615,7 +30750,7 @@ ${message2.content}`).join("\n\n"));
       const flags = body.querySelector("[name=flags]").value;
       new RegExp(pattern, flags);
       const rule = summaryPreprocessRuleSchema.parse({
-        id: current?.id ?? id2("status_cleaning"),
+        id: current?.id ?? id("status_cleaning"),
         name: body.querySelector("[name=name]").value,
         type: body.querySelector("[name=type]").value,
         pattern,
@@ -30675,7 +30810,7 @@ ${message2.content}`).join("\n\n"));
     if (!template || !confirm(`\u57FA\u4E8E\u201C${template.name}\u201D\u91CD\u5EFA\u5F53\u524D\u804A\u5929\u914D\u7F6E\u526F\u672C\uFF1F\u73B0\u6709\u5386\u53F2\u5FEB\u7167\u4E0D\u4F1A\u6539\u53D8\u3002`)) return;
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const profile = {
-      id: id2("status_profile"),
+      id: id("status_profile"),
       sourceTemplateId: template.id,
       name: template.name,
       description: template.description,
@@ -30698,7 +30833,7 @@ ${message2.content}`).join("\n\n"));
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const profile = this.state.catalog.profile;
     const template = statusTemplateSchema.parse({
-      id: id2("status_template"),
+      id: id("status_template"),
       name,
       description: profile.description,
       initialState: profile.initialState,
@@ -30753,59 +30888,6 @@ ${message2.content}`).join("\n\n"));
   }
 };
 
-// package.json
-var package_default = {
-  name: "echoes-memory-system",
-  version: "0.2.5",
-  private: true,
-  type: "module",
-  description: "A reliable structured and semantic memory system for SillyTavern.",
-  license: "CC-BY-NC-4.0",
-  engines: {
-    node: ">=20.9.0 <21 || >=22.0.0 <23 || >=24.0.0 <25"
-  },
-  scripts: {
-    build: "node scripts/build.mjs",
-    check: "npm run typecheck && npm run test && npm run build",
-    test: "vitest run",
-    "test:browser": "npm run build && playwright test",
-    "test:watch": "vitest",
-    "serve:harness": "node scripts/ui-harness-server.mjs",
-    "stress:retrieval": "node scripts/retrieval-stress.mjs 200000",
-    "audit:dependencies": "npm audit --registry=https://registry.npmjs.org/ --omit=dev --audit-level=high",
-    "audit:release": "node scripts/audit-release.mjs",
-    "package:github": "npm run build && npm run audit:release && npm run audit:dependencies && node scripts/package-github.mjs",
-    "test:release": "node scripts/release-install-test.mjs",
-    typecheck: "tsc --noEmit"
-  },
-  dependencies: {
-    "@lancedb/lancedb": "0.31.0",
-    "ipaddr.js": "2.2.0",
-    yaml: "^2.9.0",
-    zod: "^4.4.3"
-  },
-  overrides: {
-    sharp: "0.35.3",
-    tar: "7.5.22"
-  },
-  devDependencies: {
-    "@playwright/test": "^1.61.1",
-    "@types/express": "^5.0.6",
-    "@types/node": "^26.1.1",
-    esbuild: "^0.28.1",
-    typescript: "^7.0.2",
-    vitest: "^4.1.10"
-  }
-};
-
-// src/shared/build-info.ts
-init_domain();
-var ECHOES_BUILD_INFO = {
-  appVersion: package_default.version,
-  apiProtocolVersion: API_PROTOCOL_VERSION,
-  service: "echoes-memory"
-};
-
 // src/extension/ui/maintenance-panel.ts
 init_client();
 
@@ -30845,33 +30927,33 @@ function targetTranscriptShape(messages2) {
 async function targetTranscriptFingerprint(messages2) {
   return sha2562(stableJson(targetTranscriptShape(messages2)));
 }
-function role(message2) {
-  if (message2.is_user === true || message2.role === "user") return "user";
-  if (message2.role === "system") return "system";
+function role(message3) {
+  if (message3.is_user === true || message3.role === "user") return "user";
+  if (message3.role === "system") return "system";
   return "assistant";
 }
-function stableId(message2, index) {
-  return String(message2.message_id ?? message2.id ?? index);
+function stableId(message3, index) {
+  return String(message3.message_id ?? message3.id ?? index);
 }
-function swipeTexts(message2) {
-  const swipes = Array.isArray(message2.swipes) ? message2.swipes.map(String) : [];
+function swipeTexts(message3) {
+  const swipes = Array.isArray(message3.swipes) ? message3.swipes.map(String) : [];
   if (swipes.length > 0) return swipes;
-  return [String(message2.mes ?? message2.message ?? "")];
+  return [String(message3.mes ?? message3.message ?? "")];
 }
 async function describeChat(chat = SillyTavern.getContext().chat) {
-  return Promise.all(chat.map(async (message2, index) => ({
+  return Promise.all(chat.map(async (message3, index) => ({
     index,
-    stableId: stableId(message2, index),
-    role: role(message2),
-    swipeHashes: await Promise.all(swipeTexts(message2).map(sha2562)),
-    selectedSwipe: Math.max(0, Number(message2.swipe_id ?? 0) || 0),
-    message: message2
+    stableId: stableId(message3, index),
+    role: role(message3),
+    swipeHashes: await Promise.all(swipeTexts(message3).map(sha2562)),
+    selectedSwipe: Math.max(0, Number(message3.swipe_id ?? 0) || 0),
+    message: message3
   })));
 }
-function variablesForSwipe(message2, swipeId) {
-  if (Array.isArray(message2.variables)) return message2.variables[swipeId] ?? {};
-  if (message2.variables && typeof message2.variables === "object") return message2.variables[swipeId] ?? {};
-  const data = Array.isArray(message2.swipes_data) ? message2.swipes_data[swipeId] : void 0;
+function variablesForSwipe(message3, swipeId) {
+  if (Array.isArray(message3.variables)) return message3.variables[swipeId] ?? {};
+  if (message3.variables && typeof message3.variables === "object") return message3.variables[swipeId] ?? {};
+  const data = Array.isArray(message3.swipes_data) ? message3.swipes_data[swipeId] : void 0;
   return data?.variables && typeof data.variables === "object" ? data.variables : {};
 }
 function snapshots(descriptor) {
@@ -30880,8 +30962,8 @@ function snapshots(descriptor) {
     return parsed.success ? [{ swipeId, value: parsed.data }] : [];
   });
 }
-function compression(message2) {
-  const value = message2.extra?.echoes?.compression;
+function compression(message3) {
+  const value = message3.extra?.echoes?.compression;
   return value && typeof value === "object" ? structuredClone(value) : void 0;
 }
 function restoreEchoesStatusValues(current, original) {
@@ -31109,8 +31191,8 @@ function worldbookNamespaceReplacements(backup, targetChatId) {
       if (typeof value === "string" && !replacements.has(value)) replacements.set(value, uniqueId5(prefix));
     }
   }
-  for (const message2 of backup.messages) {
-    for (const { value } of message2.statusSnapshots) {
+  for (const message3 of backup.messages) {
+    for (const { value } of message3.statusSnapshots) {
       if (!replacements.has(value.snapshotId)) replacements.set(value.snapshotId, uniqueId5("status_snapshot"));
     }
   }
@@ -31319,10 +31401,10 @@ var EchoesBackupManager = class {
     const incoming = await Promise.all(backup.worldbookEntries.map((entry) => rewriteEntry(entry, plan.mode, backup, current.chatId, replacements, targetById)));
     const rewrittenSnapshots = /* @__PURE__ */ new Map();
     if (plan.mode === "equivalent_chat") {
-      for (const message2 of backup.messages) {
-        const targetMessageId = mapping.get(message2.stableId);
-        if (!targetMessageId) throw new Error(`Missing target mapping for message ${message2.stableId}.`);
-        for (const stored of message2.statusSnapshots) {
+      for (const message3 of backup.messages) {
+        const targetMessageId = mapping.get(message3.stableId);
+        if (!targetMessageId) throw new Error(`Missing target mapping for message ${message3.stableId}.`);
+        for (const stored of message3.statusSnapshots) {
           rewrittenSnapshots.set(
             `${targetMessageId}\0${stored.swipeId}`,
             await rewriteSnapshotReferences(stored.value, replacements, targetById)
@@ -31386,7 +31468,7 @@ var EchoesBackupManager = class {
         messagesWritten = true;
         await api.setChatMessages(patches, { refresh: "affected" });
         if (plan.mode === "seed_memories") {
-          const latest = [...backup.messages].reverse().map((message2) => message2.statusSnapshots.find((item) => item.swipeId === message2.selectedSwipe)?.value).find((snapshot) => Boolean(snapshot));
+          const latest = [...backup.messages].reverse().map((message3) => message3.statusSnapshots.find((item) => item.swipeId === message3.selectedSwipe)?.value).find((snapshot) => Boolean(snapshot));
           if (latest) {
             await api.updateWorldbookWith(current.worldbookName, (entries) => entries.map((entry) => {
               const echoes = entry.extra?.echoes;
@@ -31446,7 +31528,7 @@ var EchoesBackupManager = class {
 };
 
 // src/extension/ui/maintenance-panel.ts
-function message(error51) {
+function message2(error51) {
   return error51 instanceof Error ? error51.message : String(error51);
 }
 function downloadJson(name, value) {
@@ -31478,13 +31560,13 @@ var MaintenancePanel = class {
       const target = event.target.closest("[data-maintenance-action]");
       if (!target) return;
       void this.action(target.dataset.maintenanceAction ?? "", target).catch((error51) => {
-        toastr.error(message(error51), "Echoes \u7EF4\u62A4");
+        toastr.error(message2(error51), "Echoes \u7EF4\u62A4");
       });
     });
     this.root.addEventListener("change", (event) => {
       const input = event.target;
       if (input.dataset.maintenanceFile === "backup" && input.files?.[0]) {
-        void this.loadBackup(input.files[0]).catch((error51) => toastr.error(message(error51), "Echoes \u5907\u4EFD"));
+        void this.loadBackup(input.files[0]).catch((error51) => toastr.error(message2(error51), "Echoes \u5907\u4EFD"));
       }
     });
   }
@@ -31523,18 +31605,18 @@ var MaintenancePanel = class {
       this.credentials = credentials.status === "fulfilled" ? credentials.value : [];
       if (status.status === "rejected" && credentials.status === "rejected") throw status.reason;
       if (credentials.status === "rejected") {
-        toastr.warning(`\u51ED\u636E\u5B50\u7CFB\u7EDF\u4E0D\u53EF\u7528\uFF1A${message(credentials.reason)}`, "Echoes");
+        toastr.warning(`\u51ED\u636E\u5B50\u7CFB\u7EDF\u4E0D\u53EF\u7528\uFF1A${message2(credentials.reason)}`, "Echoes");
       }
       if (credentials.status === "fulfilled" && !this.credentialMigrationPrompted && legacyCredentialEndpoints().length > 0) {
         this.credentialMigrationPrompted = true;
         queueMicrotask(() => void this.migrateCredentials().catch((error51) => {
-          toastr.error(message(error51), "Echoes \u51ED\u636E\u8FC1\u79FB");
+          toastr.error(message2(error51), "Echoes \u51ED\u636E\u8FC1\u79FB");
         }));
       }
     } catch (error51) {
       this.status = null;
       this.credentials = [];
-      toastr.warning(`\u670D\u52A1\u7AEF\u7EF4\u62A4\u63A5\u53E3\u4E0D\u53EF\u7528\uFF1A${message(error51)}`, "Echoes");
+      toastr.warning(`\u670D\u52A1\u7AEF\u7EF4\u62A4\u63A5\u53E3\u4E0D\u53EF\u7528\uFF1A${message2(error51)}`, "Echoes");
     } finally {
       this.busy = false;
       this.renderAll();
@@ -31659,9 +31741,9 @@ var MaintenancePanel = class {
     form.reset();
     await this.refresh();
   }
-  async deleteCredential(id3) {
+  async deleteCredential(id2) {
     if (!confirm("\u5220\u9664\u8BE5\u670D\u52A1\u7AEF\u51ED\u636E\uFF1F\u5F15\u7528\u5B83\u7684\u7AEF\u70B9\u5C06\u65E0\u6CD5\u8C03\u7528\u3002")) return;
-    await echoesApi.deleteCredential(id3);
+    await echoesApi.deleteCredential(id2);
     await this.refresh();
   }
   async migrateCredentials() {
@@ -31860,7 +31942,7 @@ var MaintenancePanel = class {
         void new SummaryCoordinator().repairIndex().then(() => {
           toastr.success("\u6062\u590D\u540E\u7684\u603B\u7ED3\u7D22\u5F15\u5DF2\u91CD\u5EFA\u3002", "Echoes");
         }).catch((error51) => {
-          toastr.warning(`\u4E16\u754C\u4E66\u5DF2\u6062\u590D\uFF0C\u7D22\u5F15\u91CD\u5EFA\u5931\u8D25\uFF1A${message(error51)}`, "Echoes");
+          toastr.warning(`\u4E16\u754C\u4E66\u5DF2\u6062\u590D\uFF0C\u7D22\u5F15\u91CD\u5EFA\u5931\u8D25\uFF1A${message2(error51)}`, "Echoes");
         });
       }
     }
@@ -31875,7 +31957,7 @@ var MaintenancePanel = class {
 };
 
 // src/extension/ui/memory-panel.ts
-function iconButton2(icon, title, action) {
+function iconButton3(icon, title, action) {
   const button3 = document.createElement("button");
   button3.type = "button";
   button3.className = "echoes-icon-button";
@@ -31885,7 +31967,7 @@ function iconButton2(icon, title, action) {
   button3.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
   return button3;
 }
-function commandButton(icon, label, action, primary = false) {
+function commandButton2(icon, label, action, primary = false) {
   const button3 = document.createElement("button");
   button3.type = "button";
   button3.className = `menu_button${primary ? " echoes-primary" : ""}`;
@@ -31907,6 +31989,7 @@ var MemoryPanel = class {
   store = new WorldbookMemoryStore();
   retrievalPanel;
   summaryPanel;
+  apiConfigPanel;
   recallPanel;
   statusPanel;
   maintenancePanel;
@@ -31916,6 +31999,9 @@ var MemoryPanel = class {
   view = "memory";
   draggedPromptIndex = null;
   lastCompletedExtraction = "";
+  previousPrimaryView = "memory";
+  structuredSettingsTab = "automation";
+  summarySettingsTab = "generation";
   constructor() {
     this.root = document.createElement("div");
     this.root.id = "echoes-memory-overlay";
@@ -31924,19 +32010,18 @@ var MemoryPanel = class {
       <div class="echoes-window">
         <header class="echoes-header">
           <div class="echoes-brand"><i class="fa-solid fa-table"></i><strong>Echoes Memory</strong></div>
-          <nav class="echoes-view-tabs" aria-label="\u957F\u671F\u8BB0\u5FC6\u89C6\u56FE">
-            <button type="button" data-action="switch-view" data-view="memory" class="active" aria-label="\u8BB0\u5FC6\u8868" title="\u8BB0\u5FC6\u8868"><i class="fa-solid fa-table-cells"></i><span>\u8BB0\u5FC6\u8868</span></button>
-            <button type="button" data-action="switch-view" data-view="prompts" aria-label="\u63D0\u793A\u8BCD\u9884\u8BBE" title="\u63D0\u793A\u8BCD\u9884\u8BBE"><i class="fa-solid fa-list-ol"></i><span>\u63D0\u793A\u8BCD\u9884\u8BBE</span></button>
-            <button type="button" data-action="switch-view" data-view="templates" aria-label="\u7C7B\u578B\u6A21\u677F" title="\u7C7B\u578B\u6A21\u677F"><i class="fa-solid fa-layer-group"></i><span>\u7C7B\u578B\u6A21\u677F</span></button>
-            <button type="button" data-action="switch-view" data-view="summary" aria-label="\u5BF9\u8BDD\u603B\u7ED3" title="\u5BF9\u8BDD\u603B\u7ED3"><i class="fa-solid fa-clock-rotate-left"></i><span>\u603B\u7ED3</span></button>
-            <button type="button" data-action="switch-view" data-view="retrieval" aria-label="\u68C0\u7D22\u8BCA\u65AD" title="\u68C0\u7D22\u8BCA\u65AD"><i class="fa-solid fa-magnifying-glass-chart"></i><span>\u68C0\u7D22</span></button>
-            <button type="button" data-action="switch-view" data-view="recall" aria-label="\u4E3B\u6A21\u578B\u53EC\u56DE" title="\u4E3B\u6A21\u578B\u53EC\u56DE"><i class="fa-solid fa-brain"></i><span>\u53EC\u56DE</span></button>
-            <button type="button" data-action="switch-view" data-view="status" aria-label="\u666E\u901A\u72B6\u6001" title="\u666E\u901A\u72B6\u6001"><i class="fa-solid fa-gauge-high"></i><span>\u72B6\u6001</span></button>
-            <button type="button" data-action="switch-view" data-view="maintenance" aria-label="\u7EF4\u62A4" title="\u7EF4\u62A4"><i class="fa-solid fa-screwdriver-wrench"></i><span>\u7EF4\u62A4</span></button>
-          </nav>
+          <span class="echoes-version-label">${ECHOES_BUILD_INFO.appVersion}</span>
           <div class="echoes-header-actions"></div>
         </header>
         <div class="echoes-workspace">
+          <nav class="echoes-primary-nav" aria-label="Echoes \u4E00\u7EA7\u83DC\u5355">
+            <button type="button" data-action="switch-view" data-view="api" aria-label="API\u914D\u7F6E" title="API\u914D\u7F6E"><i class="fa-solid fa-plug"></i><span>API\u914D\u7F6E</span></button>
+            <button type="button" data-action="switch-view" data-view="memory" class="active" aria-label="\u7ED3\u6784\u5316\u8BB0\u5FC6" title="\u7ED3\u6784\u5316\u8BB0\u5FC6"><i class="fa-solid fa-table-cells"></i><span>\u7ED3\u6784\u5316\u8BB0\u5FC6</span></button>
+            <button type="button" data-action="switch-view" data-view="memory-settings" aria-label="\u7ED3\u6784\u5316\u8BB0\u5FC6\u8BBE\u7F6E" title="\u7ED3\u6784\u5316\u8BB0\u5FC6\u8BBE\u7F6E"><i class="fa-solid fa-table-columns"></i><span>\u7ED3\u6784\u5316\u8BB0\u5FC6\u8BBE\u7F6E</span></button>
+            <button type="button" data-action="switch-view" data-view="summary" aria-label="\u603B\u7ED3\u8BB0\u5FC6" title="\u603B\u7ED3\u8BB0\u5FC6"><i class="fa-solid fa-clock-rotate-left"></i><span>\u603B\u7ED3\u8BB0\u5FC6</span></button>
+            <button type="button" data-action="switch-view" data-view="summary-settings" aria-label="\u603B\u7ED3\u8BB0\u5FC6\u8BBE\u7F6E" title="\u603B\u7ED3\u8BB0\u5FC6\u8BBE\u7F6E"><i class="fa-solid fa-brain"></i><span>\u603B\u7ED3\u8BB0\u5FC6\u8BBE\u7F6E</span></button>
+            <button type="button" data-action="switch-view" data-view="status" aria-label="\u72B6\u6001\u8BB0\u5FC6\u4E0E\u8BBE\u7F6E" title="\u72B6\u6001\u8BB0\u5FC6\u4E0E\u8BBE\u7F6E"><i class="fa-solid fa-gauge-high"></i><span>\u72B6\u6001\u8BB0\u5FC6\u4E0E\u8BBE\u7F6E</span></button>
+          </nav>
           <aside class="echoes-sidebar">
             <div class="echoes-sidebar-heading">
               <span>\u5F53\u524D\u5BF9\u8BDD\u7C7B\u578B</span>
@@ -31952,6 +32037,7 @@ var MemoryPanel = class {
               <div class="echoes-table-title"><h1>\u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6</h1><span class="echoes-scope-label"></span></div>
               <div class="echoes-table-actions"></div>
             </div>
+            <nav class="echoes-subnav echoes-hidden" aria-label="\u9875\u9762\u5206\u7C7B"></nav>
             <div class="echoes-job-status echoes-hidden" role="status">
               <div class="echoes-progress"><span></span></div>
               <span data-job-message></span>
@@ -31963,17 +32049,21 @@ var MemoryPanel = class {
     document.body.append(this.root);
     this.retrievalPanel = new RetrievalPanel(this.root);
     this.summaryPanel = new SummaryPanel(this.root);
+    this.apiConfigPanel = new ApiConfigPanel(this.root);
     this.recallPanel = new RecallPanel(this.root);
     this.statusPanel = new StatusPanel(this.root);
     this.maintenancePanel = new MaintenancePanel(this.root);
     const headerActions = this.root.querySelector(".echoes-header-actions");
-    headerActions.append(iconButton2("gear", "\u526F API \u8BBE\u7F6E", "settings"));
-    headerActions.append(iconButton2("xmark", "\u5173\u95ED", "close"));
+    headerActions.append(iconButton3("gear", "\u7EF4\u62A4", "maintenance"));
+    headerActions.append(iconButton3("xmark", "\u5173\u95ED", "close"));
     this.bindEvents();
     extractionCoordinator.subscribe(() => {
-      if (this.view !== "memory" || this.root.classList.contains("echoes-hidden")) return;
+      if (!["memory", "memory-settings"].includes(this.view) || this.root.classList.contains("echoes-hidden")) return;
       this.renderToolbar();
-      if (this.state) this.renderMemoryGrid();
+      if (this.state) {
+        if (this.view === "memory") this.renderMemoryGrid();
+        else if (this.structuredSettingsTab === "automation") this.renderStructuredSettings();
+      }
       const trace = extractionCoordinator.trace();
       const completionKey = trace?.completedAt ? `${trace.state}:${trace.completedAt}` : "";
       if (completionKey && completionKey !== this.lastCompletedExtraction) {
@@ -31995,14 +32085,14 @@ var MemoryPanel = class {
   async reload() {
     const sequence = ++this.reloadSequence;
     const chatId = SillyTavern.getContext().chatId;
-    if (["retrieval", "summary", "recall", "status", "maintenance"].includes(this.view)) {
+    if (["api", "summary", "summary-settings", "status", "maintenance"].includes(this.view)) {
       this.render();
       return;
     }
     this.setContentMessage("\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u5BF9\u8BDD\u4E16\u754C\u4E66...");
     try {
       const state = await this.store.load();
-      if (sequence !== this.reloadSequence || this.view !== "memory" || SillyTavern.getContext().chatId !== chatId) return;
+      if (sequence !== this.reloadSequence || !["memory", "memory-settings"].includes(this.view) || SillyTavern.getContext().chatId !== chatId) return;
       this.state = state;
       if (!state.catalog.types.some((type) => type.id === this.activeTypeId)) {
         this.activeTypeId = state.catalog.types[0]?.id ?? null;
@@ -32012,7 +32102,7 @@ var MemoryPanel = class {
         toastr.warning(`\u6709 ${state.issues.length} \u4E2A\u4E16\u754C\u4E66\u6761\u76EE\u65E0\u6CD5\u89E3\u6790\uFF0C\u8BF7\u68C0\u67E5\u6761\u76EE YAML\u3002`, "Echoes");
       }
     } catch (error51) {
-      if (sequence !== this.reloadSequence || this.view !== "memory" || SillyTavern.getContext().chatId !== chatId) return;
+      if (sequence !== this.reloadSequence || !["memory", "memory-settings"].includes(this.view) || SillyTavern.getContext().chatId !== chatId) return;
       this.state = null;
       this.renderSidebar();
       this.renderToolbar();
@@ -32031,9 +32121,22 @@ var MemoryPanel = class {
       if (!target) return;
       const action = target.dataset.action;
       if (action === "close") this.close();
-      else if (action === "settings") void this.editSettings();
-      else if (action === "switch-view") {
+      else if (action === "maintenance") {
+        if (this.view === "maintenance") this.view = this.previousPrimaryView;
+        else {
+          this.previousPrimaryView = this.view;
+          this.view = "maintenance";
+        }
+        this.render();
+      } else if (action === "switch-view") {
         this.view = target.dataset.view;
+        this.previousPrimaryView = this.view;
+        void this.reload();
+      } else if (action === "structured-settings-tab") {
+        this.structuredSettingsTab = target.dataset.tab;
+        this.render();
+      } else if (action === "summary-settings-tab") {
+        this.summarySettingsTab = target.dataset.tab;
         this.render();
       } else if (action === "select-type") {
         this.activeTypeId = target.dataset.typeId ?? null;
@@ -32070,6 +32173,11 @@ var MemoryPanel = class {
         void this.togglePrompt(Number(target.dataset.index), target.checked);
       } else if (target.matches("[data-extraction-auto]")) {
         void this.toggleExtractionAutomation(target.checked);
+      } else if (target.matches("[data-extraction-message-count]")) {
+        const settings = getSettings();
+        settings.extractionMessageCount = Math.max(2, Math.min(500, Math.floor(Number(target.value))));
+        saveSettings(settings);
+        target.value = String(settings.extractionMessageCount);
       }
     });
     this.root.addEventListener("dragstart", (event) => {
@@ -32094,26 +32202,33 @@ var MemoryPanel = class {
     return this.state?.catalog.types.find((type) => type.id === this.activeTypeId);
   }
   render() {
-    this.root.classList.toggle("echoes-retrieval-view", this.view === "retrieval");
+    this.root.classList.toggle("echoes-api-view", this.view === "api");
+    this.root.classList.toggle("echoes-retrieval-view", this.view === "summary-settings" && this.summarySettingsTab === "retrieval");
     this.root.classList.toggle("echoes-summary-view", this.view === "summary");
-    this.root.classList.toggle("echoes-recall-view", this.view === "recall");
+    this.root.classList.toggle("echoes-summary-settings-view", this.view === "summary-settings");
+    this.root.classList.toggle("echoes-summary-generation-view", this.view === "summary-settings" && this.summarySettingsTab === "generation");
+    this.root.classList.toggle("echoes-recall-view", this.view === "summary-settings" && this.summarySettingsTab === "recall");
     this.root.classList.toggle("echoes-status-view", this.view === "status");
     this.root.classList.toggle("echoes-maintenance-view", this.view === "maintenance");
-    this.root.querySelectorAll("[data-view]").forEach((button3) => {
+    this.root.classList.toggle("echoes-context-view", ["memory", "summary", "status", "maintenance"].includes(this.view));
+    this.root.querySelectorAll(".echoes-primary-nav [data-view]").forEach((button3) => {
       button3.classList.toggle("active", button3.dataset.view === this.view);
     });
+    this.renderSubnav();
     this.renderSidebar();
     this.renderToolbar();
-    if (this.view === "retrieval") {
-      void this.retrievalPanel.render();
+    if (this.view === "api") {
+      void this.apiConfigPanel.render();
       return;
     }
     if (this.view === "summary") {
-      void this.summaryPanel.render();
+      void this.summaryPanel.render("memory");
       return;
     }
-    if (this.view === "recall") {
-      void this.recallPanel.render();
+    if (this.view === "summary-settings") {
+      if (this.summarySettingsTab === "generation") void this.summaryPanel.render("settings");
+      else if (this.summarySettingsTab === "recall") void this.recallPanel.render();
+      else void this.retrievalPanel.render();
       return;
     }
     if (this.view === "status") {
@@ -32126,34 +32241,38 @@ var MemoryPanel = class {
     }
     if (!this.state) return;
     if (this.view === "memory") this.renderMemoryGrid();
-    else if (this.view === "prompts") this.renderPromptPreset();
-    else this.renderTemplates();
+    else if (this.structuredSettingsTab === "prompts") this.renderPromptPreset();
+    else if (this.structuredSettingsTab === "templates") this.renderTemplates();
+    else this.renderStructuredSettings();
+  }
+  renderSubnav() {
+    const nav = this.root.querySelector(".echoes-subnav");
+    nav.replaceChildren();
+    const items = this.view === "memory-settings" ? [["automation", "\u81EA\u52A8\u63D0\u53D6"], ["prompts", "\u63D0\u793A\u8BCD\u9884\u8BBE"], ["templates", "\u7C7B\u578B\u6A21\u677F"]] : this.view === "summary-settings" ? [["generation", "\u603B\u7ED3\u751F\u6210"], ["recall", "\u53EC\u56DE\u4E0E\u6CE8\u5165"], ["retrieval", "\u68C0\u7D22\u7EF4\u62A4"]] : [];
+    nav.classList.toggle("echoes-hidden", items.length === 0);
+    for (const [tab, label] of items) {
+      const button3 = document.createElement("button");
+      button3.type = "button";
+      button3.dataset.action = this.view === "memory-settings" ? "structured-settings-tab" : "summary-settings-tab";
+      button3.dataset.tab = tab;
+      button3.textContent = label;
+      const active = this.view === "memory-settings" ? this.structuredSettingsTab : this.summarySettingsTab;
+      button3.classList.toggle("active", active === tab);
+      nav.append(button3);
+    }
   }
   renderSidebar() {
     const heading = this.root.querySelector(".echoes-sidebar-heading > span");
     const actions = this.root.querySelector(".echoes-sidebar-actions");
     const list = this.root.querySelector(".echoes-table-list");
     list.replaceChildren();
-    if (this.view === "retrieval") {
-      heading.textContent = "\u68C0\u7D22\u96C6\u5408";
+    if (["api", "memory-settings", "summary-settings"].includes(this.view)) {
+      heading.textContent = "";
       actions.replaceChildren();
-      const loading = document.createElement("p");
-      loading.className = "echoes-empty-note";
-      loading.textContent = "\u6B63\u5728\u8BFB\u53D6...";
-      list.append(loading);
       return;
     }
     if (this.view === "summary") {
       heading.textContent = "\u603B\u7ED3\u72B6\u6001";
-      actions.replaceChildren();
-      const loading = document.createElement("p");
-      loading.className = "echoes-empty-note";
-      loading.textContent = "\u6B63\u5728\u8BFB\u53D6...";
-      list.append(loading);
-      return;
-    }
-    if (this.view === "recall") {
-      heading.textContent = "\u53EC\u56DE\u6765\u6E90";
       actions.replaceChildren();
       const loading = document.createElement("p");
       loading.className = "echoes-empty-note";
@@ -32217,44 +32336,36 @@ var MemoryPanel = class {
     const scope = this.root.querySelector(".echoes-scope-label");
     const actions = this.root.querySelector(".echoes-table-actions");
     actions.replaceChildren();
-    scope.textContent = this.state ? `\u804A\u5929\u4E16\u754C\u4E66 \xB7 ${this.state.worldbookName}` : "";
-    if (this.view === "retrieval") {
-      title.textContent = "\u672C\u5730\u6DF7\u5408\u68C0\u7D22";
-      scope.textContent = "LanceDB \xB7 BM25 \xB7 Vector \xB7 RRF \xB7 Rerank";
-      actions.append(iconButton2("rotate", "\u5237\u65B0", "retrieval-refresh"));
+    scope.textContent = "";
+    if (this.view === "api") {
+      title.textContent = "API\u914D\u7F6E";
+      scope.textContent = "\u51ED\u636E \xB7 \u751F\u6210\u6A21\u578B \xB7 Embedding \xB7 Rerank \xB7 \u5DE5\u4F5C\u6D41\u5206\u914D";
       return;
     }
     if (this.view === "summary") {
-      title.textContent = "\u5BF9\u8BDD\u603B\u7ED3";
-      scope.textContent = "\u4E16\u754C\u4E66\u6743\u5A01\u5B58\u50A8 \xB7 \u6BCF\u5BF9\u8BDD\u72EC\u7ACB\u68C0\u7D22\u96C6\u5408";
-      const refresh = iconButton2("rotate", "\u5237\u65B0", "unused");
+      title.textContent = "\u603B\u7ED3\u8BB0\u5FC6";
+      scope.textContent = "\u603B\u7ED3\u8BB0\u5F55 \xB7 \u4E0A\u4E0B\u6587\u538B\u7F29 \xB7 \u53EC\u56DE\u8BCA\u65AD";
+      const refresh = iconButton3("rotate", "\u5237\u65B0", "unused");
       delete refresh.dataset.action;
       refresh.dataset.summaryAction = "refresh";
-      const repair = iconButton2("screwdriver-wrench", "\u4FEE\u590D\u7D22\u5F15", "unused");
+      const repair = iconButton3("screwdriver-wrench", "\u4FEE\u590D\u7D22\u5F15", "unused");
       delete repair.dataset.action;
       repair.dataset.summaryAction = "repair";
       actions.append(refresh, repair);
       return;
     }
-    if (this.view === "recall") {
-      title.textContent = "\u4E3B\u6A21\u578B\u603B\u7ED3\u53EC\u56DE";
-      scope.textContent = "\u5F53\u524D\u804A\u5929\u4E0E\u624B\u52A8\u9644\u52A0\u6765\u6E90 \xB7 \u5168\u5C40\u52A0\u6743 Top K";
-      const refresh = iconButton2("rotate", "\u5237\u65B0", "unused");
-      delete refresh.dataset.action;
-      refresh.dataset.recallAction = "refresh";
-      const preview = commandButton("flask", "\u68C0\u7D22\u9884\u89C8", "unused");
-      delete preview.dataset.action;
-      preview.dataset.recallAction = "preview";
-      actions.append(refresh, preview);
+    if (this.view === "summary-settings") {
+      title.textContent = "\u603B\u7ED3\u8BB0\u5FC6\u8BBE\u7F6E";
+      scope.textContent = this.summarySettingsTab === "generation" ? "\u751F\u6210\u89C4\u5219 \xB7 \u63D0\u793A\u8BCD \xB7 \u6D88\u606F\u6E05\u6D17" : this.summarySettingsTab === "recall" ? "\u53EC\u56DE\u6765\u6E90 \xB7 \u6392\u5E8F\u6743\u91CD \xB7 \u67E5\u8BE2\u9884\u8BBE \xB7 \u6CE8\u5165" : "\u96C6\u5408 \xB7 \u7D22\u5F15 \xB7 \u6570\u636E\u5BFC\u5165 \xB7 \u67E5\u8BE2\u5B9E\u9A8C";
       return;
     }
     if (this.view === "status") {
-      title.textContent = "\u666E\u901A\u72B6\u6001\u8BB0\u5FC6";
-      scope.textContent = "\u6D88\u606F\u5F53\u524D Swipe \u6743\u5A01\u5FEB\u7167 \xB7 \u4E16\u754C\u4E66\u4E34\u65F6\u6CE8\u5165";
-      const refresh = iconButton2("rotate", "\u5237\u65B0", "unused");
+      title.textContent = "\u72B6\u6001\u8BB0\u5FC6\u4E0E\u8BBE\u7F6E";
+      scope.textContent = "\u5F53\u524D\u72B6\u6001 \xB7 \u5386\u53F2\u5FEB\u7167 \xB7 \u63D0\u793A\u8BCD \xB7 \u6821\u9A8C \xB7 \u6CE8\u5165";
+      const refresh = iconButton3("rotate", "\u5237\u65B0", "unused");
       delete refresh.dataset.action;
       refresh.dataset.statusAction = "refresh";
-      const sync = commandButton("arrows-rotate", "\u624B\u52A8\u540C\u6B65", "unused", true);
+      const sync = commandButton2("arrows-rotate", "\u624B\u52A8\u540C\u6B65", "unused", true);
       delete sync.dataset.action;
       sync.dataset.statusAction = "sync";
       actions.append(refresh, sync);
@@ -32265,33 +32376,34 @@ var MemoryPanel = class {
       scope.textContent = "\u7248\u672C \xB7 \u51ED\u636E \xB7 \u81EA\u68C0 \xB7 \u4FBF\u643A\u5907\u4EFD";
       return;
     }
-    if (this.view === "prompts") {
-      title.textContent = "\u526F API \u63D0\u793A\u8BCD\u9884\u8BBE";
-      actions.append(commandButton("eye", "\u9884\u89C8", "preview-prompts"));
-      actions.append(commandButton("plus", "\u6DFB\u52A0\u63D0\u793A\u8BCD", "add-prompt", true));
+    if (this.view === "memory-settings") {
+      title.textContent = "\u7ED3\u6784\u5316\u8BB0\u5FC6\u8BBE\u7F6E";
+      scope.textContent = this.state ? `\u804A\u5929\u4E16\u754C\u4E66 \xB7 ${this.state.worldbookName}` : "";
+      if (this.structuredSettingsTab === "prompts") {
+        actions.append(commandButton2("eye", "\u9884\u89C8", "preview-prompts"));
+        actions.append(commandButton2("plus", "\u6DFB\u52A0\u63D0\u793A\u8BCD", "add-prompt", true));
+      } else if (this.structuredSettingsTab === "templates") {
+        actions.append(commandButton2("plus", "\u65B0\u5EFA\u6A21\u677F", "add-template", true));
+      }
       return;
     }
-    if (this.view === "templates") {
-      title.textContent = "\u7C7B\u578B\u6A21\u677F";
-      actions.append(commandButton("plus", "\u65B0\u5EFA\u6A21\u677F", "add-template", true));
-      return;
-    }
+    scope.textContent = this.state ? `\u804A\u5929\u4E16\u754C\u4E66 \xB7 ${this.state.worldbookName}` : "";
     const type = this.activeType;
     title.textContent = type?.name ?? "\u8BF7\u9009\u62E9\u8BB0\u5FC6\u7C7B\u578B";
     if (!type) return;
     const running = extractionCoordinator.isRunning();
     const review = extractionCoordinator.review();
-    const extract2 = commandButton("wand-magic-sparkles", "\u5904\u7406\u4E0B\u4E00\u6279", "extract");
+    const extract2 = commandButton2("wand-magic-sparkles", "\u5904\u7406\u4E0B\u4E00\u6279", "extract");
     extract2.disabled = running;
     actions.append(extract2);
-    if (running) actions.append(commandButton("stop", "\u505C\u6B62", "extraction-stop"));
-    if (review) actions.append(commandButton("clipboard-check", "\u5BA1\u6838", "extraction-review", true));
+    if (running) actions.append(commandButton2("stop", "\u505C\u6B62", "extraction-stop"));
+    if (review) actions.append(commandButton2("clipboard-check", "\u5BA1\u6838", "extraction-review", true));
     else if (extractionCoordinator.pauseReason()) {
-      actions.append(commandButton("rotate", "\u91CD\u8DD1", "extraction-retry"));
+      actions.append(commandButton2("rotate", "\u91CD\u8DD1", "extraction-retry"));
     }
-    actions.append(commandButton("plus", "\u6DFB\u52A0\u6570\u636E", "add-row", true));
-    actions.append(iconButton2("pen", "\u7F16\u8F91\u7C7B\u578B", "edit-type"));
-    actions.append(iconButton2("trash", "\u5220\u9664\u7C7B\u578B", "delete-type"));
+    actions.append(commandButton2("plus", "\u6DFB\u52A0\u6570\u636E", "add-row", true));
+    actions.append(iconButton3("pen", "\u7F16\u8F91\u7C7B\u578B", "edit-type"));
+    actions.append(iconButton3("trash", "\u5220\u9664\u7C7B\u578B", "delete-type"));
   }
   renderMemoryGrid() {
     const type = this.activeType;
@@ -32299,7 +32411,6 @@ var MemoryPanel = class {
     const host = this.root.querySelector(".echoes-grid-host");
     const page = document.createElement("div");
     page.className = "echoes-memory-page";
-    page.append(this.renderExtractionAutomationPanel());
     const content = document.createElement("div");
     content.className = "echoes-memory-table-host";
     page.append(content);
@@ -32346,9 +32457,9 @@ var MemoryPanel = class {
       }
       const actionCell = document.createElement("td");
       actionCell.className = "echoes-row-actions";
-      const edit = iconButton2("pen", "\u7F16\u8F91\u6570\u636E", "edit-row");
+      const edit = iconButton3("pen", "\u7F16\u8F91\u6570\u636E", "edit-row");
       edit.dataset.rowId = row.id;
-      const remove = iconButton2("trash", "\u5220\u9664\u6570\u636E", "delete-row");
+      const remove = iconButton3("trash", "\u5220\u9664\u6570\u636E", "delete-row");
       remove.dataset.rowId = row.id;
       actionCell.append(edit, remove);
       tr.append(actionCell);
@@ -32357,6 +32468,36 @@ var MemoryPanel = class {
     table.append(body);
     wrapper.append(table);
     content.append(wrapper);
+    host.replaceChildren(page);
+  }
+  renderStructuredSettings() {
+    if (!this.state) return;
+    const settings = getSettings();
+    const workflow = settings.generationWorkflows.extraction;
+    const group = settings.generationGroups.find((candidate) => candidate.id === workflow.groupId);
+    const host = this.root.querySelector(".echoes-grid-host");
+    const page = document.createElement("div");
+    page.className = "echoes-structured-settings-page";
+    const section = document.createElement("section");
+    section.className = "echoes-settings-section";
+    section.innerHTML = `
+      <div class="echoes-section-heading">
+        <div><h2>\u81EA\u52A8\u63D0\u53D6\u884C\u4E3A</h2><span>\u6A21\u578B\u548C\u6545\u969C\u7B56\u7565\u7EDF\u4E00\u5728 API\u914D\u7F6E\u4E2D\u7BA1\u7406</span></div>
+        <button type="button" class="menu_button" data-action="switch-view" data-view="api"><i class="fa-solid fa-plug"></i> \u524D\u5F80 API\u914D\u7F6E</button>
+      </div>
+      <div class="echoes-workflow-summary">
+        <span>\u751F\u6210\u7AEF\u70B9\u7EC4<strong data-structured-api-group></strong></span>
+        <span>\u6545\u969C\u7B56\u7565<strong data-structured-api-policy></strong></span>
+        <label>\u6279\u6B21\u6D88\u606F\u9608\u503C<input type="number" min="2" max="500" data-extraction-message-count></label>
+      </div>`;
+    section.querySelector("[data-structured-api-group]").textContent = group?.name ?? "\u672A\u914D\u7F6E";
+    section.querySelector("[data-structured-api-policy]").textContent = {
+      confirm_ambiguous: "\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4",
+      always: "\u59CB\u7EC8\u81EA\u52A8\u5207\u6362",
+      definitive_only: "\u4EC5\u660E\u786E\u5931\u8D25\u5207\u6362"
+    }[workflow.failoverPolicy];
+    section.querySelector("[data-extraction-message-count]").value = String(settings.extractionMessageCount);
+    page.append(section, this.renderExtractionAutomationPanel());
     host.replaceChildren(page);
   }
   renderExtractionAutomationPanel() {
@@ -32413,10 +32554,10 @@ var MemoryPanel = class {
     section.querySelector(".echoes-extraction-trace pre").textContent = trace ? JSON.stringify(trace, null, 2) : "\u6682\u65E0\u4EFB\u52A1\u8BB0\u5F55\u3002";
     return section;
   }
-  gridMessage(message2) {
+  gridMessage(message3) {
     const note = document.createElement("div");
     note.className = "echoes-grid-message empty";
-    note.textContent = message2;
+    note.textContent = message3;
     return note;
   }
   renderPromptPreset() {
@@ -32458,15 +32599,15 @@ var MemoryPanel = class {
       input.dataset.promptToggle = "true";
       input.dataset.index = String(index);
       toggle.append(input, document.createElement("span"));
-      const up = iconButton2("arrow-up", "\u4E0A\u79FB", "move-prompt-up");
+      const up = iconButton3("arrow-up", "\u4E0A\u79FB", "move-prompt-up");
       up.dataset.index = String(index);
       up.disabled = index === 0;
-      const down = iconButton2("arrow-down", "\u4E0B\u79FB", "move-prompt-down");
+      const down = iconButton3("arrow-down", "\u4E0B\u79FB", "move-prompt-down");
       down.dataset.index = String(index);
       down.disabled = index === items.length - 1;
-      const edit = iconButton2("pen", "\u7F16\u8F91\u63D0\u793A\u8BCD", "edit-prompt");
+      const edit = iconButton3("pen", "\u7F16\u8F91\u63D0\u793A\u8BCD", "edit-prompt");
       edit.dataset.index = String(index);
-      const remove = iconButton2("trash", "\u5220\u9664\u63D0\u793A\u8BCD", "delete-prompt");
+      const remove = iconButton3("trash", "\u5220\u9664\u63D0\u793A\u8BCD", "delete-prompt");
       remove.dataset.index = String(index);
       controls.append(toggle, up, down, edit, remove);
       row.append(handle, meta3, controls);
@@ -32501,9 +32642,9 @@ var MemoryPanel = class {
         lock.innerHTML = '<i class="fa-solid fa-lock"></i> \u5185\u7F6E\u6A21\u677F';
         actions.append(lock);
       } else {
-        const edit = iconButton2("pen", "\u7F16\u8F91\u6A21\u677F", "edit-template");
+        const edit = iconButton3("pen", "\u7F16\u8F91\u6A21\u677F", "edit-template");
         edit.dataset.templateId = template.id;
-        const remove = iconButton2("trash", "\u5220\u9664\u6A21\u677F", "delete-template");
+        const remove = iconButton3("trash", "\u5220\u9664\u6A21\u677F", "delete-template");
         remove.dataset.templateId = template.id;
         actions.append(edit, remove);
       }
@@ -32678,12 +32819,6 @@ var MemoryPanel = class {
       toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u8FC1\u79FB\u5931\u8D25");
     }
   }
-  async editSettings() {
-    const settings = await openSettingsDialog(getSettings());
-    if (!settings) return;
-    saveSettings(settings);
-    toastr.success("\u5DE5\u4F5C\u6D41\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\u3002", "Echoes");
-  }
   async extractMemories() {
     if (extractionCoordinator.isRunning() || !this.state) return;
     if (extractionCoordinator.review()) {
@@ -32693,7 +32828,8 @@ var MemoryPanel = class {
     const settings = getSettings();
     if (!settings.generationGroups.some((group) => group.id === settings.generationWorkflows.extraction.groupId)) {
       toastr.warning("\u8BF7\u5148\u914D\u7F6E\u7ED3\u6784\u5316\u8BB0\u5FC6\u751F\u6210\u7AEF\u70B9\u7EC4\u3002", "Echoes");
-      await this.editSettings();
+      this.view = "api";
+      this.render();
       return;
     }
     try {
@@ -32770,11 +32906,11 @@ var MemoryPanel = class {
       toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u68C0\u67E5\u70B9\u66F4\u65B0\u5931\u8D25");
     }
   }
-  setContentMessage(message2, error51 = false, empty = false) {
+  setContentMessage(message3, error51 = false, empty = false) {
     const host = this.root.querySelector(".echoes-grid-host");
     const note = document.createElement("div");
     note.className = `echoes-grid-message${error51 ? " error" : ""}${empty ? " empty" : ""}`;
-    note.textContent = message2;
+    note.textContent = message3;
     host.replaceChildren(note);
   }
 };
@@ -32808,7 +32944,7 @@ function addLaunchControls() {
         </div>
         <div class="inline-drawer-content">
           <button type="button" class="menu_button echoes-settings-open" data-echoes-open>
-            <i class="fa-solid fa-table-columns"></i> \u6253\u5F00\u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6
+            <i class="fa-solid fa-table-columns"></i> \u6253\u5F00 Echoes \u8BB0\u5FC6\u9762\u677F
           </button>
         </div>
       </div>`;
