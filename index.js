@@ -104,28 +104,46 @@ __export(client_exports, {
 });
 async function requestJson(path, init) {
   const requestHeaders = SillyTavern.getContext().getRequestHeaders();
-  const response = await fetch(`${API_ROOT}${path}`, {
-    ...init,
-    credentials: "same-origin",
-    headers: {
-      ...requestHeaders,
-      "X-Echoes-Api-Protocol": String(API_PROTOCOL_VERSION),
-      ...init?.headers ?? {}
+  const controller = new AbortController();
+  const upstreamSignal = init?.signal;
+  const abortFromUpstream = () => controller.abort(upstreamSignal?.reason);
+  if (upstreamSignal?.aborted) abortFromUpstream();
+  else upstreamSignal?.addEventListener("abort", abortFromUpstream, { once: true });
+  const timeout = globalThis.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${API_ROOT}${path}`, {
+      ...init,
+      signal: controller.signal,
+      credentials: "same-origin",
+      headers: {
+        ...requestHeaders,
+        "X-Echoes-Api-Protocol": String(API_PROTOCOL_VERSION),
+        ...init?.headers ?? {}
+      }
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(payload?.error ?? `Echoes backend returned HTTP ${response.status}.`);
     }
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    throw new Error(payload?.error ?? `Echoes backend returned HTTP ${response.status}.`);
+    if (response.status === 204) return void 0;
+    return response.json();
+  } catch (error51) {
+    if (controller.signal.aborted && !upstreamSignal?.aborted) {
+      throw new Error(`Echoes backend request timed out after ${REQUEST_TIMEOUT_MS / 1e3} seconds.`);
+    }
+    throw error51;
+  } finally {
+    globalThis.clearTimeout(timeout);
+    upstreamSignal?.removeEventListener("abort", abortFromUpstream);
   }
-  if (response.status === 204) return void 0;
-  return response.json();
 }
-var API_ROOT, echoesApi;
+var API_ROOT, REQUEST_TIMEOUT_MS, echoesApi;
 var init_client = __esm({
   "src/extension/api/client.ts"() {
     "use strict";
     init_domain();
     API_ROOT = "/api/plugins/echoes-memory";
+    REQUEST_TIMEOUT_MS = 6e4;
     echoesApi = {
       health() {
         return requestJson("/health");
@@ -288,7 +306,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "0.3.1",
+  version: "0.3.2",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -23331,8 +23349,8 @@ var WorldbookMemoryStore = class {
     });
   }
   async migrateFrom(sourceWorldbookName, selectedTypeIds, policy) {
-    const source = await this.inspect(sourceWorldbookName);
     return this.enqueue(async (target) => {
+      const source = await this.inspect(sourceWorldbookName);
       const targetWorldbookName = await this.ensureCurrentCatalog(target);
       if (sourceWorldbookName === targetWorldbookName) {
         throw new Error("The source and target worldbooks are the same.");
@@ -23743,6 +23761,7 @@ var ExtractionCoordinator = class {
   pauses = /* @__PURE__ */ new Map();
   traces = /* @__PURE__ */ new Map();
   listeners = /* @__PURE__ */ new Set();
+  rerunAutomatic = /* @__PURE__ */ new Set();
   subscribe(listener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -23846,14 +23865,23 @@ var ExtractionCoordinator = class {
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) return Promise.resolve();
     const existing = this.active.get(chatId);
-    if (existing) return existing;
+    if (existing) {
+      if (mode === "auto" && !userInitiated) this.rerunAutomatic.add(chatId);
+      return existing;
+    }
     if (!userInitiated && (this.pauses.has(chatId) || this.reviews.has(chatId))) {
       return Promise.resolve();
     }
     const operation = this.run(mode, userInitiated).finally(() => {
       if (this.active.get(chatId) === operation) this.active.delete(chatId);
+      const shouldRerun = this.rerunAutomatic.delete(chatId);
       this.activeJobIds.delete(chatId);
       this.emit();
+      if (shouldRerun && SillyTavern.getContext().chatId === chatId) {
+        queueMicrotask(() => {
+          void this.runAutomatic().catch((error51) => console.error("[Echoes] Deferred structured extraction failed.", error51));
+        });
+      }
     });
     this.active.set(chatId, operation);
     this.emit();
@@ -24644,17 +24672,31 @@ var RetrievalPanel = class {
     this.root.addEventListener("click", (event) => {
       const target = event.target.closest("[data-retrieval-action]");
       if (!target) return;
-      void this.handleAction(target.dataset.retrievalAction ?? "", target);
+      if (target instanceof HTMLButtonElement && target.disabled) return;
+      if (target instanceof HTMLButtonElement) {
+        target.disabled = true;
+        target.setAttribute("aria-busy", "true");
+      }
+      void this.handleAction(target.dataset.retrievalAction ?? "", target).finally(() => {
+        if (target instanceof HTMLButtonElement && target.isConnected) target.disabled = false;
+        target.removeAttribute("aria-busy");
+      });
     });
     this.root.addEventListener("submit", (event) => {
       const form = event.target;
-      if (form.matches("[data-retrieval-manual-form]")) {
-        event.preventDefault();
-        void this.importManual(form);
-      } else if (form.matches("[data-retrieval-query-form]")) {
-        event.preventDefault();
-        void this.runQuery(form);
-      }
+      const isManual = form.matches("[data-retrieval-manual-form]");
+      const isQuery = form.matches("[data-retrieval-query-form]");
+      if (!isManual && !isQuery) return;
+      event.preventDefault();
+      const submit = form.querySelector('button[type="submit"]');
+      if (submit?.disabled) return;
+      if (submit) submit.disabled = true;
+      form.setAttribute("aria-busy", "true");
+      const operation = isManual ? this.importManual(form) : this.runQuery(form);
+      void operation.catch((error51) => toastr.error(errorMessage(error51), "Echoes \u68C0\u7D22")).finally(() => {
+        if (submit?.isConnected) submit.disabled = false;
+        if (form.isConnected) form.removeAttribute("aria-busy");
+      });
     });
   }
   root;
@@ -24859,10 +24901,18 @@ var RetrievalPanel = class {
     form.elements.namedItem("id").value = uid("collection");
     const select = form.elements.namedItem("groupId");
     groups.forEach((group) => select.add(new Option(`${group.name} \xB7 ${group.dimensions} \u7EF4`, group.id)));
-    dialog.querySelector("[data-close]").addEventListener("click", () => dialog.close("cancel"));
+    const close = dialog.querySelector("[data-close]");
+    close.addEventListener("click", () => dialog.close("cancel"));
+    dialog.addEventListener("cancel", (event) => {
+      if (form.querySelector('button[type="submit"]').disabled) event.preventDefault();
+    });
     await new Promise((resolve) => {
       form.addEventListener("submit", (event) => {
         event.preventDefault();
+        const submit = form.querySelector('button[type="submit"]');
+        if (submit.disabled) return;
+        submit.disabled = true;
+        close.disabled = true;
         const group = groups.find((item) => item.id === select.value);
         void echoesApi.createRetrievalCollection({
           id: selectedValue(form, "[name=id]"),
@@ -24870,7 +24920,13 @@ var RetrievalPanel = class {
           description: selectedValue(form, "[name=description]"),
           embeddingSpaceId: group.embeddingSpaceId,
           dimensions: group.dimensions
-        }).then(() => dialog.close("saved")).catch((error51) => toastr.error(errorMessage(error51), "\u96C6\u5408\u521B\u5EFA\u5931\u8D25"));
+        }).then(() => {
+          if (dialog.open) dialog.close("saved");
+        }).catch((error51) => {
+          close.disabled = false;
+          toastr.error(errorMessage(error51), "\u96C6\u5408\u521B\u5EFA\u5931\u8D25");
+          if (submit.isConnected) submit.disabled = false;
+        });
       });
       dialog.addEventListener("close", () => {
         dialog.remove();
@@ -25001,7 +25057,11 @@ var RetrievalPanel = class {
       rerankEnabled,
       vectorTopK: 30,
       bm25TopK: 30,
-      finalTopK: Number(selectedValue(form, "[name=finalTopK]")),
+      finalTopK: (() => {
+        const value = Number(selectedValue(form, "[name=finalTopK]"));
+        if (!Number.isInteger(value) || value < 1 || value > 100) throw new Error("\u7ED3\u679C\u6570\u5FC5\u987B\u662F 1 \u5230 100 \u4E4B\u95F4\u7684\u6574\u6570\u3002");
+        return value;
+      })(),
       rerankTopK: 30,
       failoverPolicy: settings.retrieval.failoverPolicy,
       ...vectorEnabled && embeddingGroup ? { embeddingGroup } : {},
@@ -25103,6 +25163,7 @@ var RetrievalPanel = class {
       job = await echoesApi.getJob(job.id);
     }
     this.activeJobId = null;
+    await echoesApi.cancelJob(job.id).catch(() => void 0);
     throw new Error("\u7B49\u5F85\u68C0\u7D22\u4EFB\u52A1\u8D85\u65F6\u3002");
   }
   showJob(job) {
@@ -25156,11 +25217,16 @@ function commandButton(icon, label, action, primary = false) {
   button3.innerHTML = `<i class="fa-solid fa-${icon}"></i> ${label}`;
   return button3;
 }
-async function waitJob(job) {
+async function waitJob(job, maxWaitMs = 10 * 6e4) {
   let current = job;
-  while (!TERMINAL_STATES3.has(current.status)) {
+  const deadline = Date.now() + maxWaitMs;
+  while (!TERMINAL_STATES3.has(current.status) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 500));
     current = await echoesApi.getJob(job.id);
+  }
+  if (!TERMINAL_STATES3.has(current.status)) {
+    await echoesApi.cancelJob(job.id).catch(() => void 0);
+    throw new Error("\u7AEF\u70B9\u6D4B\u8BD5\u7B49\u5F85\u8D85\u65F6\uFF0C\u4EFB\u52A1\u5DF2\u53D6\u6D88\u3002");
   }
   if (current.status !== "succeeded") throw new Error(current.error?.message ?? current.message);
   return current;
@@ -25177,12 +25243,19 @@ var ApiConfigPanel = class {
   tab = "workflows";
   credentials = [];
   renderSequence = 0;
+  credentialLoadError = null;
   async render(tab = this.tab) {
     this.tab = tab;
     const sequence = ++this.renderSequence;
     const host = this.root.querySelector(".echoes-grid-host");
     host.innerHTML = '<div class="echoes-grid-message">\u6B63\u5728\u8BFB\u53D6 API \u914D\u7F6E...</div>';
-    this.credentials = await echoesApi.listCredentials().catch(() => []);
+    try {
+      this.credentials = await echoesApi.listCredentials();
+      this.credentialLoadError = null;
+    } catch (error51) {
+      this.credentials = [];
+      this.credentialLoadError = message(error51);
+    }
     if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-api-view")) return;
     host.innerHTML = `
       <div class="echoes-api-page">
@@ -25194,31 +25267,59 @@ var ApiConfigPanel = class {
           <button type="button" data-api-action="tab" data-api-tab="credentials">\u51ED\u636E</button>
         </nav>
         <div class="echoes-api-content" data-api-content></div>
+        ${this.credentialLoadError ? '<div class="echoes-warning-band" data-api-credential-warning><i class="fa-solid fa-triangle-exclamation"></i><span></span></div>' : ""}
       </div>`;
     host.querySelectorAll("[data-api-tab]").forEach((button3) => {
       button3.classList.toggle("active", button3.dataset.apiTab === this.tab);
     });
+    const credentialWarning = host.querySelector("[data-api-credential-warning] span");
+    if (credentialWarning) {
+      credentialWarning.textContent = `\u65E0\u6CD5\u8BFB\u53D6\u670D\u52A1\u7AEF\u51ED\u636E\uFF1A${this.credentialLoadError}\u3002\u7AEF\u70B9\u53EF\u7528\u6027\u6682\u65E0\u6CD5\u786E\u8BA4\u3002`;
+    }
     this.renderTab();
   }
   bindEvents() {
     this.root.addEventListener("click", (event) => {
       const target = event.target.closest("[data-api-action]");
       if (!target) return;
-      void this.handleAction(target.dataset.apiAction ?? "", target).catch((error51) => {
-        toastr.error(message(error51), "Echoes API\u914D\u7F6E");
+      if (target instanceof HTMLButtonElement && target.disabled) return;
+      const action = target.dataset.apiAction ?? "";
+      const lock = target instanceof HTMLButtonElement && (action === "refresh" || action === "migrate-credentials" || action.startsWith("test-"));
+      if (lock) {
+        target.disabled = true;
+        target.setAttribute("aria-busy", "true");
+      }
+      void this.handleAction(action, target).catch((error51) => toastr.error(message(error51), "Echoes API\u914D\u7F6E")).finally(() => {
+        if (lock && target.isConnected) {
+          target.disabled = false;
+          target.removeAttribute("aria-busy");
+        }
       });
     });
     this.root.addEventListener("change", (event) => {
       const target = event.target;
-      if (target.matches("[data-api-workflow]")) this.saveWorkflowBindings();
-      else if (target.matches("[data-api-generation-toggle]")) this.toggleGenerationEndpoint(target);
-      else if (target.matches("[data-api-retrieval-toggle]")) this.toggleRetrievalEndpoint(target);
+      try {
+        if (target.matches("[data-api-workflow]")) this.saveWorkflowBindings();
+        else if (target.matches("[data-api-generation-toggle]")) this.toggleGenerationEndpoint(target);
+        else if (target.matches("[data-api-retrieval-toggle]")) this.toggleRetrievalEndpoint(target);
+      } catch (error51) {
+        toastr.error(message(error51), "Echoes API\u914D\u7F6E");
+      }
     });
     this.root.addEventListener("submit", (event) => {
       const form = event.target;
       if (!form.matches("[data-api-credential-form]")) return;
       event.preventDefault();
-      void this.addCredential(form).catch((error51) => toastr.error(message(error51), "Echoes \u51ED\u636E"));
+      const submit = form.querySelector('button[type="submit"]');
+      if (submit?.disabled) return;
+      if (submit) {
+        submit.disabled = true;
+        form.setAttribute("aria-busy", "true");
+      }
+      void this.addCredential(form).catch((error51) => toastr.error(message(error51), "Echoes \u51ED\u636E")).finally(() => {
+        if (submit?.isConnected) submit.disabled = false;
+        if (form.isConnected) form.removeAttribute("aria-busy");
+      });
     });
   }
   async handleAction(action, target) {
@@ -25237,6 +25338,7 @@ var ApiConfigPanel = class {
     else if (action === "delete-retrieval-group") this.deleteRetrievalGroup(target.dataset.kind, target.dataset.groupId ?? "");
     else if (action === "test-retrieval") await this.testRetrievalEndpoint(target);
     else if (action === "delete-credential") await this.deleteCredential(target.dataset.id ?? "");
+    else if (action === "edit-credential") await this.editCredential(target.dataset.id ?? "");
     else if (action === "migrate-credentials") await this.migrateCredentials();
   }
   renderTab() {
@@ -25295,20 +25397,30 @@ var ApiConfigPanel = class {
     const host = this.root.querySelector("[data-api-binding-status]");
     if (!host) return;
     const settings = getSettings();
-    const generationIds = new Set(settings.generationGroups.map((group) => group.id));
-    const embeddingIds = new Set(settings.retrieval.embeddingGroups.map((group) => group.id));
-    const rerankIds = new Set(settings.retrieval.rerankSets.map((group) => group.id));
+    const credentialIds = new Set(this.credentials.map((credential) => credential.id));
+    const endpointReady = (endpoint) => endpoint.enabled && (!endpoint.credentialId || credentialIds.has(endpoint.credentialId));
+    const generationReady = (groupId) => {
+      const group = settings.generationGroups.find((item) => item.id === groupId);
+      return Boolean(group?.endpoints.some(endpointReady));
+    };
+    const retrievalReady = (kind, groupId) => {
+      const groups = kind === "embedding" ? settings.retrieval.embeddingGroups : settings.retrieval.rerankSets;
+      const group = groups.find((item) => item.id === groupId);
+      return Boolean(group?.endpoints.some(endpointReady));
+    };
     const states = [
-      ["\u7ED3\u6784\u5316\u8BB0\u5FC6", generationIds.has(settings.generationWorkflows.extraction.groupId)],
-      ["\u603B\u7ED3\u751F\u6210", generationIds.has(settings.generationWorkflows.summary.groupId)],
-      ["\u603B\u7ED3\u5411\u91CF", !settings.summary.embeddingGroupId || embeddingIds.has(settings.summary.embeddingGroupId)],
-      ["\u603B\u7ED3\u91CD\u6392\u5E8F", !settings.retrieval.recall.rerankSetId || rerankIds.has(settings.retrieval.recall.rerankSetId)],
-      ["\u72B6\u6001\u66F4\u65B0", generationIds.has(settings.generationWorkflows.status.groupId)]
+      ["\u7ED3\u6784\u5316\u8BB0\u5FC6", generationReady(settings.generationWorkflows.extraction.groupId) ? "ready" : "missing"],
+      ["\u603B\u7ED3\u751F\u6210", generationReady(settings.generationWorkflows.summary.groupId) ? "ready" : "missing"],
+      ["\u603B\u7ED3\u5411\u91CF", !settings.summary.embeddingGroupId ? "disabled" : retrievalReady("embedding", settings.summary.embeddingGroupId) ? "ready" : "missing"],
+      ["\u603B\u7ED3\u91CD\u6392\u5E8F", !settings.retrieval.recall.rerankSetId ? "disabled" : retrievalReady("rerank", settings.retrieval.recall.rerankSetId) ? "ready" : "missing"],
+      ["\u72B6\u6001\u66F4\u65B0", generationReady(settings.generationWorkflows.status.groupId) ? "ready" : "missing"]
     ];
-    host.replaceChildren(...states.map(([label, ready]) => {
+    host.replaceChildren(...states.map(([label, state]) => {
       const item = document.createElement("span");
-      item.dataset.state = ready ? "ready" : "missing";
-      item.innerHTML = `<i class="fa-solid fa-${ready ? "circle-check" : "triangle-exclamation"}"></i> ${label}\uFF1A${ready ? "\u5DF2\u914D\u7F6E" : "\u672A\u914D\u7F6E"}`;
+      const icon = state === "ready" ? "circle-check" : state === "disabled" ? "circle-minus" : "triangle-exclamation";
+      const text = state === "ready" ? "\u53EF\u7528" : state === "disabled" ? "\u672A\u542F\u7528" : "\u4E0D\u53EF\u7528";
+      item.dataset.state = state;
+      item.innerHTML = `<i class="fa-solid fa-${icon}"></i> ${label}\uFF1A${text}`;
       return item;
     }));
   }
@@ -25434,7 +25546,7 @@ var ApiConfigPanel = class {
         name: fieldValue(body, "[name=name]"),
         baseUrl: fieldValue(body, "[name=baseUrl]"),
         model: fieldValue(body, "[name=model]"),
-        ...credentialId ? { credentialId } : current?.apiKey ? { apiKey: current.apiKey } : {},
+        ...credentialId ? { credentialId } : {},
         timeoutMs: Number(fieldValue(body, "[name=timeout]")) * 1e3,
         temperature: Number(fieldValue(body, "[name=temperature]")),
         streaming: body.querySelector("[name=streaming]").checked,
@@ -25495,7 +25607,7 @@ var ApiConfigPanel = class {
   async testGenerationEndpoint(groupId, endpointId) {
     const endpoint = getSettings().generationGroups.find((group) => group.id === groupId)?.endpoints.find((item) => item.id === endpointId);
     if (!endpoint) throw new Error("\u751F\u6210\u7AEF\u70B9\u4E0D\u5B58\u5728\u3002");
-    const completed = await waitJob(await echoesApi.testGenerationEndpoint(endpoint));
+    const completed = await waitJob(await echoesApi.testGenerationEndpoint(endpoint), endpoint.timeoutMs + 3e4);
     toastr.success(`\u8FDE\u63A5\u6210\u529F\uFF1A${completed.result?.latencyMs ?? 0} ms`, "\u751F\u6210\u7AEF\u70B9");
   }
   renderRetrievalGroups(kind) {
@@ -25587,6 +25699,7 @@ var ApiConfigPanel = class {
     body.innerHTML = `<div class="echoes-form-grid"><label>\u7EC4\u540D<input name="name" required maxlength="120"></label><label>\u7EC4 ID<input name="id" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label>${kind === "embedding" ? '<label>\u5D4C\u5165\u7A7A\u95F4 ID<input name="embeddingSpaceId" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label><label>\u7EF4\u5EA6<input name="dimensions" type="number" min="1" max="65536" required></label>' : ""}</div><div class="echoes-section-heading"><h3>\u7AEF\u70B9</h3><button type="button" class="menu_button" data-add-retrieval-endpoint><i class="fa-solid fa-plus"></i> \u6DFB\u52A0\u7AEF\u70B9</button></div><div class="echoes-endpoint-editor" data-endpoint-editor></div>`;
     body.querySelector("[name=name]").value = current?.name ?? "";
     body.querySelector("[name=id]").value = current?.id ?? uid2(kind);
+    body.querySelector("[name=id]").disabled = Boolean(current);
     if (kind === "embedding") {
       const embedding = current;
       body.querySelector("[name=embeddingSpaceId]").value = embedding?.embeddingSpaceId ?? uid2("space");
@@ -25604,7 +25717,7 @@ var ApiConfigPanel = class {
     return submitDialog(dialog, () => {
       this.syncRetrievalEndpointEditor(editor, rows);
       if (rows.length === 0) throw new Error("\u81F3\u5C11\u9700\u8981\u4E00\u4E2A\u7AEF\u70B9\u3002");
-      const base = { id: fieldValue(body, "[name=id]"), name: fieldValue(body, "[name=name]"), endpoints: rows.map((endpoint, index) => ({ ...endpoint, order: index })) };
+      const base = { id: current?.id ?? fieldValue(body, "[name=id]"), name: fieldValue(body, "[name=name]"), endpoints: rows.map((endpoint, index) => ({ ...endpoint, order: index })) };
       return kind === "embedding" ? { ...base, embeddingSpaceId: fieldValue(body, "[name=embeddingSpaceId]"), dimensions: Number(fieldValue(body, "[name=dimensions]")) } : base;
     }, { errorTitle: `${kind === "embedding" ? "Embedding" : "Rerank"} \u7AEF\u70B9\u7EC4\u65E0\u6548` });
   }
@@ -25659,10 +25772,9 @@ var ApiConfigPanel = class {
       endpoint.baseUrl = fieldValue(row, "[data-field=baseUrl]");
       endpoint.model = fieldValue(row, "[data-field=model]");
       const credentialId = fieldValue(row, "[data-field=credentialId]");
-      if (credentialId) {
-        endpoint.credentialId = credentialId;
-        delete endpoint.apiKey;
-      } else delete endpoint.credentialId;
+      if (credentialId) endpoint.credentialId = credentialId;
+      else delete endpoint.credentialId;
+      delete endpoint.apiKey;
       endpoint.timeoutMs = Number(fieldValue(row, "[data-field=timeout]")) * 1e3;
       endpoint.enabled = row.querySelector("[data-field=enabled]").checked;
     });
@@ -25695,7 +25807,7 @@ var ApiConfigPanel = class {
     const group = groups.find((item) => item.id === target.dataset.groupId);
     const endpoint = group?.endpoints.find((item) => item.id === target.dataset.endpointId);
     if (!group || !endpoint) throw new Error("\u7AEF\u70B9\u914D\u7F6E\u4E0D\u5B58\u5728\u3002");
-    const completed = await waitJob(await echoesApi.testRetrievalEndpoint({ kind, endpoint, ...kind === "embedding" ? { expectedDimensions: group.dimensions } : {} }));
+    const completed = await waitJob(await echoesApi.testRetrievalEndpoint({ kind, endpoint, ...kind === "embedding" ? { expectedDimensions: group.dimensions } : {} }), endpoint.timeoutMs + 3e4);
     toastr.success(`${completed.result?.latencyMs ?? 0} ms${completed.result?.dimensions ? ` \xB7 ${completed.result.dimensions} \u7EF4` : ""}`, "\u7AEF\u70B9\u6D4B\u8BD5\u5B8C\u6210");
   }
   renderCredentials() {
@@ -25715,11 +25827,30 @@ var ApiConfigPanel = class {
       meta3.append(name, id2);
       const time3 = document.createElement("time");
       time3.textContent = new Date(credential.updatedAt).toLocaleString();
+      const edit = iconButton2("pen", "\u91CD\u547D\u540D\u6216\u8F6E\u6362\u5BC6\u94A5", "edit-credential");
+      edit.dataset.id = credential.id;
       const remove = iconButton2("trash", "\u5220\u9664\u51ED\u636E", "delete-credential");
       remove.dataset.id = credential.id;
-      row.append(meta3, time3, remove);
+      row.append(meta3, time3, edit, remove);
       list.append(row);
     });
+  }
+  async editCredential(id2) {
+    const credential = this.credentials.find((item) => item.id === id2);
+    if (!credential) throw new Error("\u51ED\u636E\u4E0D\u5B58\u5728\u6216\u5217\u8868\u5C1A\u672A\u52A0\u8F7D\u3002");
+    const dialog = dialogShell("\u7F16\u8F91\u670D\u52A1\u7AEF\u51ED\u636E");
+    const body = dialog.querySelector(".echoes-dialog-body");
+    body.innerHTML = '<div class="echoes-form-grid"><label>\u51ED\u636E\u540D\u79F0<input name="name" required maxlength="120"></label><label>\u65B0 API \u5BC6\u94A5<input name="secret" type="password" autocomplete="new-password" placeholder="\u7559\u7A7A\u5219\u4FDD\u7559\u73B0\u6709\u5BC6\u94A5"></label></div>';
+    body.querySelector("[name=name]").value = credential.name;
+    const update = await submitDialog(dialog, () => {
+      const name = fieldValue(body, "[name=name]");
+      const secret = body.querySelector("[name=secret]").value;
+      if (!name) throw new Error("\u51ED\u636E\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002");
+      return { name, ...secret ? { secret } : {} };
+    }, { errorTitle: "\u51ED\u636E\u66F4\u65B0\u65E0\u6548" });
+    if (!update) return;
+    await echoesApi.updateCredential(id2, update);
+    await this.render("credentials");
   }
   async addCredential(form) {
     const name = fieldValue(form, "[name=name]");
@@ -27159,7 +27290,8 @@ var StatusCoordinator = class {
     let state = await this.load();
     await this.worldbook.cleanupStale(state.worldbookName);
     await this.worldbook.clearInjection(state.worldbookName);
-    this.lastInjection = { worldbookName: state.worldbookName, token: /* @__PURE__ */ Symbol() };
+    const ownership = { worldbookName: state.worldbookName, token: /* @__PURE__ */ Symbol() };
+    this.lastInjection = ownership;
     if (!state.catalog.enabled) return;
     const pending = this.pending.get(state.catalog.chatId);
     if (pending) {
@@ -27180,7 +27312,7 @@ var StatusCoordinator = class {
     const content = template.includes("{{status}}") ? template.replaceAll("{{status}}", yaml) : `${template}
 
 ${yaml}`;
-    if (SillyTavern.getContext().chatId !== state.catalog.chatId) return;
+    if (this.lastInjection !== ownership || SillyTavern.getContext().chatId !== state.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) return;
     await this.worldbook.writeInjection(state, content.trim());
   }
   async clearInjection() {
@@ -27423,6 +27555,12 @@ ${yaml}`;
 var statusCoordinator = new StatusCoordinator();
 
 // src/extension/recall-coordinator.ts
+var RecallRunSupersededError = class extends Error {
+  constructor() {
+    super("Recall request was superseded by a newer run.");
+    this.name = "RecallRunSupersededError";
+  }
+};
 var TERMINAL_STATES5 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
 var GENERATION_TYPES = /* @__PURE__ */ new Set(["chat", "normal", "continue", "regenerate", "swipe", "impersonate"]);
 var DISABLED_BRANCHES = {
@@ -27536,6 +27674,8 @@ var RecallCoordinator = class {
   injectionStore = new RecallWorldbookStore();
   runSequence = 0;
   activeJobId = null;
+  previewSequence = 0;
+  previewJobId = null;
   lastTrace = null;
   lastInjection = null;
   get trace() {
@@ -27558,14 +27698,25 @@ var RecallCoordinator = class {
       return;
     }
     const sequence = ++this.runSequence;
-    if (this.activeJobId) {
-      await echoesApi.cancelJob(this.activeJobId).catch(() => void 0);
-      this.activeJobId = null;
+    this.previewSequence += 1;
+    const previewJobId = this.previewJobId;
+    if (previewJobId) {
+      this.previewJobId = null;
+      await echoesApi.cancelJob(previewJobId).catch(() => void 0);
     }
+    if (sequence !== this.runSequence) return;
+    const activeJobId = this.activeJobId;
+    if (activeJobId) {
+      this.activeJobId = null;
+      await echoesApi.cancelJob(activeJobId).catch(() => void 0);
+    }
+    if (sequence !== this.runSequence) return;
     try {
       await this.retrieve(chat, generationType, sequence, true, abort);
     } catch (error51) {
+      if (sequence !== this.runSequence) return;
       await this.clear();
+      if (this.runSequence !== sequence + 1) return;
       const message3 = error51 instanceof Error ? error51.message : String(error51);
       const decision = await openDecisionDialog({
         message: message3,
@@ -27577,15 +27728,30 @@ var RecallCoordinator = class {
     }
   }
   async preview(chat = SillyTavern.getContext().chat) {
-    return this.retrieve(chat, "preview", ++this.runSequence, false);
+    if (this.activeJobId) throw new Error("\u4E3B\u751F\u6210\u53EC\u56DE\u6B63\u5728\u8FD0\u884C\uFF0C\u8BF7\u7A0D\u540E\u518D\u9884\u89C8\u3002");
+    const sequence = ++this.previewSequence;
+    const previewJobId = this.previewJobId;
+    if (previewJobId) {
+      this.previewJobId = null;
+      await echoesApi.cancelJob(previewJobId).catch(() => void 0);
+    }
+    if (sequence !== this.previewSequence) throw new RecallRunSupersededError();
+    return this.retrieve(chat, "preview", sequence, false);
   }
   async clear() {
     this.runSequence += 1;
-    if (this.activeJobId) {
-      await echoesApi.cancelJob(this.activeJobId).catch(() => void 0);
-      this.activeJobId = null;
-    }
+    this.previewSequence += 1;
     const ownership = this.lastInjection;
+    const activeJobId = this.activeJobId;
+    if (activeJobId) {
+      this.activeJobId = null;
+      await echoesApi.cancelJob(activeJobId).catch(() => void 0);
+    }
+    const previewJobId = this.previewJobId;
+    if (previewJobId) {
+      this.previewJobId = null;
+      await echoesApi.cancelJob(previewJobId).catch(() => void 0);
+    }
     const worldbookName = ownership?.worldbookName ?? window.TavernHelper?.getChatWorldbookName("current") ?? null;
     if (worldbookName) await this.injectionStore.clear(worldbookName).catch(() => void 0);
     if (this.lastInjection === ownership) this.lastInjection = null;
@@ -27596,8 +27762,10 @@ var RecallCoordinator = class {
     const recall = settings.retrieval.recall;
     const current = await this.summaryStore.load();
     const lockedWorldbookName = current.worldbookName;
-    await this.injectionStore.cleanupStale(lockedWorldbookName);
-    await this.injectionStore.clear(lockedWorldbookName);
+    if (inject) {
+      await this.injectionStore.cleanupStale(lockedWorldbookName);
+      await this.injectionStore.clear(lockedWorldbookName);
+    }
     if (inject) this.lastInjection = { worldbookName: lockedWorldbookName, token: /* @__PURE__ */ Symbol() };
     const prepared = prepareRecallQuery({
       chat,
@@ -27727,6 +27895,20 @@ var RecallCoordinator = class {
       });
     }
     const candidateTopK = Math.min(100, Math.max(recall.finalTopK, recall.finalTopK * 3));
+    const isSuperseded = () => inject ? sequence !== this.runSequence : sequence !== this.previewSequence;
+    let trackedJobId = null;
+    const trackJob = (jobId) => {
+      trackedJobId = jobId;
+      if (inject) this.activeJobId = jobId;
+      else this.previewJobId = jobId;
+    };
+    const clearTrackedJob = () => {
+      if (trackedJobId) {
+        if (inject && this.activeJobId === trackedJobId) this.activeJobId = null;
+        if (!inject && this.previewJobId === trackedJobId) this.previewJobId = null;
+      }
+      trackedJobId = null;
+    };
     let job;
     let completed;
     try {
@@ -27751,10 +27933,15 @@ var RecallCoordinator = class {
         ...vectorEnabled && group ? { embeddingGroup: group } : {},
         ...recall.rerankEnabled && rerankSet ? { rerankSet } : {}
       });
-      this.activeJobId = job.id;
+      if (isSuperseded()) {
+        await echoesApi.cancelJob(job.id).catch(() => void 0);
+        throw new RecallRunSupersededError();
+      }
+      trackJob(job.id);
       completed = await waitForJob3(job, recall.injection.maxWaitMs);
     } catch (error51) {
-      this.activeJobId = null;
+      clearTrackedJob();
+      if (error51 instanceof RecallRunSupersededError || isSuperseded()) throw new RecallRunSupersededError();
       if (recentSlices.length === 0) throw error51;
       const message3 = error51 instanceof Error ? error51.message : String(error51);
       toastr.warning(message3, "Echoes \u8BED\u4E49\u53EC\u56DE\u5931\u8D25");
@@ -27778,8 +27965,9 @@ var RecallCoordinator = class {
         message: message3
       });
     }
+    if (isSuperseded()) throw new RecallRunSupersededError();
     if (!completed) {
-      this.activeJobId = null;
+      clearTrackedJob();
       const decision = inject ? await openDecisionDialog({
         message: `\u4E3B\u68C0\u7D22\u4EFB\u52A1\u7B49\u5F85\u8D85\u8FC7 ${Math.round(recall.injection.maxWaitMs / 1e3)} \u79D2\uFF0CEchoes \u5DF2\u53D6\u6D88\u672C\u5730\u4EFB\u52A1\uFF0C\u4E14\u4E0D\u4F1A\u81EA\u52A8\u8F6E\u6362\u7AEF\u70B9\u3002`,
         canContinue: false,
@@ -27808,10 +27996,12 @@ var RecallCoordinator = class {
     }
     let result = completed.result;
     while (result.decisionRequired) {
+      if (isSuperseded()) throw new RecallRunSupersededError();
       const decision = inject ? await openDecisionDialog({
         message: result.decisionRequired.message,
         canContinue: Boolean(result.continuation)
       }) : "degraded";
+      if (isSuperseded()) throw new RecallRunSupersededError();
       if (decision === "abort") {
         abort?.();
         await this.injectionStore.clear(lockedWorldbookName);
@@ -27839,17 +28029,22 @@ var RecallCoordinator = class {
           ...group ? { embeddingGroup: group } : {},
           ...rerankSet ? { rerankSet } : {}
         });
-        this.activeJobId = job.id;
+        if (isSuperseded()) {
+          await echoesApi.cancelJob(job.id).catch(() => void 0);
+          throw new RecallRunSupersededError();
+        }
+        trackJob(job.id);
         completed = await waitForJob3(job, recall.injection.maxWaitMs);
         if (!completed) break;
         result = completed.result;
       } catch (error51) {
+        if (error51 instanceof RecallRunSupersededError || isSuperseded()) throw new RecallRunSupersededError();
         const message3 = error51 instanceof Error ? error51.message : String(error51);
         toastr.warning(message3, "Echoes \u53EC\u56DE\u7EED\u63A5\u5931\u8D25");
         break;
       }
     }
-    this.activeJobId = null;
+    clearTrackedJob();
     const enabledBranches = [
       vectorEnabled ? result.branches.vector : null,
       recall.bm25Enabled ? result.branches.bm25 : null
@@ -27957,7 +28152,8 @@ var RecallCoordinator = class {
     return { active, traces };
   }
   async finalizeRecall(options) {
-    const locked = options.sequence === this.runSequence && SillyTavern.getContext().chatId === options.current.catalog.chatId && window.TavernHelper?.getChatWorldbookName("current") === options.current.worldbookName;
+    const sequenceMatches = options.generationType === "preview" ? options.sequence === this.previewSequence : options.sequence === this.runSequence;
+    const locked = sequenceMatches && SillyTavern.getContext().chatId === options.current.catalog.chatId && window.TavernHelper?.getChatWorldbookName("current") === options.current.worldbookName;
     let injected = 0;
     if (options.inject && locked && (options.recentSlices.length > 0 || options.semanticHits.length > 0)) {
       const recent = renderRecentSummaries(options.recentSlices);
@@ -28000,7 +28196,7 @@ ${slice.content}`;
       droppedSourceIds: options.droppedSourceIds ?? [],
       ...!locked ? { message: "Chat changed before retrieval completed; result was discarded." } : options.message ? { message: options.message } : {}
     };
-    this.lastTrace = trace;
+    if (options.generationType !== "preview") this.lastTrace = trace;
     return {
       hits: options.semanticHits,
       recentSlices: structuredClone(options.recentSlices),
@@ -28051,6 +28247,13 @@ function compatibilityLabel(source) {
   if (source.mode === "bm25_only") return "\u4EC5 BM25";
   return source.message ?? "\u4E0D\u53EF\u7528";
 }
+function boundedNumber(input, minimum, maximum, label, integer2 = true) {
+  const parsed = Number(input.value);
+  if (!Number.isFinite(parsed)) throw new Error(`${label}\u5FC5\u987B\u662F\u6709\u6548\u6570\u5B57\u3002`);
+  const value = Math.max(minimum, Math.min(maximum, integer2 ? Math.round(parsed) : parsed));
+  input.value = String(value);
+  return value;
+}
 var RecallPanel = class {
   constructor(root) {
     this.root = root;
@@ -28062,6 +28265,11 @@ var RecallPanel = class {
   sourceTraces = [];
   draggedNamespace = null;
   renderSequence = 0;
+  run(operation) {
+    void Promise.resolve().then(operation).catch((error51) => {
+      toastr.error(error51 instanceof Error ? error51.message : String(error51), "Echoes \u53EC\u56DE");
+    });
+  }
   async render() {
     const sequence = ++this.renderSequence;
     const chatId = SillyTavern.getContext().chatId;
@@ -28109,25 +28317,25 @@ var RecallPanel = class {
       const target = event.target.closest("[data-recall-action]");
       if (!target) return;
       const action = target.dataset.recallAction;
-      if (action === "refresh") void this.render();
-      else if (action === "preview") void this.preview();
-      else if (action === "attach-source") void this.attachSource();
-      else if (action === "remove-source") void this.removeSource(target.dataset.namespaceId ?? "");
-      else if (action === "source-up") void this.moveSource(target.dataset.namespaceId ?? "", -1);
-      else if (action === "source-down") void this.moveSource(target.dataset.namespaceId ?? "", 1);
-      else if (action === "prompt-up") this.movePrompt(Number(target.dataset.index), -1);
-      else if (action === "prompt-down") this.movePrompt(Number(target.dataset.index), 1);
-      else if (action === "prompt-delete") this.deletePrompt(Number(target.dataset.index));
-      else if (action === "prompt-add") void this.addPrompt();
-      else if (action === "query-preview") this.previewQuery();
+      if (action === "refresh") this.run(() => this.render());
+      else if (action === "preview") this.run(() => this.preview());
+      else if (action === "attach-source") this.run(() => this.attachSource());
+      else if (action === "remove-source") this.run(() => this.removeSource(target.dataset.namespaceId ?? ""));
+      else if (action === "source-up") this.run(() => this.moveSource(target.dataset.namespaceId ?? "", -1));
+      else if (action === "source-down") this.run(() => this.moveSource(target.dataset.namespaceId ?? "", 1));
+      else if (action === "prompt-up") this.run(() => this.movePrompt(Number(target.dataset.index), -1));
+      else if (action === "prompt-down") this.run(() => this.movePrompt(Number(target.dataset.index), 1));
+      else if (action === "prompt-delete") this.run(() => this.deletePrompt(Number(target.dataset.index)));
+      else if (action === "prompt-add") this.run(() => this.addPrompt());
+      else if (action === "query-preview") this.run(() => this.previewQuery());
     });
     this.root.addEventListener("change", (event) => {
       const target = event.target;
-      if (target.matches("[data-recall-enabled]")) void this.saveSourceConfiguration();
-      else if (target.matches("[data-source-weight]")) void this.saveSourceConfiguration();
-      else if (target.matches("[data-source-enabled]")) void this.saveSourceConfiguration();
-      else if (target.matches("[data-recall-setting]")) this.saveRecallSettings();
-      else if (target.matches("[data-recall-prompt]")) this.savePromptSettings();
+      if (target.matches("[data-recall-enabled]")) this.run(() => this.saveSourceConfiguration());
+      else if (target.matches("[data-source-weight]")) this.run(() => this.saveSourceConfiguration());
+      else if (target.matches("[data-source-enabled]")) this.run(() => this.saveSourceConfiguration());
+      else if (target.matches("[data-recall-setting]")) this.run(() => this.saveRecallSettings());
+      else if (target.matches("[data-recall-prompt]")) this.run(() => this.savePromptSettings());
     });
     this.root.addEventListener("dragstart", (event) => {
       const source = event.target.closest("[data-source-namespace]");
@@ -28139,8 +28347,9 @@ var RecallPanel = class {
     this.root.addEventListener("drop", (event) => {
       const target = event.target.closest("[data-source-namespace]");
       if (!target || !this.draggedNamespace) return;
+      const sourceNamespace = this.draggedNamespace;
       event.preventDefault();
-      void this.dropSource(this.draggedNamespace, target.dataset.sourceNamespace ?? "");
+      this.run(() => this.dropSource(sourceNamespace, target.dataset.sourceNamespace ?? ""));
       this.draggedNamespace = null;
     });
   }
@@ -28373,8 +28582,10 @@ var RecallPanel = class {
   }
   async attachSource() {
     if (!this.current) return;
-    const attached = new Set(this.current.catalog.attachedRecallSources.map((source) => source.namespaceId));
-    const options = this.available.filter((source) => source.catalog.namespaceId !== this.current.catalog.namespaceId && !attached.has(source.catalog.namespaceId));
+    const locked = this.current;
+    const lockedChatId = locked.catalog.chatId;
+    const attached = new Set(locked.catalog.attachedRecallSources.map((source) => source.namespaceId));
+    const options = this.available.filter((source) => source.catalog.namespaceId !== locked.catalog.namespaceId && !attached.has(source.catalog.namespaceId));
     const picker = dialogShell("\u9644\u52A0\u804A\u5929\u603B\u7ED3\u6E90", { className: "echoes-preview-dialog", closeOnly: true });
     const body = picker.querySelector(".echoes-dialog-body");
     const select = document.createElement("select");
@@ -28390,10 +28601,13 @@ var RecallPanel = class {
     add.textContent = "\u9644\u52A0";
     add.disabled = options.length === 0;
     body.append(select, add);
-    add.addEventListener("click", async () => {
+    add.addEventListener("click", () => this.run(async () => {
+      if (this.current !== locked || SillyTavern.getContext().chatId !== lockedChatId || window.TavernHelper?.getChatWorldbookName("current") !== locked.worldbookName) {
+        throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u672C\u6B21\u9644\u52A0\u672A\u4FDD\u5B58\u3002\u8BF7\u5728\u76EE\u6807\u804A\u5929\u4E2D\u91CD\u65B0\u6253\u5F00\u9009\u62E9\u5668\u3002");
+      }
       const source = options.find((candidate) => candidate.catalog.namespaceId === select.value);
       if (!source) return;
-      this.current.catalog.attachedRecallSources.push({
+      locked.catalog.attachedRecallSources.push({
         chatId: source.catalog.chatId,
         namespaceId: source.catalog.namespaceId,
         worldbookName: source.worldbookName,
@@ -28403,7 +28617,7 @@ var RecallPanel = class {
       });
       await this.saveSourceConfiguration();
       picker.close();
-    });
+    }));
     picker.showModal();
   }
   async removeSource(namespaceId) {
@@ -28415,7 +28629,7 @@ var RecallPanel = class {
     if (!this.current) return;
     const enabled = this.root.querySelector("[data-recall-enabled]")?.checked ?? this.current.catalog.recallEnabled;
     const weightInputs = new Map(
-      [...this.root.querySelectorAll("[data-source-weight]")].map((input) => [input.dataset.sourceWeight, Number(input.value)])
+      [...this.root.querySelectorAll("[data-source-weight]")].map((input) => [input.dataset.sourceWeight, boundedNumber(input, 0.1, 10, "\u6765\u6E90\u6743\u91CD", false)])
     );
     const enabledInputs = new Map(
       [...this.root.querySelectorAll("[data-source-enabled]")].map((input) => [input.dataset.sourceEnabled, input.checked])
@@ -28474,18 +28688,15 @@ var RecallPanel = class {
     recall.vectorEnabled = input("vectorEnabled").checked;
     recall.bm25Enabled = input("bm25Enabled").checked;
     recall.rerankEnabled = input("rerankEnabled").checked;
-    recall.finalTopK = Math.max(1, Math.min(100, Number(input("finalTopK").value)));
-    recall.vectorTopK = Math.max(1, Math.min(200, Number(input("vectorTopK").value)));
-    recall.bm25TopK = Math.max(1, Math.min(200, Number(input("bm25TopK").value)));
-    recall.rerankTopK = Math.max(1, Math.min(100, Number(input("rerankTopK").value)));
+    recall.finalTopK = boundedNumber(input("finalTopK"), 1, 100, "\u6700\u7EC8 Top K");
+    recall.vectorTopK = boundedNumber(input("vectorTopK"), 1, 200, "Vector K");
+    recall.bm25TopK = boundedNumber(input("bm25TopK"), 1, 200, "BM25 K");
+    recall.rerankTopK = boundedNumber(input("rerankTopK"), 1, 100, "Rerank K");
     recall.injection.position = input("position").value;
     recall.injection.role = input("role").value;
-    recall.injection.depth = Math.max(0, Math.min(100, Number(input("depth").value)));
-    recall.injection.order = Math.max(-1e4, Math.min(1e4, Number(input("order").value)));
-    recall.injection.maxWaitMs = Math.max(
-      1e3,
-      Math.min(3e5, Number(input("maxWaitSeconds").value) * 1e3)
-    );
+    recall.injection.depth = boundedNumber(input("depth"), 0, 100, "\u6CE8\u5165\u6DF1\u5EA6");
+    recall.injection.order = boundedNumber(input("order"), -1e4, 1e4, "\u6CE8\u5165\u987A\u5E8F");
+    recall.injection.maxWaitMs = boundedNumber(input("maxWaitSeconds"), 1, 300, "\u6700\u957F\u7B49\u5F85\u79D2\u6570") * 1e3;
     recall.injection.template = input("template").value || "{{memories}}";
     saveSettings(settings);
   }
@@ -28498,7 +28709,7 @@ var RecallPanel = class {
       if (input.dataset.recallPrompt === "enabled") item.enabled = input.checked;
       else if (input.dataset.recallPrompt === "title") item.title = input.value.trim() || item.title;
       else if (input.dataset.recallPrompt === "count" && item.kind === "recent_messages") {
-        item.count = Math.max(0, Math.min(100, Number(input.value)));
+        item.count = boundedNumber(input, 0, 100, "\u6B64\u524D\u6D88\u606F\u6570\u91CF");
       } else if (input.dataset.recallPrompt === "content" && item.kind === "custom") {
         item.content = input.value;
       }
@@ -28561,7 +28772,7 @@ var RecallPanel = class {
     };
     kind.addEventListener("change", refresh);
     refresh();
-    body.querySelector("[data-add]").addEventListener("click", () => {
+    body.querySelector("[data-add]").addEventListener("click", () => this.run(() => {
       const selected = kind.value;
       const base = {
         id: newRecallPromptItemId(),
@@ -28573,10 +28784,7 @@ var RecallPanel = class {
         item = {
           ...base,
           kind: selected,
-          count: Math.max(
-            0,
-            Math.min(100, Number(body.querySelector("[name=count]").value))
-          )
+          count: boundedNumber(body.querySelector("[name=count]"), 0, 100, "\u6B64\u524D\u6D88\u606F\u6570\u91CF")
         };
       } else if (selected === "custom") {
         item = {
@@ -28593,7 +28801,7 @@ var RecallPanel = class {
       saveSettings(settings);
       picker.close();
       this.renderContent();
-    });
+    }));
     picker.showModal();
   }
   previewQuery() {
@@ -28640,6 +28848,7 @@ RRF=${hit.rrfScore} rerank=${hit.rerankScore ?? "-"} weighted=${hit.weightedScor
       preview.showModal();
       this.renderContent();
     } catch (error51) {
+      if (error51 instanceof Error && error51.name === "RecallRunSupersededError") return;
       toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u53EC\u56DE\u9884\u89C8\u5931\u8D25");
     }
   }
@@ -30317,6 +30526,18 @@ var StatusPanel = class {
   actionChain = Promise.resolve();
   queuedActions = 0;
   renderSequence = 0;
+  chatIdentity() {
+    return {
+      chatId: SillyTavern.getContext().chatId ?? null,
+      worldbookName: window.TavernHelper?.getChatWorldbookName("current") ?? null
+    };
+  }
+  assertChatIdentity(identity) {
+    const current = this.chatIdentity();
+    if (!identity.chatId || current.chatId !== identity.chatId || current.worldbookName !== identity.worldbookName) {
+      throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u672C\u6B21\u7F16\u8F91\u672A\u4FDD\u5B58\u3002\u8BF7\u5728\u76EE\u6807\u804A\u5929\u4E2D\u91CD\u65B0\u6253\u5F00\u7F16\u8F91\u5668\u3002");
+    }
+  }
   async render() {
     const sequence = ++this.renderSequence;
     const chatId = SillyTavern.getContext().chatId;
@@ -30709,6 +30930,7 @@ ${message3.content}`).join("\n\n"));
   }
   async editPrompt(index) {
     if (!this.state) return;
+    const identity = this.chatIdentity();
     const current = index === void 0 ? void 0 : this.state.catalog.profile.promptPreset.items[index];
     const element = dialogShell(current ? "\u7F16\u8F91\u72B6\u6001\u63D0\u793A\u8BCD" : "\u6DFB\u52A0\u72B6\u6001\u63D0\u793A\u8BCD");
     const body = element.querySelector(".echoes-dialog-body");
@@ -30718,6 +30940,7 @@ ${message3.content}`).join("\n\n"));
     body.querySelector("[name=role]").value = current?.role ?? "system";
     body.querySelector("[name=content]").value = current?.kind === "custom" ? current.content : "";
     await submitDialog(element, async () => {
+      this.assertChatIdentity(identity);
       const kind = body.querySelector("[name=kind]").value;
       const item = statusPromptItemSchema.parse({
         id: current?.id ?? newStatusPromptItemId(),
@@ -30735,6 +30958,7 @@ ${message3.content}`).join("\n\n"));
   }
   async editCleaning(index) {
     if (!this.state) return;
+    const identity = this.chatIdentity();
     const current = index === void 0 ? void 0 : this.state.catalog.profile.preprocessRules[index];
     const element = dialogShell(current ? "\u7F16\u8F91\u6D88\u606F\u6E05\u6D17" : "\u6DFB\u52A0\u6D88\u606F\u6E05\u6D17");
     const body = element.querySelector(".echoes-dialog-body");
@@ -30747,6 +30971,7 @@ ${message3.content}`).join("\n\n"));
     const roles = body.querySelector("[name=roles]");
     [...roles.options].forEach((option) => option.selected = (current?.roles ?? ["user", "assistant"]).includes(option.value));
     await submitDialog(element, async () => {
+      this.assertChatIdentity(identity);
       const pattern = body.querySelector("[name=pattern]").value;
       const flags = body.querySelector("[name=flags]").value;
       new RegExp(pattern, flags);
@@ -30769,6 +30994,7 @@ ${message3.content}`).join("\n\n"));
   }
   async editValidation(index) {
     if (!this.state) return;
+    const identity = this.chatIdentity();
     const current = index === void 0 ? void 0 : this.state.catalog.profile.validation.rules[index];
     const element = dialogShell(current ? "\u7F16\u8F91\u72B6\u6001\u6821\u9A8C" : "\u6DFB\u52A0\u72B6\u6001\u6821\u9A8C");
     const body = element.querySelector(".echoes-dialog-body");
@@ -30782,6 +31008,7 @@ ${message3.content}`).join("\n\n"));
       body.querySelector(`[name=${name}]`).value = value === void 0 ? "" : String(value);
     }
     await submitDialog(element, async () => {
+      this.assertChatIdentity(identity);
       const numeric = (name) => {
         const value = body.querySelector(`[name=${name}]`).value;
         return value === "" ? void 0 : Number(value);
@@ -32013,6 +32240,18 @@ var MemoryPanel = class {
   previousPrimaryView = "memory";
   structuredSettingsTab = "automation";
   summarySettingsTab = "generation";
+  chatIdentity() {
+    return {
+      chatId: SillyTavern.getContext().chatId ?? null,
+      worldbookName: window.TavernHelper?.getChatWorldbookName("current") ?? null
+    };
+  }
+  assertChatIdentity(identity) {
+    const current = this.chatIdentity();
+    if (!identity.chatId || current.chatId !== identity.chatId || current.worldbookName !== identity.worldbookName) {
+      throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u672C\u6B21\u7F16\u8F91\u672A\u4FDD\u5B58\u3002\u8BF7\u5728\u76EE\u6807\u804A\u5929\u4E2D\u91CD\u65B0\u6253\u5F00\u7F16\u8F91\u5668\u3002");
+    }
+  }
   constructor() {
     this.root = document.createElement("div");
     this.root.id = "echoes-memory-overlay";
@@ -32665,9 +32904,11 @@ var MemoryPanel = class {
     host.replaceChildren(list);
   }
   async editType(current) {
+    const identity = this.chatIdentity();
     const input = await openTypeDialog(getSettings().typeTemplates, current);
     if (!input) return;
     try {
+      this.assertChatIdentity(identity);
       const saved = await this.store.saveType(input, current?.id);
       this.activeTypeId = saved.id;
       this.view = "memory";
@@ -32703,9 +32944,11 @@ var MemoryPanel = class {
   async editRow(current) {
     const type = this.activeType;
     if (!type) return;
+    const identity = this.chatIdentity();
     const input = await openRowDialog(type, current);
     if (!input) return;
     try {
+      this.assertChatIdentity(identity);
       await this.store.saveRow(type.id, input, current?.id);
       await this.reload();
     } catch (error51) {
@@ -32749,13 +32992,19 @@ var MemoryPanel = class {
   }
   async editPromptItem(current) {
     if (!this.state) return;
+    const identity = this.chatIdentity();
     const item = await openPromptItemDialog(this.state.catalog.types, current);
     if (!item) return;
-    const preset = structuredClone(this.state.catalog.promptPreset);
-    const index = current ? preset.items.findIndex((candidate) => candidate.id === current.id) : -1;
-    if (index >= 0) preset.items[index] = item;
-    else preset.items.push(item);
-    await this.savePreset(preset.items);
+    try {
+      this.assertChatIdentity(identity);
+      const preset = structuredClone(this.state.catalog.promptPreset);
+      const index = current ? preset.items.findIndex((candidate) => candidate.id === current.id) : -1;
+      if (index >= 0) preset.items[index] = item;
+      else preset.items.push(item);
+      await this.savePreset(preset.items);
+    } catch (error51) {
+      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u63D0\u793A\u8BCD\u9884\u8BBE\u4FDD\u5B58\u5931\u8D25");
+    }
   }
   async deletePromptItem(index) {
     if (!this.state || !this.promptItem(index) || !window.confirm("\u4ECE\u9884\u8BBE\u4E2D\u5220\u9664\u8BE5\u63D0\u793A\u8BCD\uFF1F")) return;
@@ -32812,6 +33061,7 @@ var MemoryPanel = class {
   }
   async migrate() {
     if (!this.state) return;
+    const identity = this.chatIdentity();
     const selection = await openMigrationDialog({
       worldbookNames: this.store.listWorldbooks(),
       currentWorldbookName: this.state.worldbookName,
@@ -32819,6 +33069,7 @@ var MemoryPanel = class {
     });
     if (!selection) return;
     try {
+      this.assertChatIdentity(identity);
       const summary = await this.store.migrateFrom(
         selection.sourceWorldbookName,
         selection.typeIds,
