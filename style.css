@@ -3342,3 +3342,29 @@
     justify-content: flex-start;
   }
 }
+
+.echoes-status-tabpanel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+@media (max-width: 640px) {
+  .echoes-status-tabpanel {
+    gap: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #echoes-memory-overlay,
+  #echoes-memory-overlay *,
+  #echoes-memory-overlay *::before,
+  #echoes-memory-overlay *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+}

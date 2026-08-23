@@ -306,7 +306,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "0.3.3",
+  version: "0.3.4",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -24735,6 +24735,7 @@ var RetrievalPanel = class {
   lastQueryRequest = null;
   renderSequence = 0;
   async render() {
+    if (!this.root.classList.contains("echoes-retrieval-view")) return;
     const sequence = ++this.renderSequence;
     this.setMessage("\u6B63\u5728\u8BFB\u53D6\u68C0\u7D22\u7D22\u5F15...");
     try {
@@ -25291,19 +25292,41 @@ var ApiConfigPanel = class {
   credentials = [];
   renderSequence = 0;
   credentialLoadError = null;
-  async render(tab = this.tab) {
+  credentialsLoaded = false;
+  credentialsLoading = false;
+  credentialLoadPromise = null;
+  async render(tab = this.tab, refreshCredentials = false) {
+    if (!this.root.classList.contains("echoes-api-view")) return;
     this.tab = tab;
     const sequence = ++this.renderSequence;
-    const host = this.root.querySelector(".echoes-grid-host");
-    host.innerHTML = '<div class="echoes-grid-message">\u6B63\u5728\u8BFB\u53D6 API \u914D\u7F6E...</div>';
+    const shouldLoadCredentials = refreshCredentials || !this.credentialsLoaded;
+    if (shouldLoadCredentials) {
+      this.credentialsLoading = true;
+      this.credentialLoadError = null;
+    }
+    this.renderPage();
+    if (!shouldLoadCredentials) return;
+    this.credentialLoadPromise ??= this.loadCredentials();
+    await this.credentialLoadPromise;
+    if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-api-view")) return;
+    this.renderPage();
+  }
+  async loadCredentials() {
     try {
       this.credentials = await echoesApi.listCredentials();
       this.credentialLoadError = null;
     } catch (error51) {
       this.credentials = [];
       this.credentialLoadError = message(error51);
+    } finally {
+      this.credentialsLoaded = true;
+      this.credentialsLoading = false;
+      this.credentialLoadPromise = null;
     }
-    if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-api-view")) return;
+  }
+  renderPage() {
+    if (!this.root.classList.contains("echoes-api-view")) return;
+    const host = this.root.querySelector(".echoes-grid-host");
     host.innerHTML = `
       <div class="echoes-api-page">
         <nav class="echoes-section-tabs" aria-label="API \u914D\u7F6E\u5206\u7C7B">
@@ -25371,7 +25394,7 @@ var ApiConfigPanel = class {
   }
   async handleAction(action, target) {
     if (action === "tab") await this.render(target.dataset.apiTab);
-    else if (action === "refresh") await this.render();
+    else if (action === "refresh") await this.render(this.tab, true);
     else if (action === "add-generation-group") await this.addGenerationGroup();
     else if (action === "delete-generation-group") this.deleteGenerationGroup(target.dataset.groupId ?? "");
     else if (action === "add-generation-endpoint") await this.editGenerationEndpoint(target.dataset.groupId ?? "");
@@ -25555,11 +25578,20 @@ var ApiConfigPanel = class {
   }
   async addGenerationGroup() {
     const dialog = dialogShell("\u65B0\u589E\u751F\u6210\u7AEF\u70B9\u7EC4");
-    dialog.querySelector(".echoes-dialog-body").innerHTML = '<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required maxlength="120"></label></div>';
+    const body = dialog.querySelector(".echoes-dialog-body");
+    body.innerHTML = `<div class="echoes-form-grid">
+      <label class="echoes-form-span">\u7AEF\u70B9\u7EC4\u540D\u79F0<input name="groupName" required maxlength="120"></label>
+      ${this.generationEndpointFields()}
+    </div>`;
+    this.populateGenerationEndpointForm(body);
     const saved = await submitDialog(dialog, () => {
-      const name = fieldValue(dialog, "[name=name]");
+      const name = fieldValue(body, "[name=groupName]");
       if (!name) throw new Error("\u7AEF\u70B9\u7EC4\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002");
-      return { id: uid2("generation_group"), name, endpoints: [] };
+      return generationEndpointGroupSchema.parse({
+        id: uid2("generation_group"),
+        name,
+        endpoints: [this.readGenerationEndpointForm(body, void 0, 0)]
+      });
     }, { errorTitle: "\u751F\u6210\u7AEF\u70B9\u7EC4\u65E0\u6548" });
     if (!saved) return;
     const settings = getSettings();
@@ -25574,14 +25606,31 @@ var ApiConfigPanel = class {
     if (!group) throw new Error("\u751F\u6210\u7AEF\u70B9\u7EC4\u4E0D\u5B58\u5728\u3002");
     const dialog = dialogShell(current ? "\u7F16\u8F91\u751F\u6210\u7AEF\u70B9" : "\u6DFB\u52A0\u751F\u6210\u7AEF\u70B9");
     const body = dialog.querySelector(".echoes-dialog-body");
-    body.innerHTML = `<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required></label><label class="echoes-form-span">API \u5730\u5740<input name="baseUrl" type="url" required></label><label>\u6A21\u578B<input name="model" required></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select name="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input name="timeout" type="number" min="10" max="1800"></label><label>\u6E29\u5EA6<input name="temperature" type="number" min="0" max="2" step="0.1"></label><label class="echoes-check"><input name="streaming" type="checkbox">\u6D41\u5F0F</label><label class="echoes-check"><input name="jsonMode" type="checkbox">JSON \u6A21\u5F0F</label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label></div>`;
+    body.innerHTML = `<div class="echoes-form-grid">${this.generationEndpointFields()}</div>`;
+    this.populateGenerationEndpointForm(body, current);
+    const endpoint = await submitDialog(dialog, () => this.readGenerationEndpointForm(body, current, current?.order ?? group.endpoints.length), { errorTitle: "\u751F\u6210\u7AEF\u70B9\u65E0\u6548" });
+    if (!endpoint) return;
+    const parsed = generationEndpointGroupSchema.parse({
+      ...group,
+      endpoints: current ? group.endpoints.map((item) => item.id === current.id ? endpoint : item) : [...group.endpoints, endpoint]
+    });
+    settings.generationGroups[settings.generationGroups.findIndex((item) => item.id === group.id)] = parsed;
+    saveSettings(settings);
+    await this.render("generation");
+  }
+  generationEndpointFields() {
+    return `<label>\u7AEF\u70B9\u540D\u79F0<input name="endpointName" required maxlength="120"></label><label class="echoes-form-span">API \u5730\u5740<input name="baseUrl" type="url" required></label><label>\u6A21\u578B<input name="model" required></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select name="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input name="timeout" type="number" min="10" max="1800"></label><label>\u6E29\u5EA6<input name="temperature" type="number" min="0" max="2" step="0.1"></label><label class="echoes-check"><input name="streaming" type="checkbox">\u6D41\u5F0F</label><label class="echoes-check"><input name="jsonMode" type="checkbox">JSON \u6A21\u5F0F</label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label>`;
+  }
+  populateGenerationEndpointForm(body, current) {
     const credential = body.querySelector("[name=credentialId]");
     this.credentials.forEach((item) => credential.add(new Option(item.name, item.id)));
-    if (current?.credentialId && !this.credentials.some((item) => item.id === current.credentialId)) credential.add(new Option(`\u7F3A\u5931\uFF1A${current.credentialId}`, current.credentialId));
+    if (current?.credentialId && !this.credentials.some((item) => item.id === current.credentialId)) {
+      credential.add(new Option(`\u7F3A\u5931\uFF1A${current.credentialId}`, current.credentialId));
+    }
     const set3 = (name, value) => {
       body.querySelector(`[name=${name}]`).value = value;
     };
-    set3("name", current?.name ?? "\u65B0\u7AEF\u70B9");
+    set3("endpointName", current?.name ?? "\u65B0\u7AEF\u70B9");
     set3("baseUrl", current?.baseUrl ?? "");
     set3("model", current?.model ?? "");
     set3("timeout", String((current?.timeoutMs ?? 3e5) / 1e3));
@@ -25590,27 +25639,22 @@ var ApiConfigPanel = class {
     body.querySelector("[name=streaming]").checked = current?.streaming ?? true;
     body.querySelector("[name=jsonMode]").checked = current?.jsonMode ?? true;
     body.querySelector("[name=enabled]").checked = current?.enabled ?? true;
-    const endpoint = await submitDialog(dialog, () => {
-      const credentialId = credential.value;
-      return {
-        id: current?.id ?? uid2("generation_endpoint"),
-        name: fieldValue(body, "[name=name]"),
-        baseUrl: fieldValue(body, "[name=baseUrl]"),
-        model: fieldValue(body, "[name=model]"),
-        ...credentialId ? { credentialId } : {},
-        timeoutMs: Number(fieldValue(body, "[name=timeout]")) * 1e3,
-        temperature: Number(fieldValue(body, "[name=temperature]")),
-        streaming: body.querySelector("[name=streaming]").checked,
-        jsonMode: body.querySelector("[name=jsonMode]").checked,
-        enabled: body.querySelector("[name=enabled]").checked,
-        order: current?.order ?? group.endpoints.length
-      };
-    }, { errorTitle: "\u751F\u6210\u7AEF\u70B9\u65E0\u6548" });
-    if (!endpoint) return;
-    const parsed = generationEndpointGroupSchema.parse({ ...group, endpoints: current ? group.endpoints.map((item) => item.id === current.id ? endpoint : item) : [...group.endpoints, endpoint] });
-    settings.generationGroups[settings.generationGroups.findIndex((item) => item.id === group.id)] = parsed;
-    saveSettings(settings);
-    await this.render("generation");
+  }
+  readGenerationEndpointForm(body, current, order) {
+    const credentialId = fieldValue(body, "[name=credentialId]");
+    return {
+      id: current?.id ?? uid2("generation_endpoint"),
+      name: fieldValue(body, "[name=endpointName]"),
+      baseUrl: fieldValue(body, "[name=baseUrl]"),
+      model: fieldValue(body, "[name=model]"),
+      ...credentialId ? { credentialId } : {},
+      timeoutMs: Number(fieldValue(body, "[name=timeout]")) * 1e3,
+      temperature: Number(fieldValue(body, "[name=temperature]")),
+      streaming: body.querySelector("[name=streaming]").checked,
+      jsonMode: body.querySelector("[name=jsonMode]").checked,
+      enabled: body.querySelector("[name=enabled]").checked,
+      order
+    };
   }
   deleteGenerationGroup(groupId) {
     if (!confirm("\u5220\u9664\u8BE5\u751F\u6210\u7AEF\u70B9\u7EC4\uFF1F\u6240\u6709\u5F15\u7528\u5B83\u7684\u5DE5\u4F5C\u6D41\u4F1A\u53D8\u4E3A\u672A\u914D\u7F6E\u3002")) return;
@@ -25621,10 +25665,20 @@ var ApiConfigPanel = class {
     void this.render("generation");
   }
   deleteGenerationEndpoint(groupId, endpointId) {
-    if (!confirm("\u5220\u9664\u8BE5\u751F\u6210\u7AEF\u70B9\uFF1F")) return;
     const settings = getSettings();
     const group = settings.generationGroups.find((item) => item.id === groupId);
     if (!group) return;
+    if (group.endpoints.length === 1) {
+      if (!confirm("\u8FD9\u662F\u8BE5\u7EC4\u6700\u540E\u4E00\u4E2A\u7AEF\u70B9\u3002\u7EE7\u7EED\u5C06\u5220\u9664\u6574\u4E2A\u7AEF\u70B9\u7EC4\uFF0C\u5E76\u6E05\u9664\u5F15\u7528\u5B83\u7684\u5DE5\u4F5C\u6D41\u7ED1\u5B9A\u3002")) return;
+      settings.generationGroups = settings.generationGroups.filter((item) => item.id !== groupId);
+      for (const workflow of Object.values(settings.generationWorkflows)) {
+        if (workflow.groupId === groupId) workflow.groupId = "";
+      }
+      saveSettings(settings);
+      void this.render("generation");
+      return;
+    }
+    if (!confirm("\u5220\u9664\u8BE5\u751F\u6210\u7AEF\u70B9\uFF1F")) return;
     group.endpoints = group.endpoints.filter((item) => item.id !== endpointId);
     group.endpoints.forEach((item, index) => {
       item.order = index;
@@ -25868,6 +25922,15 @@ var ApiConfigPanel = class {
   renderCredentials() {
     const legacy = legacyCredentialEndpoints();
     const host = this.content();
+    if (this.credentialsLoading) {
+      host.innerHTML = '<section class="echoes-settings-section"><div class="echoes-section-heading"><div><h2>\u670D\u52A1\u7AEF\u51ED\u636E</h2><span>\u6B63\u5728\u8FDE\u63A5 Echoes \u540E\u7AEF</span></div></div><div class="echoes-grid-message">\u6B63\u5728\u8BFB\u53D6\u670D\u52A1\u7AEF\u51ED\u636E...</div></section>';
+      return;
+    }
+    if (this.credentialLoadError) {
+      host.innerHTML = '<section class="echoes-settings-section"><div class="echoes-section-heading"><div><h2>\u670D\u52A1\u7AEF\u51ED\u636E</h2><span>\u540E\u7AEF\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u672C\u5730\u7AEF\u70B9\u914D\u7F6E\u4ECD\u53EF\u7F16\u8F91</span></div><button type="button" class="menu_button" data-api-action="refresh"><i class="fa-solid fa-rotate"></i> \u91CD\u8BD5</button></div><div class="echoes-warning-band"><i class="fa-solid fa-triangle-exclamation"></i><span data-credential-error></span></div></section>';
+      host.querySelector("[data-credential-error]").textContent = this.credentialLoadError;
+      return;
+    }
     host.innerHTML = `<section class="echoes-settings-section">
       <div class="echoes-section-heading"><div><h2>\u670D\u52A1\u7AEF\u51ED\u636E</h2><span>\u5BC6\u94A5\u4EC5\u4FDD\u5B58\u5728\u670D\u52A1\u7AEF\uFF0C\u4E0D\u4F1A\u56DE\u4F20\u5230\u6D4F\u89C8\u5668</span></div><button type="button" class="echoes-icon-button" data-api-action="refresh" title="\u5237\u65B0" aria-label="\u5237\u65B0"><i class="fa-solid fa-rotate"></i></button></div>
       ${legacy.length ? `<div class="echoes-warning-band"><strong>\u68C0\u6D4B\u5230 ${legacy.length} \u4E2A\u524D\u7AEF\u660E\u6587\u5BC6\u94A5</strong><button type="button" class="menu_button echoes-primary" data-api-action="migrate-credentials">\u539F\u5B50\u8FC1\u79FB</button></div>` : ""}
@@ -25916,7 +25979,7 @@ var ApiConfigPanel = class {
     }, { errorTitle: "\u51ED\u636E\u66F4\u65B0\u65E0\u6548" });
     if (!update) return;
     await echoesApi.updateCredential(id2, update);
-    await this.render("credentials");
+    await this.render("credentials", true);
   }
   async addCredential(form) {
     const name = fieldValue(form, "[name=name]");
@@ -25924,12 +25987,12 @@ var ApiConfigPanel = class {
     if (!name || !secret) throw new Error("\u51ED\u636E\u540D\u79F0\u548C\u5BC6\u94A5\u4E0D\u80FD\u4E3A\u7A7A\u3002");
     await echoesApi.createCredential({ name, secret });
     form.reset();
-    await this.render("credentials");
+    await this.render("credentials", true);
   }
   async deleteCredential(id2) {
     if (!confirm("\u5220\u9664\u8BE5\u670D\u52A1\u7AEF\u51ED\u636E\uFF1F\u5F15\u7528\u5B83\u7684\u7AEF\u70B9\u5C06\u65E0\u6CD5\u8C03\u7528\u3002")) return;
     await echoesApi.deleteCredential(id2);
-    await this.render("credentials");
+    await this.render("credentials", true);
   }
   async migrateCredentials() {
     const legacy = legacyCredentialEndpoints();
@@ -25945,7 +26008,7 @@ var ApiConfigPanel = class {
       await Promise.allSettled(created.map((credential) => echoesApi.deleteCredential(credential.id)));
       throw error51;
     }
-    await this.render("credentials");
+    await this.render("credentials", true);
   }
 };
 
@@ -28337,6 +28400,7 @@ var RecallPanel = class {
     });
   }
   async render() {
+    if (!this.root.classList.contains("echoes-recall-view")) return;
     const sequence = ++this.renderSequence;
     const chatId = SillyTavern.getContext().chatId;
     const host = this.root.querySelector(".echoes-grid-host");
@@ -28612,8 +28676,12 @@ var RecallPanel = class {
         <small></small>
         <div data-value></div>
         <div class="echoes-prompt-controls"></div>`;
-      row.querySelector("[data-recall-prompt=enabled]").checked = item.enabled;
-      row.querySelector("[data-recall-prompt=title]").value = item.title;
+      const enabled = row.querySelector("[data-recall-prompt=enabled]");
+      enabled.checked = item.enabled;
+      enabled.setAttribute("aria-label", `\u542F\u7528\u67E5\u8BE2\u9879\uFF1A${item.title}`);
+      const title = row.querySelector("[data-recall-prompt=title]");
+      title.value = item.title;
+      title.setAttribute("aria-label", "\u67E5\u8BE2\u9879\u540D\u79F0");
       row.querySelector("small").textContent = item.kind;
       const valueHost = row.querySelector("[data-value]");
       if (item.kind === "recent_messages") {
@@ -29927,6 +29995,8 @@ var SummaryPanel = class {
   renderSequence = 0;
   mode = "memory";
   async render(mode = this.mode) {
+    const viewClass = mode === "settings" ? "echoes-summary-generation-view" : "echoes-summary-view";
+    if (!this.root.classList.contains(viewClass)) return;
     this.mode = mode;
     const sequence = ++this.renderSequence;
     const host = this.root.querySelector(".echoes-grid-host");
@@ -30594,6 +30664,7 @@ var StatusPanel = class {
   queuedActions = 0;
   renderSequence = 0;
   tab = "current";
+  focusTabAfterRender = null;
   chatIdentity() {
     return {
       chatId: SillyTavern.getContext().chatId ?? null,
@@ -30607,6 +30678,7 @@ var StatusPanel = class {
     }
   }
   async render() {
+    if (!this.root.classList.contains("echoes-status-view")) return;
     const sequence = ++this.renderSequence;
     const chatId = SillyTavern.getContext().chatId;
     const host = this.root.querySelector(".echoes-grid-host");
@@ -30659,44 +30731,52 @@ var StatusPanel = class {
     const host = this.root.querySelector(".echoes-grid-host");
     host.innerHTML = `
       <div class="echoes-status-page">
-        <nav class="echoes-status-tabs" aria-label="\u72B6\u6001\u8BB0\u5FC6\u5206\u533A">
-          <button type="button" data-status-action="tab" data-status-tab="current" aria-selected="${this.tab === "current"}"><i class="fa-solid fa-gauge-high"></i><span>\u5F53\u524D\u72B6\u6001</span></button>
-          <button type="button" data-status-action="tab" data-status-tab="history" aria-selected="${this.tab === "history"}"><i class="fa-solid fa-clock-rotate-left"></i><span>\u5386\u53F2\u5FEB\u7167</span></button>
-          <button type="button" data-status-action="tab" data-status-tab="rules" aria-selected="${this.tab === "rules"}"><i class="fa-solid fa-list-check"></i><span>\u89C4\u5219</span></button>
-          <button type="button" data-status-action="tab" data-status-tab="profile" aria-selected="${this.tab === "profile"}"><i class="fa-solid fa-sliders"></i><span>\u6A21\u677F\u4E0E\u6CE8\u5165</span></button>
+        <nav class="echoes-status-tabs" aria-label="\u72B6\u6001\u8BB0\u5FC6\u5206\u533A" role="tablist">
+          <button type="button" id="echoes-status-tab-current" role="tab" aria-controls="echoes-status-panel-current" data-status-action="tab" data-status-tab="current" aria-selected="${this.tab === "current"}" tabindex="${this.tab === "current" ? "0" : "-1"}"><i class="fa-solid fa-gauge-high"></i><span>\u5F53\u524D\u72B6\u6001</span></button>
+          <button type="button" id="echoes-status-tab-history" role="tab" aria-controls="echoes-status-panel-history" data-status-action="tab" data-status-tab="history" aria-selected="${this.tab === "history"}" tabindex="${this.tab === "history" ? "0" : "-1"}"><i class="fa-solid fa-clock-rotate-left"></i><span>\u5386\u53F2\u5FEB\u7167</span></button>
+          <button type="button" id="echoes-status-tab-rules" role="tab" aria-controls="echoes-status-panel-rules" data-status-action="tab" data-status-tab="rules" aria-selected="${this.tab === "rules"}" tabindex="${this.tab === "rules" ? "0" : "-1"}"><i class="fa-solid fa-list-check"></i><span>\u89C4\u5219</span></button>
+          <button type="button" id="echoes-status-tab-profile" role="tab" aria-controls="echoes-status-panel-profile" data-status-action="tab" data-status-tab="profile" aria-selected="${this.tab === "profile"}" tabindex="${this.tab === "profile" ? "0" : "-1"}"><i class="fa-solid fa-sliders"></i><span>\u6A21\u677F\u4E0E\u6CE8\u5165</span></button>
         </nav>
-        <section class="echoes-status-controls${this.tab === "current" ? "" : " echoes-hidden"}" data-status-section="current">
-          <div class="echoes-summary-control-row">
-            <label class="echoes-check"><input type="checkbox" data-status-enabled>\u72B6\u6001\u6CE8\u5165</label>
-            <label class="echoes-check"><input type="checkbox" data-status-auto>\u81EA\u52A8\u66F4\u65B0</label>
-            <div class="echoes-api-binding-inline"><span>\u72B6\u6001\u5DE5\u4F5C\u6D41<strong data-status-binding></strong></span><button type="button" class="menu_button" data-action="switch-view" data-view="api"><i class="fa-solid fa-plug"></i> API\u914D\u7F6E</button></div>
-            <button type="button" class="menu_button echoes-primary" data-status-action="sync"><i class="fa-solid fa-arrows-rotate"></i> \u624B\u52A8\u540C\u6B65</button>
-            <button type="button" class="menu_button" data-status-action="refresh"><i class="fa-solid fa-rotate"></i> \u5237\u65B0</button>
-          </div>
-          <div class="echoes-status-sync" data-status-sync></div>
-        </section>
-        <section class="echoes-summary-section${this.tab === "current" ? "" : " echoes-hidden"}" data-status-section="current">
-          <header><h2>\u5F53\u524D\u72B6\u6001</h2><div><button type="button" class="menu_button" data-status-action="preview"><i class="fa-solid fa-eye"></i> \u6700\u7EC8\u63D0\u793A\u8BCD</button> <button type="button" class="menu_button" data-status-action="reset"><i class="fa-solid fa-rotate-left"></i> \u6062\u590D\u521D\u59CB\u503C</button> <button type="button" class="menu_button echoes-primary" data-status-action="save-yaml"><i class="fa-solid fa-floppy-disk"></i> \u6821\u9A8C\u5E76\u4FDD\u5B58</button></div></header>
-          <textarea class="echoes-status-yaml" data-status-yaml spellcheck="false"></textarea>
-        </section>
-        <section class="echoes-summary-section${this.tab === "history" ? "" : " echoes-hidden"}" data-status-section="history"><header><h2>\u5FEB\u7167\u5386\u53F2</h2></header><div data-status-history></div></section>
-        <section class="echoes-summary-section${this.tab === "profile" ? "" : " echoes-hidden"}" data-status-section="profile">
-          <header><h2>\u5F53\u524D\u804A\u5929\u914D\u7F6E\u526F\u672C</h2><button type="button" class="menu_button echoes-primary" data-status-action="save-profile"><i class="fa-solid fa-floppy-disk"></i> \u4FDD\u5B58\u914D\u7F6E</button></header>
-          <div class="echoes-status-profile">
-            <label>\u521D\u59CB\u72B6\u6001 YAML<textarea data-status-initial spellcheck="false"></textarea></label>
-            <label>\u672A\u77E5\u5B57\u6BB5<select data-status-unknown><option value="allow">\u5141\u8BB8</option><option value="reject">\u62D2\u7EDD</option></select></label>
-            <label>\u6CE8\u5165\u4F4D\u7F6E<select data-status-position><option value="before_character">\u89D2\u8272\u5B9A\u4E49\u524D</option><option value="after_character">\u89D2\u8272\u5B9A\u4E49\u540E</option><option value="at_depth">\u6307\u5B9A\u6DF1\u5EA6</option></select></label>
-            <label>\u89D2\u8272<select data-status-role><option value="system">system</option><option value="user">user</option><option value="assistant">assistant</option></select></label>
-            <label>\u6DF1\u5EA6<input type="number" min="0" max="100" data-status-depth></label>
-            <label>\u987A\u5E8F<input type="number" min="-10000" max="10000" data-status-order></label>
-            <label class="echoes-status-template-field">\u6CE8\u5165\u6A21\u677F<textarea data-status-template></textarea></label>
-          </div>
-        </section>
-        <section class="echoes-summary-section${this.tab === "rules" ? "" : " echoes-hidden"}" data-status-section="rules"><header><h2>\u72B6\u6001\u63D0\u793A\u8BCD</h2><button type="button" class="menu_button" data-status-action="add-prompt"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-prompts></div></section>
-        <section class="echoes-summary-section${this.tab === "rules" ? "" : " echoes-hidden"}" data-status-section="rules"><header><h2>\u6D88\u606F\u6E05\u6D17</h2><button type="button" class="menu_button" data-status-action="add-cleaning"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-cleaning></div></section>
-        <section class="echoes-summary-section${this.tab === "rules" ? "" : " echoes-hidden"}" data-status-section="rules"><header><h2>\u58F0\u660E\u5F0F\u6821\u9A8C</h2><button type="button" class="menu_button" data-status-action="add-validation"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-validation></div></section>
-        <section class="echoes-summary-section${this.tab === "profile" ? "" : " echoes-hidden"}" data-status-section="profile"><header><h2>\u5168\u5C40\u72B6\u6001\u6A21\u677F</h2><button type="button" class="menu_button" data-status-action="save-template"><i class="fa-solid fa-plus"></i> \u5C06\u5F53\u524D\u526F\u672C\u4FDD\u5B58\u4E3A\u6A21\u677F</button></header><div class="echoes-status-template-picker"><select data-status-template-select></select><button type="button" class="menu_button" data-status-action="apply-template">\u57FA\u4E8E\u6A21\u677F\u91CD\u5EFA\u526F\u672C</button><button type="button" class="menu_button" data-status-action="update-template"><i class="fa-solid fa-floppy-disk"></i> \u8986\u76D6\u6A21\u677F</button><button type="button" class="menu_button" data-status-action="delete-template"><i class="fa-solid fa-trash"></i> \u5220\u9664\u6A21\u677F</button></div></section>
-        <section class="echoes-summary-section${this.tab === "current" ? "" : " echoes-hidden"}" data-status-section="current"><header><h2>\u6700\u8FD1\u4EFB\u52A1\u8BCA\u65AD</h2></header><pre class="echoes-recall-trace" data-status-trace></pre></section>
+        <div class="echoes-status-tabpanel${this.tab === "current" ? "" : " echoes-hidden"}" id="echoes-status-panel-current" role="tabpanel" aria-labelledby="echoes-status-tab-current" data-status-section="current" ${this.tab === "current" ? "" : "hidden"}>
+          <section class="echoes-status-controls">
+            <div class="echoes-summary-control-row">
+              <label class="echoes-check"><input type="checkbox" data-status-enabled>\u72B6\u6001\u6CE8\u5165</label>
+              <label class="echoes-check"><input type="checkbox" data-status-auto>\u81EA\u52A8\u66F4\u65B0</label>
+              <div class="echoes-api-binding-inline"><span>\u72B6\u6001\u5DE5\u4F5C\u6D41<strong data-status-binding></strong></span><button type="button" class="menu_button" data-action="switch-view" data-view="api"><i class="fa-solid fa-plug"></i> API\u914D\u7F6E</button></div>
+              <button type="button" class="menu_button echoes-primary" data-status-action="sync"><i class="fa-solid fa-arrows-rotate"></i> \u624B\u52A8\u540C\u6B65</button>
+              <button type="button" class="menu_button" data-status-action="refresh"><i class="fa-solid fa-rotate"></i> \u5237\u65B0</button>
+            </div>
+            <div class="echoes-status-sync" data-status-sync></div>
+          </section>
+          <section class="echoes-summary-section">
+            <header><h2>\u5F53\u524D\u72B6\u6001</h2><div><button type="button" class="menu_button" data-status-action="preview"><i class="fa-solid fa-eye"></i> \u6700\u7EC8\u63D0\u793A\u8BCD</button> <button type="button" class="menu_button" data-status-action="reset"><i class="fa-solid fa-rotate-left"></i> \u6062\u590D\u521D\u59CB\u503C</button> <button type="button" class="menu_button echoes-primary" data-status-action="save-yaml"><i class="fa-solid fa-floppy-disk"></i> \u6821\u9A8C\u5E76\u4FDD\u5B58</button></div></header>
+            <textarea class="echoes-status-yaml" data-status-yaml spellcheck="false"></textarea>
+          </section>
+          <section class="echoes-summary-section"><header><h2>\u6700\u8FD1\u4EFB\u52A1\u8BCA\u65AD</h2></header><pre class="echoes-recall-trace" data-status-trace></pre></section>
+        </div>
+        <div class="echoes-status-tabpanel${this.tab === "history" ? "" : " echoes-hidden"}" id="echoes-status-panel-history" role="tabpanel" aria-labelledby="echoes-status-tab-history" data-status-section="history" ${this.tab === "history" ? "" : "hidden"}>
+          <section class="echoes-summary-section"><header><h2>\u5FEB\u7167\u5386\u53F2</h2></header><div data-status-history></div></section>
+        </div>
+        <div class="echoes-status-tabpanel${this.tab === "rules" ? "" : " echoes-hidden"}" id="echoes-status-panel-rules" role="tabpanel" aria-labelledby="echoes-status-tab-rules" data-status-section="rules" ${this.tab === "rules" ? "" : "hidden"}>
+          <section class="echoes-summary-section"><header><h2>\u72B6\u6001\u63D0\u793A\u8BCD</h2><button type="button" class="menu_button" data-status-action="add-prompt"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-prompts></div></section>
+          <section class="echoes-summary-section"><header><h2>\u6D88\u606F\u6E05\u6D17</h2><button type="button" class="menu_button" data-status-action="add-cleaning"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-cleaning></div></section>
+          <section class="echoes-summary-section"><header><h2>\u58F0\u660E\u5F0F\u6821\u9A8C</h2><button type="button" class="menu_button" data-status-action="add-validation"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-validation></div></section>
+        </div>
+        <div class="echoes-status-tabpanel${this.tab === "profile" ? "" : " echoes-hidden"}" id="echoes-status-panel-profile" role="tabpanel" aria-labelledby="echoes-status-tab-profile" data-status-section="profile" ${this.tab === "profile" ? "" : "hidden"}>
+          <section class="echoes-summary-section">
+            <header><h2>\u5F53\u524D\u804A\u5929\u914D\u7F6E\u526F\u672C</h2><button type="button" class="menu_button echoes-primary" data-status-action="save-profile"><i class="fa-solid fa-floppy-disk"></i> \u4FDD\u5B58\u914D\u7F6E</button></header>
+            <div class="echoes-status-profile">
+              <label>\u521D\u59CB\u72B6\u6001 YAML<textarea data-status-initial spellcheck="false"></textarea></label>
+              <label>\u672A\u77E5\u5B57\u6BB5<select data-status-unknown><option value="allow">\u5141\u8BB8</option><option value="reject">\u62D2\u7EDD</option></select></label>
+              <label>\u6CE8\u5165\u4F4D\u7F6E<select data-status-position><option value="before_character">\u89D2\u8272\u5B9A\u4E49\u524D</option><option value="after_character">\u89D2\u8272\u5B9A\u4E49\u540E</option><option value="at_depth">\u6307\u5B9A\u6DF1\u5EA6</option></select></label>
+              <label>\u89D2\u8272<select data-status-role><option value="system">system</option><option value="user">user</option><option value="assistant">assistant</option></select></label>
+              <label>\u6DF1\u5EA6<input type="number" min="0" max="100" data-status-depth></label>
+              <label>\u987A\u5E8F<input type="number" min="-10000" max="10000" data-status-order></label>
+              <label class="echoes-status-template-field">\u6CE8\u5165\u6A21\u677F<textarea data-status-template></textarea></label>
+            </div>
+          </section>
+          <section class="echoes-summary-section"><header><h2>\u5168\u5C40\u72B6\u6001\u6A21\u677F</h2><button type="button" class="menu_button" data-status-action="save-template"><i class="fa-solid fa-plus"></i> \u5C06\u5F53\u524D\u526F\u672C\u4FDD\u5B58\u4E3A\u6A21\u677F</button></header><div class="echoes-status-template-picker"><select data-status-template-select></select><button type="button" class="menu_button" data-status-action="apply-template">\u57FA\u4E8E\u6A21\u677F\u91CD\u5EFA\u526F\u672C</button><button type="button" class="menu_button" data-status-action="update-template"><i class="fa-solid fa-floppy-disk"></i> \u8986\u76D6\u6A21\u677F</button><button type="button" class="menu_button" data-status-action="delete-template"><i class="fa-solid fa-trash"></i> \u5220\u9664\u6A21\u677F</button></div></section>
+        </div>
       </div>`;
     host.querySelector("[data-status-enabled]").checked = this.state.catalog.enabled;
     host.querySelector("[data-status-auto]").checked = this.state.catalog.autoUpdate;
@@ -30864,6 +30944,20 @@ var StatusPanel = class {
       if (!target) return;
       this.enqueue(() => this.handleAction(target), "\u72B6\u6001\u64CD\u4F5C\u5931\u8D25");
     });
+    this.root.addEventListener("keydown", (event) => {
+      const target = event.target.closest('[role="tab"][data-status-tab]');
+      if (!target || event.altKey || event.ctrlKey || event.metaKey) return;
+      const tabs = [...this.root.querySelectorAll('[role="tab"][data-status-tab]')];
+      const current = tabs.indexOf(target);
+      let next = current;
+      if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
+      else if (event.key === "ArrowLeft") next = (current - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      else return;
+      event.preventDefault();
+      tabs[next]?.click();
+    });
     this.root.addEventListener("change", (event) => {
       const target = event.target;
       if (!target.matches([
@@ -30883,6 +30977,10 @@ var StatusPanel = class {
     }).finally(() => {
       this.queuedActions = Math.max(0, this.queuedActions - 1);
       this.updateBusyControls();
+      if (this.focusTabAfterRender) {
+        this.root.querySelector(`[role="tab"][data-status-tab="${this.focusTabAfterRender}"]`)?.focus();
+        this.focusTabAfterRender = null;
+      }
     });
   }
   updateBusyControls() {
@@ -30920,7 +31018,10 @@ var StatusPanel = class {
     const action = target.dataset.statusAction ?? "";
     if (action === "tab") {
       const tab = target.dataset.statusTab;
-      if (tab === "current" || tab === "history" || tab === "rules" || tab === "profile") this.tab = tab;
+      if (tab === "current" || tab === "history" || tab === "rules" || tab === "profile") {
+        this.tab = tab;
+        this.focusTabAfterRender = tab;
+      }
     } else if (action === "refresh") await this.render();
     else if (action === "sync") await this.withBusy(() => statusCoordinator.synchronize());
     else if (action === "save-yaml") {
@@ -31887,6 +31988,7 @@ var MaintenancePanel = class {
   renderSequence = 0;
   refreshSequence = 0;
   async render() {
+    if (!this.root.classList.contains("echoes-maintenance-view")) return;
     const sequence = ++this.renderSequence;
     const host = this.root.querySelector(".echoes-grid-host");
     host.innerHTML = `
@@ -32473,6 +32575,7 @@ var MemoryPanel = class {
     return this.state?.catalog.types.find((type) => type.id === this.activeTypeId);
   }
   render() {
+    this.root.classList.toggle("echoes-memory-view", this.view === "memory");
     this.root.classList.toggle("echoes-api-view", this.view === "api");
     this.root.classList.toggle("echoes-retrieval-view", this.view === "summary-settings" && this.summarySettingsTab === "retrieval");
     this.root.classList.toggle("echoes-summary-view", this.view === "summary");
