@@ -306,7 +306,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "0.3.2",
+  version: "0.3.3",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -24633,6 +24633,36 @@ function openMigrationDialog(options) {
   });
 }
 
+// src/extension/ui/responsive-table.ts
+var WIDE_COLUMNS = /* @__PURE__ */ new Set([
+  "\u5185\u5BB9",
+  "\u6B63\u6587",
+  "\u6807\u7B7E",
+  "\u8BF4\u660E",
+  "\u5730\u5740",
+  "URL",
+  "\u53D8\u5316",
+  "\u72B6\u6001\u54C8\u5E0C",
+  "\u9519\u8BEF"
+]);
+function prepareResponsiveTable(table) {
+  const headings = [...table.tHead?.rows[0]?.cells ?? []].map((cell) => cell.textContent?.trim() ?? "");
+  const lastIndex = headings.length - 1;
+  const actionColumnIndex = ["\u64CD\u4F5C", "\u6D4B\u8BD5"].includes(headings[lastIndex] ?? "") ? lastIndex : -1;
+  if (actionColumnIndex >= 0) table.tHead?.rows[0]?.cells[actionColumnIndex]?.setAttribute("data-actions", "true");
+  table.classList.add("echoes-responsive-table");
+  for (const body of [...table.tBodies]) {
+    for (const row of [...body.rows]) {
+      [...row.cells].forEach((cell, index) => {
+        const label = headings[index] ?? "";
+        cell.dataset.label = label;
+        if (WIDE_COLUMNS.has(label)) cell.dataset.wide = "true";
+        if (index === actionColumnIndex || cell.classList.contains("echoes-row-actions")) cell.dataset.actions = "true";
+      });
+    }
+  }
+}
+
 // src/extension/ui/retrieval-panel.ts
 init_client();
 var TERMINAL_STATES2 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
@@ -24855,6 +24885,7 @@ var RetrievalPanel = class {
       body.append(row);
     }
     table.append(body);
+    prepareResponsiveTable(table);
     host.replaceChildren(table);
   }
   populateCollectionControls(host) {
@@ -25123,6 +25154,7 @@ var RetrievalPanel = class {
       body.append(row);
     }
     table.append(body);
+    prepareResponsiveTable(table);
     host.replaceChildren(table);
   }
   confirmAmbiguous(decision) {
@@ -25233,6 +25265,21 @@ async function waitJob(job, maxWaitMs = 10 * 6e4) {
 }
 function fieldValue(root, selector) {
   return root.querySelector(selector)?.value.trim() ?? "";
+}
+function bindSecretVisibility(root) {
+  root.querySelectorAll("[data-secret-toggle]").forEach((button3) => {
+    button3.addEventListener("click", () => {
+      const input = button3.closest(".echoes-secret-control")?.querySelector("input");
+      if (!input) return;
+      const reveal = input.type === "password";
+      input.type = reveal ? "text" : "password";
+      const label = reveal ? "\u9690\u85CF\u5BC6\u94A5" : "\u663E\u793A\u5BC6\u94A5";
+      button3.title = label;
+      button3.setAttribute("aria-label", label);
+      button3.setAttribute("aria-pressed", String(reveal));
+      button3.querySelector("i").className = "fa-solid fa-" + (reveal ? "eye-slash" : "eye");
+    });
+  });
 }
 var ApiConfigPanel = class {
   constructor(root) {
@@ -25499,7 +25546,11 @@ var ApiConfigPanel = class {
       body.append(row);
     });
     table.append(body);
-    section.append(table);
+    prepareResponsiveTable(table);
+    const wrapper = document.createElement("div");
+    wrapper.className = "echoes-table-scroll";
+    wrapper.append(table);
+    section.append(wrapper);
     return section;
   }
   async addGenerationGroup() {
@@ -25671,7 +25722,11 @@ var ApiConfigPanel = class {
       body.append(row);
     });
     table.append(body);
-    section.append(table);
+    prepareResponsiveTable(table);
+    const wrapper = document.createElement("div");
+    wrapper.className = "echoes-table-scroll";
+    wrapper.append(table);
+    section.append(wrapper);
     return section;
   }
   async editRetrievalGroup(kind, groupId) {
@@ -25813,7 +25868,17 @@ var ApiConfigPanel = class {
   renderCredentials() {
     const legacy = legacyCredentialEndpoints();
     const host = this.content();
-    host.innerHTML = `<section class="echoes-settings-section"><div class="echoes-section-heading"><div><h2>\u670D\u52A1\u7AEF\u51ED\u636E</h2><span>\u5BC6\u94A5\u4E0D\u4F1A\u56DE\u4F20\u5230\u6D4F\u89C8\u5668\uFF1B\u7EF4\u62A4\u9875\u4E2D\u7684\u51ED\u636E\u5165\u53E3\u6682\u65F6\u4FDD\u7559</span></div><button type="button" class="echoes-icon-button" data-api-action="refresh" title="\u5237\u65B0" aria-label="\u5237\u65B0"><i class="fa-solid fa-rotate"></i></button></div>${legacy.length ? `<div class="echoes-warning-band"><strong>\u68C0\u6D4B\u5230 ${legacy.length} \u4E2A\u524D\u7AEF\u660E\u6587\u5BC6\u94A5</strong><button type="button" class="menu_button echoes-primary" data-api-action="migrate-credentials">\u539F\u5B50\u8FC1\u79FB</button></div>` : ""}<form class="echoes-inline-form" data-api-credential-form><input name="name" placeholder="\u51ED\u636E\u540D\u79F0" required maxlength="120"><input name="secret" type="password" placeholder="API \u5BC6\u94A5" required autocomplete="new-password"><button type="submit" class="menu_button echoes-primary"><i class="fa-solid fa-key"></i> \u6DFB\u52A0\u51ED\u636E</button></form><div class="echoes-credential-list" data-credential-list></div></section>`;
+    host.innerHTML = `<section class="echoes-settings-section">
+      <div class="echoes-section-heading"><div><h2>\u670D\u52A1\u7AEF\u51ED\u636E</h2><span>\u5BC6\u94A5\u4EC5\u4FDD\u5B58\u5728\u670D\u52A1\u7AEF\uFF0C\u4E0D\u4F1A\u56DE\u4F20\u5230\u6D4F\u89C8\u5668</span></div><button type="button" class="echoes-icon-button" data-api-action="refresh" title="\u5237\u65B0" aria-label="\u5237\u65B0"><i class="fa-solid fa-rotate"></i></button></div>
+      ${legacy.length ? `<div class="echoes-warning-band"><strong>\u68C0\u6D4B\u5230 ${legacy.length} \u4E2A\u524D\u7AEF\u660E\u6587\u5BC6\u94A5</strong><button type="button" class="menu_button echoes-primary" data-api-action="migrate-credentials">\u539F\u5B50\u8FC1\u79FB</button></div>` : ""}
+      <form class="echoes-credential-form" data-api-credential-form>
+        <label class="echoes-field"><span>\u51ED\u636E\u540D\u79F0 <em>\u5FC5\u586B</em></span><input name="name" placeholder="\u4F8B\u5982\uFF1A\u4E3B\u751F\u6210 API" required maxlength="120"></label>
+        <label class="echoes-field"><span>API \u5BC6\u94A5 <em>\u5FC5\u586B</em></span><span class="echoes-secret-control"><input name="secret" type="password" placeholder="\u8F93\u5165 API \u5BC6\u94A5" required autocomplete="new-password"><button type="button" class="echoes-icon-button" data-secret-toggle title="\u663E\u793A\u5BC6\u94A5" aria-label="\u663E\u793A\u5BC6\u94A5" aria-pressed="false"><i class="fa-solid fa-eye"></i></button></span></label>
+        <button type="submit" class="menu_button echoes-primary"><i class="fa-solid fa-key"></i> \u6DFB\u52A0\u51ED\u636E</button>
+      </form>
+      <div class="echoes-credential-list" data-credential-list></div>
+    </section>`;
+    bindSecretVisibility(host);
     const list = host.querySelector("[data-credential-list]");
     if (this.credentials.length === 0) list.innerHTML = '<p class="echoes-empty-note">\u5C1A\u65E0\u670D\u52A1\u7AEF\u51ED\u636E\u3002</p>';
     this.credentials.forEach((credential) => {
@@ -25840,7 +25905,8 @@ var ApiConfigPanel = class {
     if (!credential) throw new Error("\u51ED\u636E\u4E0D\u5B58\u5728\u6216\u5217\u8868\u5C1A\u672A\u52A0\u8F7D\u3002");
     const dialog = dialogShell("\u7F16\u8F91\u670D\u52A1\u7AEF\u51ED\u636E");
     const body = dialog.querySelector(".echoes-dialog-body");
-    body.innerHTML = '<div class="echoes-form-grid"><label>\u51ED\u636E\u540D\u79F0<input name="name" required maxlength="120"></label><label>\u65B0 API \u5BC6\u94A5<input name="secret" type="password" autocomplete="new-password" placeholder="\u7559\u7A7A\u5219\u4FDD\u7559\u73B0\u6709\u5BC6\u94A5"></label></div>';
+    body.innerHTML = '<div class="echoes-form-grid"><label class="echoes-field"><span>\u51ED\u636E\u540D\u79F0 <em>\u5FC5\u586B</em></span><input name="name" required maxlength="120"></label><label class="echoes-field"><span>\u65B0 API \u5BC6\u94A5 <small>\u7559\u7A7A\u5219\u4FDD\u7559\u73B0\u6709\u5BC6\u94A5</small></span><span class="echoes-secret-control"><input name="secret" type="password" autocomplete="new-password"><button type="button" class="echoes-icon-button" data-secret-toggle title="\u663E\u793A\u5BC6\u94A5" aria-label="\u663E\u793A\u5BC6\u94A5" aria-pressed="false"><i class="fa-solid fa-eye"></i></button></span></label></div>';
+    bindSecretVisibility(body);
     body.querySelector("[name=name]").value = credential.name;
     const update = await submitDialog(dialog, () => {
       const name = fieldValue(body, "[name=name]");
@@ -30062,6 +30128,7 @@ var SummaryPanel = class {
       body.append(row);
     }
     table.append(body);
+    prepareResponsiveTable(table);
     wrapper.append(table);
     host.replaceChildren(wrapper);
   }
@@ -30526,6 +30593,7 @@ var StatusPanel = class {
   actionChain = Promise.resolve();
   queuedActions = 0;
   renderSequence = 0;
+  tab = "current";
   chatIdentity() {
     return {
       chatId: SillyTavern.getContext().chatId ?? null,
@@ -30591,7 +30659,13 @@ var StatusPanel = class {
     const host = this.root.querySelector(".echoes-grid-host");
     host.innerHTML = `
       <div class="echoes-status-page">
-        <section class="echoes-status-controls">
+        <nav class="echoes-status-tabs" aria-label="\u72B6\u6001\u8BB0\u5FC6\u5206\u533A">
+          <button type="button" data-status-action="tab" data-status-tab="current" aria-selected="${this.tab === "current"}"><i class="fa-solid fa-gauge-high"></i><span>\u5F53\u524D\u72B6\u6001</span></button>
+          <button type="button" data-status-action="tab" data-status-tab="history" aria-selected="${this.tab === "history"}"><i class="fa-solid fa-clock-rotate-left"></i><span>\u5386\u53F2\u5FEB\u7167</span></button>
+          <button type="button" data-status-action="tab" data-status-tab="rules" aria-selected="${this.tab === "rules"}"><i class="fa-solid fa-list-check"></i><span>\u89C4\u5219</span></button>
+          <button type="button" data-status-action="tab" data-status-tab="profile" aria-selected="${this.tab === "profile"}"><i class="fa-solid fa-sliders"></i><span>\u6A21\u677F\u4E0E\u6CE8\u5165</span></button>
+        </nav>
+        <section class="echoes-status-controls${this.tab === "current" ? "" : " echoes-hidden"}" data-status-section="current">
           <div class="echoes-summary-control-row">
             <label class="echoes-check"><input type="checkbox" data-status-enabled>\u72B6\u6001\u6CE8\u5165</label>
             <label class="echoes-check"><input type="checkbox" data-status-auto>\u81EA\u52A8\u66F4\u65B0</label>
@@ -30601,12 +30675,12 @@ var StatusPanel = class {
           </div>
           <div class="echoes-status-sync" data-status-sync></div>
         </section>
-        <section class="echoes-summary-section">
+        <section class="echoes-summary-section${this.tab === "current" ? "" : " echoes-hidden"}" data-status-section="current">
           <header><h2>\u5F53\u524D\u72B6\u6001</h2><div><button type="button" class="menu_button" data-status-action="preview"><i class="fa-solid fa-eye"></i> \u6700\u7EC8\u63D0\u793A\u8BCD</button> <button type="button" class="menu_button" data-status-action="reset"><i class="fa-solid fa-rotate-left"></i> \u6062\u590D\u521D\u59CB\u503C</button> <button type="button" class="menu_button echoes-primary" data-status-action="save-yaml"><i class="fa-solid fa-floppy-disk"></i> \u6821\u9A8C\u5E76\u4FDD\u5B58</button></div></header>
           <textarea class="echoes-status-yaml" data-status-yaml spellcheck="false"></textarea>
         </section>
-        <section class="echoes-summary-section"><header><h2>\u5FEB\u7167\u5386\u53F2</h2></header><div data-status-history></div></section>
-        <section class="echoes-summary-section">
+        <section class="echoes-summary-section${this.tab === "history" ? "" : " echoes-hidden"}" data-status-section="history"><header><h2>\u5FEB\u7167\u5386\u53F2</h2></header><div data-status-history></div></section>
+        <section class="echoes-summary-section${this.tab === "profile" ? "" : " echoes-hidden"}" data-status-section="profile">
           <header><h2>\u5F53\u524D\u804A\u5929\u914D\u7F6E\u526F\u672C</h2><button type="button" class="menu_button echoes-primary" data-status-action="save-profile"><i class="fa-solid fa-floppy-disk"></i> \u4FDD\u5B58\u914D\u7F6E</button></header>
           <div class="echoes-status-profile">
             <label>\u521D\u59CB\u72B6\u6001 YAML<textarea data-status-initial spellcheck="false"></textarea></label>
@@ -30618,11 +30692,11 @@ var StatusPanel = class {
             <label class="echoes-status-template-field">\u6CE8\u5165\u6A21\u677F<textarea data-status-template></textarea></label>
           </div>
         </section>
-        <section class="echoes-summary-section"><header><h2>\u72B6\u6001\u63D0\u793A\u8BCD</h2><button type="button" class="menu_button" data-status-action="add-prompt"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-prompts></div></section>
-        <section class="echoes-summary-section"><header><h2>\u6D88\u606F\u6E05\u6D17</h2><button type="button" class="menu_button" data-status-action="add-cleaning"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-cleaning></div></section>
-        <section class="echoes-summary-section"><header><h2>\u58F0\u660E\u5F0F\u6821\u9A8C</h2><button type="button" class="menu_button" data-status-action="add-validation"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-validation></div></section>
-        <section class="echoes-summary-section"><header><h2>\u5168\u5C40\u72B6\u6001\u6A21\u677F</h2><button type="button" class="menu_button" data-status-action="save-template"><i class="fa-solid fa-plus"></i> \u5C06\u5F53\u524D\u526F\u672C\u4FDD\u5B58\u4E3A\u6A21\u677F</button></header><div class="echoes-status-template-picker"><select data-status-template-select></select><button type="button" class="menu_button" data-status-action="apply-template">\u57FA\u4E8E\u6A21\u677F\u91CD\u5EFA\u526F\u672C</button><button type="button" class="menu_button" data-status-action="update-template"><i class="fa-solid fa-floppy-disk"></i> \u8986\u76D6\u6A21\u677F</button><button type="button" class="menu_button" data-status-action="delete-template"><i class="fa-solid fa-trash"></i> \u5220\u9664\u6A21\u677F</button></div></section>
-        <section class="echoes-summary-section"><header><h2>\u6700\u8FD1\u4EFB\u52A1\u8BCA\u65AD</h2></header><pre class="echoes-recall-trace" data-status-trace></pre></section>
+        <section class="echoes-summary-section${this.tab === "rules" ? "" : " echoes-hidden"}" data-status-section="rules"><header><h2>\u72B6\u6001\u63D0\u793A\u8BCD</h2><button type="button" class="menu_button" data-status-action="add-prompt"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-prompts></div></section>
+        <section class="echoes-summary-section${this.tab === "rules" ? "" : " echoes-hidden"}" data-status-section="rules"><header><h2>\u6D88\u606F\u6E05\u6D17</h2><button type="button" class="menu_button" data-status-action="add-cleaning"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-cleaning></div></section>
+        <section class="echoes-summary-section${this.tab === "rules" ? "" : " echoes-hidden"}" data-status-section="rules"><header><h2>\u58F0\u660E\u5F0F\u6821\u9A8C</h2><button type="button" class="menu_button" data-status-action="add-validation"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-validation></div></section>
+        <section class="echoes-summary-section${this.tab === "profile" ? "" : " echoes-hidden"}" data-status-section="profile"><header><h2>\u5168\u5C40\u72B6\u6001\u6A21\u677F</h2><button type="button" class="menu_button" data-status-action="save-template"><i class="fa-solid fa-plus"></i> \u5C06\u5F53\u524D\u526F\u672C\u4FDD\u5B58\u4E3A\u6A21\u677F</button></header><div class="echoes-status-template-picker"><select data-status-template-select></select><button type="button" class="menu_button" data-status-action="apply-template">\u57FA\u4E8E\u6A21\u677F\u91CD\u5EFA\u526F\u672C</button><button type="button" class="menu_button" data-status-action="update-template"><i class="fa-solid fa-floppy-disk"></i> \u8986\u76D6\u6A21\u677F</button><button type="button" class="menu_button" data-status-action="delete-template"><i class="fa-solid fa-trash"></i> \u5220\u9664\u6A21\u677F</button></div></section>
+        <section class="echoes-summary-section${this.tab === "current" ? "" : " echoes-hidden"}" data-status-section="current"><header><h2>\u6700\u8FD1\u4EFB\u52A1\u8BCA\u65AD</h2></header><pre class="echoes-recall-trace" data-status-trace></pre></section>
       </div>`;
     host.querySelector("[data-status-enabled]").checked = this.state.catalog.enabled;
     host.querySelector("[data-status-auto]").checked = this.state.catalog.autoUpdate;
@@ -30687,6 +30761,7 @@ var StatusPanel = class {
       body.append(row);
     }
     table.append(body);
+    prepareResponsiveTable(table);
     wrapper.append(table);
     host.replaceChildren(wrapper);
   }
@@ -30843,7 +30918,10 @@ var StatusPanel = class {
   async handleAction(target) {
     if (!this.state) return;
     const action = target.dataset.statusAction ?? "";
-    if (action === "refresh") await this.render();
+    if (action === "tab") {
+      const tab = target.dataset.statusTab;
+      if (tab === "current" || tab === "history" || tab === "rules" || tab === "profile") this.tab = tab;
+    } else if (action === "refresh") await this.render();
     else if (action === "sync") await this.withBusy(() => statusCoordinator.synchronize());
     else if (action === "save-yaml") {
       const state = statusCoordinator.parseYaml(this.root.querySelector("[data-status-yaml]").value);
@@ -31808,7 +31886,6 @@ var MaintenancePanel = class {
   diagnosticBundle = null;
   renderSequence = 0;
   refreshSequence = 0;
-  credentialMigrationPrompted = false;
   async render() {
     const sequence = ++this.renderSequence;
     const host = this.root.querySelector(".echoes-grid-host");
@@ -31839,12 +31916,6 @@ var MaintenancePanel = class {
       if (status.status === "rejected" && credentials.status === "rejected") throw status.reason;
       if (credentials.status === "rejected") {
         toastr.warning(`\u51ED\u636E\u5B50\u7CFB\u7EDF\u4E0D\u53EF\u7528\uFF1A${message2(credentials.reason)}`, "Echoes");
-      }
-      if (credentials.status === "fulfilled" && !this.credentialMigrationPrompted && legacyCredentialEndpoints().length > 0) {
-        this.credentialMigrationPrompted = true;
-        queueMicrotask(() => void this.migrateCredentials().catch((error51) => {
-          toastr.error(message2(error51), "Echoes \u51ED\u636E\u8FC1\u79FB");
-        }));
       }
     } catch (error51) {
       if (!this.current(sequence, refreshSequence)) return;
@@ -31898,21 +31969,17 @@ var MaintenancePanel = class {
   renderCredentials() {
     const host = this.root.querySelector("[data-credentials]");
     if (!host) return;
-    const legacy = legacyCredentialEndpoints();
     host.innerHTML = `
-      <div class="echoes-section-heading"><div><h2>\u670D\u52A1\u7AEF\u51ED\u636E</h2><span>\u5BC6\u94A5\u4E0D\u4F1A\u56DE\u4F20\u5230\u6D4F\u89C8\u5668</span></div></div>
-      ${legacy.length > 0 ? `<div class="echoes-warning-band"><strong>\u68C0\u6D4B\u5230 ${legacy.length} \u4E2A\u524D\u7AEF\u660E\u6587\u5BC6\u94A5</strong><button type="button" class="menu_button echoes-primary" data-maintenance-action="migrate-credentials">\u539F\u5B50\u8FC1\u79FB</button></div>` : ""}
-      <form class="echoes-inline-form" data-credential-form>
-        <input name="name" placeholder="\u51ED\u636E\u540D\u79F0" required maxlength="120">
-        <input name="secret" type="password" placeholder="API \u5BC6\u94A5" required autocomplete="new-password">
-        <button type="button" class="menu_button" data-maintenance-action="add-credential"><i class="fa-solid fa-key"></i> \u6DFB\u52A0</button>
-      </form>
+      <div class="echoes-section-heading">
+        <div><h2>\u51ED\u636E\u72B6\u6001</h2><span>\u7EF4\u62A4\u9875\u4EC5\u663E\u793A\u72B6\u6001\uFF1B\u65B0\u589E\u3001\u8F6E\u6362\u3001\u8FC1\u79FB\u548C\u5220\u9664\u7EDF\u4E00\u5728 API\u914D\u7F6E\u4E2D\u5B8C\u6210</span></div>
+        <button type="button" class="menu_button" data-action="switch-view" data-view="api"><i class="fa-solid fa-arrow-up-right-from-square"></i> \u524D\u5F80 API\u914D\u7F6E</button>
+      </div>
       <div class="echoes-maintenance-table">
-        ${this.credentials.length === 0 ? '<p class="echoes-empty-note">\u5C1A\u65E0\u670D\u52A1\u7AEF\u51ED\u636E\u3002</p>' : this.credentials.map((credential) => `
+        ${this.credentials.length === 0 ? '<p class="echoes-empty-note">\u5C1A\u65E0\u670D\u52A1\u7AEF\u51ED\u636E\u3002\u8BF7\u524D\u5F80 API\u914D\u7F6E\u6DFB\u52A0\u3002</p>' : this.credentials.map((credential) => `
           <div class="echoes-maintenance-row">
             <span><strong>${this.escape(credential.name)}</strong><small>${this.escape(credential.id)}</small></span>
             <time>${new Date(credential.updatedAt).toLocaleString()}</time>
-            <button type="button" class="echoes-icon-button" data-maintenance-action="delete-credential" data-id="${this.escape(credential.id)}" title="\u5220\u9664\u51ED\u636E" aria-label="\u5220\u9664\u51ED\u636E"><i class="fa-solid fa-trash"></i></button>
+            <span class="echoes-diagnostic-state">\u5DF2\u4FDD\u5B58</span>
           </div>`).join("")}
       </div>`;
   }
@@ -31960,58 +32027,12 @@ var MaintenancePanel = class {
   }
   async action(action, target) {
     if (action === "refresh") await this.refresh();
-    else if (action === "add-credential") await this.addCredential();
-    else if (action === "delete-credential") await this.deleteCredential(target.dataset.id ?? "");
-    else if (action === "migrate-credentials") await this.migrateCredentials();
     else if (action === "diagnose") await this.diagnose();
     else if (action === "export-diagnostics" && this.diagnosticBundle) downloadJson(`echoes-diagnostics-${Date.now()}.json`, this.diagnosticBundle);
     else if (action === "repair") await this.repair(target.dataset.kind);
     else if (action === "export-backup") await this.exportBackup();
     else if (action === "preview-restore") await this.previewRestore();
     else if (action === "restore") await this.restore();
-  }
-  async addCredential() {
-    const form = this.root.querySelector("[data-credential-form]");
-    const name = form.querySelector("[name=name]").value.trim();
-    const secret = form.querySelector("[name=secret]").value;
-    if (!name || !secret) throw new Error("\u51ED\u636E\u540D\u79F0\u548C\u5BC6\u94A5\u4E0D\u80FD\u4E3A\u7A7A\u3002");
-    await echoesApi.createCredential({ name, secret });
-    form.reset();
-    await this.refresh();
-  }
-  async deleteCredential(id2) {
-    if (!confirm("\u5220\u9664\u8BE5\u670D\u52A1\u7AEF\u51ED\u636E\uFF1F\u5F15\u7528\u5B83\u7684\u7AEF\u70B9\u5C06\u65E0\u6CD5\u8C03\u7528\u3002")) return;
-    await echoesApi.deleteCredential(id2);
-    await this.refresh();
-  }
-  async migrateCredentials() {
-    const legacy = legacyCredentialEndpoints();
-    if (legacy.length === 0) return;
-    if (!confirm(`\u5C06 ${legacy.length} \u4E2A\u660E\u6587\u5BC6\u94A5\u539F\u5B50\u8FC1\u79FB\u5230\u670D\u52A1\u7AEF\u51ED\u636E\u5E93\uFF0C\u5E76\u4ECE\u524D\u7AEF\u8BBE\u7F6E\u6E05\u9664\uFF1F`)) return;
-    const inputs = legacy.map((endpoint) => ({
-      id: `credential_${crypto.randomUUID().replaceAll("-", "")}`,
-      name: `${endpoint.endpointName} (${endpoint.kind})`,
-      secret: endpoint.apiKey
-    }));
-    const previousSettings = structuredClone(getSettings());
-    const created = await echoesApi.migrateCredentials(inputs);
-    try {
-      if (created.length !== inputs.length || created.some((credential, index) => credential.id !== inputs[index].id)) {
-        throw new Error("\u670D\u52A1\u7AEF\u672A\u80FD\u9A8C\u8BC1\u5168\u90E8\u8FC1\u79FB\u51ED\u636E\u3002");
-      }
-      applyCredentialMigration(legacy.map((endpoint, index) => ({
-        kind: endpoint.kind,
-        containerId: endpoint.containerId,
-        endpointId: endpoint.endpointId,
-        credentialId: created[index].id
-      })));
-    } catch (error51) {
-      saveSettings(previousSettings);
-      await Promise.allSettled(created.map((credential) => echoesApi.deleteCredential(credential.id)));
-      throw error51;
-    }
-    await this.refresh();
-    toastr.success("\u524D\u7AEF\u660E\u6587\u5BC6\u94A5\u5DF2\u6E05\u9664\u3002", "Echoes");
   }
   async diagnose() {
     const api = window.TavernHelper;
@@ -32612,13 +32633,6 @@ var MemoryPanel = class {
     if (this.view === "status") {
       title.textContent = "\u72B6\u6001\u8BB0\u5FC6\u4E0E\u8BBE\u7F6E";
       scope.textContent = "\u5F53\u524D\u72B6\u6001 \xB7 \u5386\u53F2\u5FEB\u7167 \xB7 \u63D0\u793A\u8BCD \xB7 \u6821\u9A8C \xB7 \u6CE8\u5165";
-      const refresh = iconButton3("rotate", "\u5237\u65B0", "unused");
-      delete refresh.dataset.action;
-      refresh.dataset.statusAction = "refresh";
-      const sync = commandButton2("arrows-rotate", "\u624B\u52A8\u540C\u6B65", "unused", true);
-      delete sync.dataset.action;
-      sync.dataset.statusAction = "sync";
-      actions.append(refresh, sync);
       return;
     }
     if (this.view === "maintenance") {
@@ -32716,6 +32730,7 @@ var MemoryPanel = class {
       body.append(tr);
     }
     table.append(body);
+    prepareResponsiveTable(table);
     wrapper.append(table);
     content.append(wrapper);
     host.replaceChildren(page);
