@@ -2960,6 +2960,15 @@
     overflow-x: auto;
   }
 
+
+  .echoes-endpoint-editor-row {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .echoes-endpoint-editor-actions {
+    justify-content: flex-end;
+  }
   .echoes-credential-row {
     grid-template-columns: minmax(0, 1fr) 32px;
   }

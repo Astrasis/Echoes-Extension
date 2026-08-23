@@ -288,7 +288,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "0.3.0",
+  version: "0.3.1",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -25516,7 +25516,8 @@ var ApiConfigPanel = class {
     section.className = "echoes-api-group";
     const header = document.createElement("header");
     const detail = kind === "embedding" ? `${group.embeddingSpaceId} \xB7 ${group.dimensions} \u7EF4` : `${group.endpoints.length} \u4E2A\u7AEF\u70B9`;
-    header.innerHTML = `<div><strong></strong><small>${detail}</small></div><div data-actions></div>`;
+    header.innerHTML = "<div><strong></strong><small></small></div><div data-actions></div>";
+    header.querySelector("small").textContent = detail;
     header.querySelector("strong").textContent = group.name;
     const edit = iconButton2("pen", "\u7F16\u8F91\u7AEF\u70B9\u7EC4", "edit-retrieval-group");
     const remove = iconButton2("trash", "\u5220\u9664\u7AEF\u70B9\u7EC4", "delete-retrieval-group");
@@ -31578,9 +31579,11 @@ var MaintenancePanel = class {
   credentials = [];
   checks = [];
   diagnosticBundle = null;
-  busy = false;
+  renderSequence = 0;
+  refreshSequence = 0;
   credentialMigrationPrompted = false;
   async render() {
+    const sequence = ++this.renderSequence;
     const host = this.root.querySelector(".echoes-grid-host");
     host.innerHTML = `
       <div class="echoes-maintenance-page">
@@ -31590,17 +31593,20 @@ var MaintenancePanel = class {
         <section class="echoes-maintenance-section" data-backup></section>
       </div>`;
     this.renderAll();
-    await this.refresh();
+    await this.refresh(sequence);
   }
-  async refresh() {
-    if (this.busy) return;
-    this.busy = true;
+  current(sequence, refreshSequence) {
+    return sequence === this.renderSequence && (refreshSequence === void 0 || refreshSequence === this.refreshSequence) && this.root.classList.contains("echoes-maintenance-view");
+  }
+  async refresh(sequence = this.renderSequence) {
+    const refreshSequence = ++this.refreshSequence;
     this.renderAll();
     try {
       const [status, credentials] = await Promise.allSettled([
         echoesApi.systemStatus(),
         echoesApi.listCredentials()
       ]);
+      if (!this.current(sequence, refreshSequence)) return;
       this.status = status.status === "fulfilled" ? status.value : null;
       this.credentials = credentials.status === "fulfilled" ? credentials.value : [];
       if (status.status === "rejected" && credentials.status === "rejected") throw status.reason;
@@ -31614,12 +31620,12 @@ var MaintenancePanel = class {
         }));
       }
     } catch (error51) {
+      if (!this.current(sequence, refreshSequence)) return;
       this.status = null;
       this.credentials = [];
       toastr.warning(`\u670D\u52A1\u7AEF\u7EF4\u62A4\u63A5\u53E3\u4E0D\u53EF\u7528\uFF1A${message2(error51)}`, "Echoes");
     } finally {
-      this.busy = false;
-      this.renderAll();
+      if (this.current(sequence, refreshSequence)) this.renderAll();
     }
   }
   renderAll() {
@@ -31643,6 +31649,11 @@ var MaintenancePanel = class {
     if (!host) return;
     const status = this.status;
     const versionState = status && status.build.appVersion !== ECHOES_BUILD_INFO.appVersion ? status.protocolCompatible ? "\u7248\u672C\u4E0D\u540C\uFF0C\u534F\u8BAE\u517C\u5BB9" : "\u534F\u8BAE\u4E0D\u517C\u5BB9\uFF0C\u670D\u52A1\u7AEF\u4EFB\u52A1\u5DF2\u7981\u7528" : "\u524D\u540E\u7AEF\u7248\u672C\u4E00\u81F4";
+    const serverVersion = this.escape(status?.build.appVersion ?? "\u4E0D\u53EF\u7528");
+    const apiVersion = this.escape(String(status?.build.apiProtocolVersion ?? "-"));
+    const nodeVersion = this.escape(status?.platform.node ?? "-");
+    const platform = this.escape(status ? [status.platform.platform, status.platform.arch].join("/") : "-");
+    const dependencyState = this.escape(status?.bootstrap.state ?? "\u4E0D\u53EF\u7528");
     host.innerHTML = `
       <div class="echoes-section-heading">
         <div><h2>\u7248\u672C\u4E0E\u8FD0\u884C\u65F6</h2><span>${versionState}</span></div>
@@ -31650,11 +31661,11 @@ var MaintenancePanel = class {
       </div>
       <div class="echoes-maintenance-facts">
         <span>\u524D\u7AEF <strong>${ECHOES_BUILD_INFO.appVersion}</strong></span>
-        <span>\u670D\u52A1\u7AEF <strong>${status?.build.appVersion ?? "\u4E0D\u53EF\u7528"}</strong></span>
-        <span>API <strong>v${status?.build.apiProtocolVersion ?? "-"}</strong></span>
-        <span>Node <strong>${status?.platform.node ?? "-"}</strong></span>
-        <span>\u5E73\u53F0 <strong>${status ? `${status.platform.platform}/${status.platform.arch}` : "-"}</strong></span>
-        <span>\u4F9D\u8D56 <strong>${status?.bootstrap.state ?? "\u4E0D\u53EF\u7528"}</strong></span>
+        <span>\u670D\u52A1\u7AEF <strong>${serverVersion}</strong></span>
+        <span>API <strong>v${apiVersion}</strong></span>
+        <span>Node <strong>${nodeVersion}</strong></span>
+        <span>\u5E73\u53F0 <strong>${platform}</strong></span>
+        <span>\u4F9D\u8D56 <strong>${dependencyState}</strong></span>
       </div>`;
   }
   renderCredentials() {
@@ -31674,7 +31685,7 @@ var MaintenancePanel = class {
           <div class="echoes-maintenance-row">
             <span><strong>${this.escape(credential.name)}</strong><small>${this.escape(credential.id)}</small></span>
             <time>${new Date(credential.updatedAt).toLocaleString()}</time>
-            <button type="button" class="echoes-icon-button" data-maintenance-action="delete-credential" data-id="${credential.id}" title="\u5220\u9664\u51ED\u636E" aria-label="\u5220\u9664\u51ED\u636E"><i class="fa-solid fa-trash"></i></button>
+            <button type="button" class="echoes-icon-button" data-maintenance-action="delete-credential" data-id="${this.escape(credential.id)}" title="\u5220\u9664\u51ED\u636E" aria-label="\u5220\u9664\u51ED\u636E"><i class="fa-solid fa-trash"></i></button>
           </div>`).join("")}
       </div>`;
   }
@@ -32026,8 +32037,8 @@ var MemoryPanel = class {
             <div class="echoes-sidebar-heading">
               <span>\u5F53\u524D\u5BF9\u8BDD\u7C7B\u578B</span>
               <div class="echoes-sidebar-actions">
-                <button class="echoes-icon-button" data-action="migrate" title="\u4ECE\u5176\u4ED6\u5BF9\u8BDD\u8FC1\u79FB" aria-label="\u4ECE\u5176\u4ED6\u5BF9\u8BDD\u8FC1\u79FB"><i class="fa-solid fa-file-import"></i></button>
-                <button class="echoes-icon-button" data-action="add-type" title="\u65B0\u5EFA\u7C7B\u578B" aria-label="\u65B0\u5EFA\u7C7B\u578B"><i class="fa-solid fa-plus"></i></button>
+                <button type="button" class="echoes-icon-button" data-action="migrate" title="\u4ECE\u5176\u4ED6\u5BF9\u8BDD\u8FC1\u79FB" aria-label="\u4ECE\u5176\u4ED6\u5BF9\u8BDD\u8FC1\u79FB"><i class="fa-solid fa-file-import"></i></button>
+                <button type="button" class="echoes-icon-button" data-action="add-type" title="\u65B0\u5EFA\u7C7B\u578B" aria-label="\u65B0\u5EFA\u7C7B\u578B"><i class="fa-solid fa-plus"></i></button>
               </div>
             </div>
             <nav class="echoes-table-list" aria-label="\u8BB0\u5FC6\u7C7B\u578B"></nav>
@@ -32297,8 +32308,8 @@ var MemoryPanel = class {
     }
     heading.textContent = "\u5F53\u524D\u5BF9\u8BDD\u7C7B\u578B";
     actions.innerHTML = `
-      <button class="echoes-icon-button" data-action="migrate" title="\u4ECE\u5176\u4ED6\u5BF9\u8BDD\u8FC1\u79FB" aria-label="\u4ECE\u5176\u4ED6\u5BF9\u8BDD\u8FC1\u79FB"><i class="fa-solid fa-file-import"></i></button>
-      <button class="echoes-icon-button" data-action="add-type" title="\u65B0\u5EFA\u7C7B\u578B" aria-label="\u65B0\u5EFA\u7C7B\u578B"><i class="fa-solid fa-plus"></i></button>`;
+      <button type="button" class="echoes-icon-button" data-action="migrate" title="\u4ECE\u5176\u4ED6\u5BF9\u8BDD\u8FC1\u79FB" aria-label="\u4ECE\u5176\u4ED6\u5BF9\u8BDD\u8FC1\u79FB"><i class="fa-solid fa-file-import"></i></button>
+      <button type="button" class="echoes-icon-button" data-action="add-type" title="\u65B0\u5EFA\u7C7B\u578B" aria-label="\u65B0\u5EFA\u7C7B\u578B"><i class="fa-solid fa-plus"></i></button>`;
     const types = this.state?.catalog.types ?? [];
     if (types.length === 0) {
       const empty = document.createElement("p");
@@ -32923,12 +32934,17 @@ function addLaunchControls() {
     const launcher = document.createElement("div");
     launcher.id = "echoes-memory-launcher";
     launcher.className = "list-group-item flex-container flexGap5 interactable";
+    launcher.setAttribute("role", "button");
+    launcher.setAttribute("aria-label", "\u6253\u5F00 Echoes Memory");
     launcher.tabIndex = 0;
     launcher.title = "\u6253\u5F00 Echoes Memory";
     launcher.innerHTML = '<i class="fa-solid fa-table-columns fa-fw"></i><span>Echoes Memory</span>';
     launcher.addEventListener("click", () => void panel?.open());
     launcher.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") void panel?.open();
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        void panel?.open();
+      }
     });
     document.querySelector("#extensionsMenu")?.append(launcher);
   }
