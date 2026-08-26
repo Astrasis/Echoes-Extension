@@ -276,6 +276,13 @@ var init_client = __esm({
         );
         return result.job;
       },
+      async listEndpointModels(input) {
+        const result = await requestJson("/retrieval/endpoints/models", {
+          method: "POST",
+          body: JSON.stringify(input)
+        });
+        return result.job;
+      },
       async testRetrievalEndpoint(input) {
         const result = await requestJson("/retrieval/endpoints/test", {
           method: "POST",
@@ -306,7 +313,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "0.3.4",
+  version: "0.3.5",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -15738,6 +15745,12 @@ var endpointTestRequestSchema = external_exports.discriminatedUnion("kind", [
     endpoint: retrievalEndpointSchema
   })
 ]);
+var endpointModelListRequestSchema = external_exports.object({
+  baseUrl: external_exports.string().url().max(2e3),
+  credentialId: identifierSchema.optional(),
+  apiKey: external_exports.string().max(2e4).optional(),
+  timeoutMs: external_exports.number().int().min(1e3).max(30 * 6e4).default(3e4)
+}).strict();
 var buildInfoSchema = external_exports.object({
   appVersion: external_exports.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
   apiProtocolVersion: external_exports.number().int().positive(),
@@ -25619,7 +25632,7 @@ var ApiConfigPanel = class {
     await this.render("generation");
   }
   generationEndpointFields() {
-    return `<label>\u7AEF\u70B9\u540D\u79F0<input name="endpointName" required maxlength="120"></label><label class="echoes-form-span">API \u5730\u5740<input name="baseUrl" type="url" required></label><label>\u6A21\u578B<input name="model" required></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select name="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input name="timeout" type="number" min="10" max="1800"></label><label>\u6E29\u5EA6<input name="temperature" type="number" min="0" max="2" step="0.1"></label><label class="echoes-check"><input name="streaming" type="checkbox">\u6D41\u5F0F</label><label class="echoes-check"><input name="jsonMode" type="checkbox">JSON \u6A21\u5F0F</label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label>`;
+    return `<label>\u7AEF\u70B9\u540D\u79F0<input name="endpointName" required maxlength="120"></label><label class="echoes-form-span">API \u5730\u5740<input name="baseUrl" type="url" required></label><label class="echoes-model-field">\u6A21\u578B<span class="echoes-model-control"><input name="model" required><button type="button" class="menu_button echoes-model-fetch" data-model-fetch title="\u4ECE API \u62C9\u53D6\u6A21\u578B\u5217\u8868"><i class="fa-solid fa-cloud-arrow-down"></i> \u62C9\u53D6\u6A21\u578B</button></span><small data-model-status></small></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select name="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input name="timeout" type="number" min="10" max="1800"></label><label>\u6E29\u5EA6<input name="temperature" type="number" min="0" max="2" step="0.1"></label><label class="echoes-check"><input name="streaming" type="checkbox">\u6D41\u5F0F</label><label class="echoes-check"><input name="jsonMode" type="checkbox">JSON \u6A21\u5F0F</label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label>`;
   }
   populateGenerationEndpointForm(body, current) {
     const credential = body.querySelector("[name=credentialId]");
@@ -25639,6 +25652,59 @@ var ApiConfigPanel = class {
     body.querySelector("[name=streaming]").checked = current?.streaming ?? true;
     body.querySelector("[name=jsonMode]").checked = current?.jsonMode ?? true;
     body.querySelector("[name=enabled]").checked = current?.enabled ?? true;
+    this.bindModelDiscovery(body, "[name=baseUrl]", "[name=credentialId]", "[name=model]", "[name=timeout]");
+  }
+  bindModelDiscovery(root, baseUrlSelector, credentialSelector, modelSelector, timeoutSelector) {
+    const button3 = root.querySelector("[data-model-fetch]");
+    const baseUrl = root.querySelector(baseUrlSelector);
+    const credential = root.querySelector(credentialSelector);
+    const model = root.querySelector(modelSelector);
+    const timeout = root.querySelector(timeoutSelector);
+    const status = root.querySelector("[data-model-status]");
+    if (!button3 || !baseUrl || !credential || !model || !timeout || !status) return;
+    status.setAttribute("aria-live", "polite");
+    button3.addEventListener("click", () => {
+      if (!baseUrl.reportValidity() || !timeout.reportValidity()) return;
+      const timeoutMs = Number(timeout.value) * 1e3;
+      if (!Number.isFinite(timeoutMs) || timeoutMs < 1e3) {
+        toastr.error("\u8BF7\u5148\u586B\u5199\u6709\u6548\u7684\u8D85\u65F6\u65F6\u95F4\u3002", "\u65E0\u6CD5\u62C9\u53D6\u6A21\u578B");
+        return;
+      }
+      button3.disabled = true;
+      button3.setAttribute("aria-busy", "true");
+      status.textContent = "\u6B63\u5728\u4ECE API \u62C9\u53D6\u6A21\u578B...";
+      const credentialId = credential.value.trim();
+      void echoesApi.listEndpointModels({
+        baseUrl: baseUrl.value.trim(),
+        ...credentialId ? { credentialId } : {},
+        timeoutMs
+      }).then((job) => waitJob(job, timeoutMs + 3e4)).then((completed) => {
+        const models = completed.result?.models ?? [];
+        if (models.length === 0) throw new Error("API \u6CA1\u6709\u8FD4\u56DE\u53EF\u7528\u6A21\u578B\u3002");
+        const previousList = model.getAttribute("list");
+        if (previousList) document.getElementById(previousList)?.remove();
+        const list = document.createElement("datalist");
+        list.id = uid2("model_catalog");
+        list.replaceChildren(...models.map((name) => new Option(name, name)));
+        root.append(list);
+        model.setAttribute("list", list.id);
+        status.textContent = `\u5DF2\u62C9\u53D6 ${models.length} \u4E2A\u6A21\u578B\uFF0C\u53EF\u8F93\u5165\u540D\u79F0\u6216\u4ECE\u5EFA\u8BAE\u4E2D\u9009\u62E9\u3002`;
+        toastr.success(`\u5DF2\u52A0\u8F7D ${models.length} \u4E2A\u6A21\u578B\u3002`, "\u6A21\u578B\u5217\u8868");
+        model.focus();
+        try {
+          model.showPicker();
+        } catch {
+        }
+      }).catch((error51) => {
+        status.textContent = `\u62C9\u53D6\u5931\u8D25\uFF1A${message(error51)}`;
+        toastr.error(message(error51), "\u65E0\u6CD5\u62C9\u53D6\u6A21\u578B");
+      }).finally(() => {
+        if (button3.isConnected) {
+          button3.disabled = false;
+          button3.removeAttribute("aria-busy");
+        }
+      });
+    });
   }
   readGenerationEndpointForm(body, current, order) {
     const credentialId = fieldValue(body, "[name=credentialId]");
@@ -25803,7 +25869,7 @@ var ApiConfigPanel = class {
     await this.render(kind);
   }
   async retrievalGroupDialog(kind, current) {
-    const dialog = dialogShell(kind === "embedding" ? "Embedding \u7AEF\u70B9\u7EC4" : "Rerank \u7AEF\u70B9\u7EC4");
+    const dialog = dialogShell(kind === "embedding" ? "Embedding \u7AEF\u70B9\u7EC4" : "Rerank \u7AEF\u70B9\u7EC4", { className: "echoes-endpoint-dialog" });
     const body = dialog.querySelector(".echoes-dialog-body");
     body.innerHTML = `<div class="echoes-form-grid"><label>\u7EC4\u540D<input name="name" required maxlength="120"></label><label>\u7EC4 ID<input name="id" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label>${kind === "embedding" ? '<label>\u5D4C\u5165\u7A7A\u95F4 ID<input name="embeddingSpaceId" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label><label>\u7EF4\u5EA6<input name="dimensions" type="number" min="1" max="65536" required></label>' : ""}</div><div class="echoes-section-heading"><h3>\u7AEF\u70B9</h3><button type="button" class="menu_button" data-add-retrieval-endpoint><i class="fa-solid fa-plus"></i> \u6DFB\u52A0\u7AEF\u70B9</button></div><div class="echoes-endpoint-editor" data-endpoint-editor></div>`;
     body.querySelector("[name=name]").value = current?.name ?? "";
@@ -25836,7 +25902,7 @@ var ApiConfigPanel = class {
       const row = document.createElement("div");
       row.className = "echoes-endpoint-editor-row";
       row.dataset.index = String(index);
-      row.innerHTML = '<label>\u540D\u79F0<input data-field="name" required></label><label>\u5730\u5740<input data-field="baseUrl" type="url" required></label><label>\u6A21\u578B<input data-field="model" required></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select data-field="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input data-field="timeout" type="number" min="1" max="600" required></label><label class="echoes-check"><input data-field="enabled" type="checkbox">\u542F\u7528</label><div class="echoes-endpoint-editor-actions"></div>';
+      row.innerHTML = '<label>\u540D\u79F0<input data-field="name" required></label><label>\u5730\u5740<input data-field="baseUrl" type="url" required></label><label class="echoes-model-field">\u6A21\u578B<span class="echoes-model-control"><input data-field="model" required><button type="button" class="echoes-icon-button echoes-model-fetch" data-model-fetch title="\u4ECE API \u62C9\u53D6\u6A21\u578B\u5217\u8868" aria-label="\u62C9\u53D6\u6A21\u578B\u5217\u8868"><i class="fa-solid fa-cloud-arrow-down"></i></button></span><small data-model-status></small></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select data-field="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input data-field="timeout" type="number" min="1" max="600" required></label><label class="echoes-check"><input data-field="enabled" type="checkbox">\u542F\u7528</label><div class="echoes-endpoint-editor-actions"></div>';
       row.querySelector("[data-field=name]").value = endpoint.name;
       row.querySelector("[data-field=baseUrl]").value = endpoint.baseUrl;
       row.querySelector("[data-field=model]").value = endpoint.model;
@@ -25846,6 +25912,7 @@ var ApiConfigPanel = class {
       credential.value = endpoint.credentialId ?? "";
       row.querySelector("[data-field=timeout]").value = String(endpoint.timeoutMs / 1e3);
       row.querySelector("[data-field=enabled]").checked = endpoint.enabled;
+      this.bindModelDiscovery(row, "[data-field=baseUrl]", "[data-field=credentialId]", "[data-field=model]", "[data-field=timeout]");
       const up = iconButton2("arrow-up", "\u4E0A\u79FB", "noop");
       const down = iconButton2("arrow-down", "\u4E0B\u79FB", "noop");
       const remove = iconButton2("trash", "\u5220\u9664", "noop");

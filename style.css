@@ -1950,6 +1950,51 @@
   border-radius: 8px;
 }
 
+.echoes-dialog.echoes-endpoint-dialog {
+  width: min(1180px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+}
+
+.echoes-endpoint-dialog .echoes-dialog-body {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.echoes-endpoint-dialog .echoes-endpoint-editor-row {
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(90px, 0.75fr) minmax(160px, 1.35fr) minmax(150px, 1fr) minmax(130px, 1fr) 86px max-content 104px;
+}
+
+.echoes-model-field {
+  min-width: 0;
+}
+
+.echoes-model-control {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 6px;
+}
+
+.echoes-model-field > small {
+  min-height: 15px;
+  overflow: hidden;
+  color: var(--echoes-muted);
+  font-size: 10px;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.echoes-model-fetch[aria-busy="true"] i {
+  animation: echoes-spin 0.9s linear infinite;
+}
+
+@keyframes echoes-spin {
+  to { transform: rotate(360deg); }
+}
 .echoes-dialog::backdrop {
   background: rgb(5 7 9 / 72%);
 }
@@ -2971,7 +3016,8 @@
   }
 
 
-  .echoes-endpoint-editor-row {
+  .echoes-endpoint-editor-row,
+  .echoes-endpoint-dialog .echoes-endpoint-editor-row {
     min-width: 0;
     grid-template-columns: minmax(0, 1fr);
   }
