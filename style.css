@@ -501,7 +501,7 @@
   min-width: 0;
   height: 42px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
+  grid-template-columns: minmax(0, 1fr) 50px;
   align-items: center;
   border: 1px solid transparent;
   border-radius: 5px;
@@ -535,6 +535,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.echoes-type-nav > .echoes-switch {
+  justify-self: center;
 }
 
 .echoes-main {
