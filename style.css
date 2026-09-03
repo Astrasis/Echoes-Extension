@@ -1795,7 +1795,7 @@
 
 .echoes-endpoint-editor-row {
   display: grid;
-  grid-template-columns: minmax(110px, 0.8fr) minmax(220px, 1.6fr) minmax(120px, 0.9fr) minmax(130px, 1fr) 86px 62px 104px;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(220px, 1.6fr) minmax(120px, 0.9fr) minmax(130px, 1fr) 86px 92px 62px 104px;
   align-items: end;
   gap: 7px;
   padding-bottom: 8px;
@@ -1967,7 +1967,7 @@
 .echoes-endpoint-dialog .echoes-endpoint-editor-row {
   width: 100%;
   min-width: 0;
-  grid-template-columns: minmax(90px, 0.75fr) minmax(160px, 1.35fr) minmax(150px, 1fr) minmax(130px, 1fr) 86px max-content 104px;
+  grid-template-columns: minmax(90px, 0.75fr) minmax(160px, 1.35fr) minmax(150px, 1fr) minmax(130px, 1fr) 86px 92px max-content 104px;
 }
 
 .echoes-model-field {

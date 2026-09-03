@@ -313,7 +313,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "0.3.6",
+  version: "0.3.7",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -15111,6 +15111,7 @@ var generationEndpointSchema = external_exports.object({
   id: identifierSchema,
   name: external_exports.string().trim().min(1).max(120),
   baseUrl: external_exports.string().url().max(2e3),
+  allowPrivateNetwork: external_exports.boolean().default(false),
   credentialId: identifierSchema.optional(),
   apiKey: external_exports.string().max(2e4).optional(),
   model: external_exports.string().trim().min(1).max(200),
@@ -15488,6 +15489,7 @@ var retrievalEndpointSchema = external_exports.object({
   id: identifierSchema,
   name: external_exports.string().trim().min(1).max(120),
   baseUrl: external_exports.string().url().max(2e3),
+  allowPrivateNetwork: external_exports.boolean().default(false),
   credentialId: identifierSchema.optional(),
   apiKey: external_exports.string().max(2e4).optional(),
   model: external_exports.string().trim().min(1).max(200),
@@ -15747,6 +15749,7 @@ var endpointTestRequestSchema = external_exports.discriminatedUnion("kind", [
 ]);
 var endpointModelListRequestSchema = external_exports.object({
   baseUrl: external_exports.string().url().max(2e3),
+  allowPrivateNetwork: external_exports.boolean().default(false),
   credentialId: identifierSchema.optional(),
   apiKey: external_exports.string().max(2e4).optional(),
   timeoutMs: external_exports.number().int().min(1e3).max(30 * 6e4).default(3e4)
@@ -25632,7 +25635,7 @@ var ApiConfigPanel = class {
     await this.render("generation");
   }
   generationEndpointFields() {
-    return `<label>\u7AEF\u70B9\u540D\u79F0<input name="endpointName" required maxlength="120"></label><label class="echoes-form-span">API \u5730\u5740<input name="baseUrl" type="url" required></label><label class="echoes-model-field">\u6A21\u578B<span class="echoes-model-control"><input name="model" required><button type="button" class="menu_button echoes-model-fetch" data-model-fetch title="\u4ECE API \u62C9\u53D6\u6A21\u578B\u5217\u8868"><i class="fa-solid fa-cloud-arrow-down"></i> \u62C9\u53D6\u6A21\u578B</button></span><small data-model-status></small></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select name="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input name="timeout" type="number" min="10" max="1800"></label><label>\u6E29\u5EA6<input name="temperature" type="number" min="0" max="2" step="0.1"></label><label class="echoes-check"><input name="streaming" type="checkbox">\u6D41\u5F0F</label><label class="echoes-check"><input name="jsonMode" type="checkbox">JSON \u6A21\u5F0F</label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label>`;
+    return `<label>\u7AEF\u70B9\u540D\u79F0<input name="endpointName" required maxlength="120"></label><label class="echoes-form-span">API \u5730\u5740<input name="baseUrl" type="url" required></label><label class="echoes-model-field">\u6A21\u578B<span class="echoes-model-control"><input name="model" required><button type="button" class="menu_button echoes-model-fetch" data-model-fetch title="\u4ECE API \u62C9\u53D6\u6A21\u578B\u5217\u8868"><i class="fa-solid fa-cloud-arrow-down"></i> \u62C9\u53D6\u6A21\u578B</button></span><small data-model-status></small></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select name="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input name="timeout" type="number" min="10" max="1800"></label><label>\u6E29\u5EA6<input name="temperature" type="number" min="0" max="2" step="0.1"></label><label class="echoes-check" title="\u4EC5\u5728\u4F60\u4FE1\u4EFB\u8BE5 API \u4E3B\u673A\u65F6\u542F\u7528\uFF1B\u5141\u8BB8\u8BF7\u6C42\u8BBF\u95EE\u672C\u673A\u3001\u5C40\u57DF\u7F51\u6216\u89E3\u6790\u5230\u4FDD\u7559\u5730\u5740\u7684\u4E3B\u673A\u3002"><input name="allowPrivateNetwork" type="checkbox">\u5141\u8BB8\u672C\u5730/\u79C1\u7F51\u5730\u5740</label><label class="echoes-check"><input name="streaming" type="checkbox">\u6D41\u5F0F</label><label class="echoes-check"><input name="jsonMode" type="checkbox">JSON \u6A21\u5F0F</label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label>`;
   }
   populateGenerationEndpointForm(body, current) {
     const credential = body.querySelector("[name=credentialId]");
@@ -25649,19 +25652,21 @@ var ApiConfigPanel = class {
     set3("timeout", String((current?.timeoutMs ?? 3e5) / 1e3));
     set3("temperature", String(current?.temperature ?? 0.1));
     credential.value = current?.credentialId ?? "";
+    body.querySelector("[name=allowPrivateNetwork]").checked = current?.allowPrivateNetwork ?? false;
     body.querySelector("[name=streaming]").checked = current?.streaming ?? true;
     body.querySelector("[name=jsonMode]").checked = current?.jsonMode ?? true;
     body.querySelector("[name=enabled]").checked = current?.enabled ?? true;
-    this.bindModelDiscovery(body, "[name=baseUrl]", "[name=credentialId]", "[name=model]", "[name=timeout]");
+    this.bindModelDiscovery(body, "[name=baseUrl]", "[name=credentialId]", "[name=model]", "[name=timeout]", "[name=allowPrivateNetwork]");
   }
-  bindModelDiscovery(root, baseUrlSelector, credentialSelector, modelSelector, timeoutSelector) {
+  bindModelDiscovery(root, baseUrlSelector, credentialSelector, modelSelector, timeoutSelector, privateNetworkSelector) {
     const button3 = root.querySelector("[data-model-fetch]");
     const baseUrl = root.querySelector(baseUrlSelector);
     const credential = root.querySelector(credentialSelector);
     const model = root.querySelector(modelSelector);
     const timeout = root.querySelector(timeoutSelector);
+    const allowPrivateNetwork = root.querySelector(privateNetworkSelector);
     const status = root.querySelector("[data-model-status]");
-    if (!button3 || !baseUrl || !credential || !model || !timeout || !status) return;
+    if (!button3 || !baseUrl || !credential || !model || !timeout || !allowPrivateNetwork || !status) return;
     status.setAttribute("aria-live", "polite");
     button3.addEventListener("click", () => {
       if (!baseUrl.reportValidity() || !timeout.reportValidity()) return;
@@ -25676,6 +25681,7 @@ var ApiConfigPanel = class {
       const credentialId = credential.value.trim();
       void echoesApi.listEndpointModels({
         baseUrl: baseUrl.value.trim(),
+        allowPrivateNetwork: allowPrivateNetwork.checked,
         ...credentialId ? { credentialId } : {},
         timeoutMs
       }).then((job) => waitJob(job, timeoutMs + 3e4)).then((completed) => {
@@ -25712,6 +25718,7 @@ var ApiConfigPanel = class {
       id: current?.id ?? uid2("generation_endpoint"),
       name: fieldValue(body, "[name=endpointName]"),
       baseUrl: fieldValue(body, "[name=baseUrl]"),
+      allowPrivateNetwork: body.querySelector("[name=allowPrivateNetwork]").checked,
       model: fieldValue(body, "[name=model]"),
       ...credentialId ? { credentialId } : {},
       timeoutMs: Number(fieldValue(body, "[name=timeout]")) * 1e3,
@@ -25886,7 +25893,7 @@ var ApiConfigPanel = class {
     redraw();
     body.querySelector("[data-add-retrieval-endpoint]").addEventListener("click", () => {
       this.syncRetrievalEndpointEditor(editor, rows);
-      rows.push({ id: uid2("endpoint"), name: `\u7AEF\u70B9 ${rows.length + 1}`, baseUrl: "https://", model: "", timeoutMs: 3e4, enabled: true, order: rows.length });
+      rows.push({ id: uid2("endpoint"), name: `\u7AEF\u70B9 ${rows.length + 1}`, baseUrl: "https://", allowPrivateNetwork: false, model: "", timeoutMs: 3e4, enabled: true, order: rows.length });
       redraw();
     });
     return submitDialog(dialog, () => {
@@ -25902,17 +25909,18 @@ var ApiConfigPanel = class {
       const row = document.createElement("div");
       row.className = "echoes-endpoint-editor-row";
       row.dataset.index = String(index);
-      row.innerHTML = '<label>\u540D\u79F0<input data-field="name" required></label><label>\u5730\u5740<input data-field="baseUrl" type="url" required></label><label class="echoes-model-field">\u6A21\u578B<span class="echoes-model-control"><input data-field="model" required><button type="button" class="echoes-icon-button echoes-model-fetch" data-model-fetch title="\u4ECE API \u62C9\u53D6\u6A21\u578B\u5217\u8868" aria-label="\u62C9\u53D6\u6A21\u578B\u5217\u8868"><i class="fa-solid fa-cloud-arrow-down"></i></button></span><small data-model-status></small></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select data-field="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input data-field="timeout" type="number" min="1" max="600" required></label><label class="echoes-check"><input data-field="enabled" type="checkbox">\u542F\u7528</label><div class="echoes-endpoint-editor-actions"></div>';
+      row.innerHTML = '<label>\u540D\u79F0<input data-field="name" required></label><label>\u5730\u5740<input data-field="baseUrl" type="url" required></label><label class="echoes-model-field">\u6A21\u578B<span class="echoes-model-control"><input data-field="model" required><button type="button" class="echoes-icon-button echoes-model-fetch" data-model-fetch title="\u4ECE API \u62C9\u53D6\u6A21\u578B\u5217\u8868" aria-label="\u62C9\u53D6\u6A21\u578B\u5217\u8868"><i class="fa-solid fa-cloud-arrow-down"></i></button></span><small data-model-status></small></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select data-field="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input data-field="timeout" type="number" min="1" max="600" required></label><label class="echoes-check echoes-private-network-check" title="\u4EC5\u5728\u4F60\u4FE1\u4EFB\u8BE5 API \u4E3B\u673A\u65F6\u542F\u7528\uFF1B\u5141\u8BB8\u8BF7\u6C42\u8BBF\u95EE\u672C\u673A\u3001\u5C40\u57DF\u7F51\u6216\u89E3\u6790\u5230\u4FDD\u7559\u5730\u5740\u7684\u4E3B\u673A\u3002"><input data-field="allowPrivateNetwork" type="checkbox">\u5141\u8BB8\u79C1\u7F51</label><label class="echoes-check"><input data-field="enabled" type="checkbox">\u542F\u7528</label><div class="echoes-endpoint-editor-actions"></div>';
       row.querySelector("[data-field=name]").value = endpoint.name;
       row.querySelector("[data-field=baseUrl]").value = endpoint.baseUrl;
       row.querySelector("[data-field=model]").value = endpoint.model;
+      row.querySelector("[data-field=allowPrivateNetwork]").checked = endpoint.allowPrivateNetwork ?? false;
       const credential = row.querySelector("[data-field=credentialId]");
       this.credentials.forEach((item) => credential.add(new Option(item.name, item.id)));
       if (endpoint.credentialId && !this.credentials.some((item) => item.id === endpoint.credentialId)) credential.add(new Option(`\u7F3A\u5931\uFF1A${endpoint.credentialId}`, endpoint.credentialId));
       credential.value = endpoint.credentialId ?? "";
       row.querySelector("[data-field=timeout]").value = String(endpoint.timeoutMs / 1e3);
       row.querySelector("[data-field=enabled]").checked = endpoint.enabled;
-      this.bindModelDiscovery(row, "[data-field=baseUrl]", "[data-field=credentialId]", "[data-field=model]", "[data-field=timeout]");
+      this.bindModelDiscovery(row, "[data-field=baseUrl]", "[data-field=credentialId]", "[data-field=model]", "[data-field=timeout]", "[data-field=allowPrivateNetwork]");
       const up = iconButton2("arrow-up", "\u4E0A\u79FB", "noop");
       const down = iconButton2("arrow-down", "\u4E0B\u79FB", "noop");
       const remove = iconButton2("trash", "\u5220\u9664", "noop");
@@ -25947,6 +25955,7 @@ var ApiConfigPanel = class {
       endpoint.name = fieldValue(row, "[data-field=name]");
       endpoint.baseUrl = fieldValue(row, "[data-field=baseUrl]");
       endpoint.model = fieldValue(row, "[data-field=model]");
+      endpoint.allowPrivateNetwork = row.querySelector("[data-field=allowPrivateNetwork]").checked;
       const credentialId = fieldValue(row, "[data-field=credentialId]");
       if (credentialId) endpoint.credentialId = credentialId;
       else delete endpoint.credentialId;
