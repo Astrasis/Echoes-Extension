@@ -313,7 +313,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "0.3.10",
+  version: "0.3.11",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -15502,6 +15502,7 @@ var embeddingEndpointGroupSchema = external_exports.object({
   name: external_exports.string().trim().min(1).max(120),
   embeddingSpaceId: identifierSchema,
   dimensions: external_exports.number().int().min(1).max(65536),
+  requestDimensions: external_exports.boolean().default(true),
   endpoints: external_exports.array(retrievalEndpointSchema).min(1).max(10)
 }).superRefine((group, context) => validateEndpointOrder(group.endpoints, context));
 var rerankEndpointSetSchema = external_exports.object({
@@ -15740,6 +15741,8 @@ var endpointTestRequestSchema = external_exports.discriminatedUnion("kind", [
   external_exports.object({
     kind: external_exports.literal("embedding"),
     endpoint: retrievalEndpointSchema,
+    requestedDimensions: external_exports.number().int().min(1).max(65536).optional(),
+    /** @deprecated Accepted for compatibility with the 0.3.10 client. */
     expectedDimensions: external_exports.number().int().min(1).max(65536).optional()
   }),
   external_exports.object({
@@ -25889,7 +25892,8 @@ var ApiConfigPanel = class {
     const section = document.createElement("article");
     section.className = "echoes-api-group";
     const header = document.createElement("header");
-    const detail = kind === "embedding" ? `${group.embeddingSpaceId} \xB7 ${group.dimensions} \u7EF4` : `${group.endpoints.length} \u4E2A\u7AEF\u70B9`;
+    const embedding = group;
+    const detail = kind === "embedding" ? `${embedding.embeddingSpaceId} \xB7 ${embedding.dimensions} \u7EF4${embedding.requestDimensions === false ? "\uFF08\u4EC5\u6821\u9A8C\uFF09" : "\uFF08\u8BF7\u6C42\u8F93\u51FA\uFF09"}` : `${group.endpoints.length} \u4E2A\u7AEF\u70B9`;
     header.innerHTML = "<div><strong></strong><small></small></div><div data-actions></div>";
     header.querySelector("small").textContent = detail;
     header.querySelector("strong").textContent = group.name;
@@ -25962,7 +25966,7 @@ var ApiConfigPanel = class {
   async retrievalGroupDialog(kind, current) {
     const dialog = dialogShell(kind === "embedding" ? "Embedding \u7AEF\u70B9\u7EC4" : "Rerank \u7AEF\u70B9\u7EC4", { className: "echoes-endpoint-dialog" });
     const body = dialog.querySelector(".echoes-dialog-body");
-    body.innerHTML = `<div class="echoes-form-grid"><label>\u7EC4\u540D<input name="name" required maxlength="120"></label><label>\u7EC4 ID<input name="id" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label>${kind === "embedding" ? '<label>\u5D4C\u5165\u7A7A\u95F4 ID<input name="embeddingSpaceId" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label><label>\u7EF4\u5EA6<input name="dimensions" type="number" min="1" max="65536" required></label>' : ""}</div><div class="echoes-section-heading"><h3>\u7AEF\u70B9</h3><button type="button" class="menu_button" data-add-retrieval-endpoint><i class="fa-solid fa-plus"></i> \u6DFB\u52A0\u7AEF\u70B9</button></div><div class="echoes-endpoint-editor" data-endpoint-editor></div>`;
+    body.innerHTML = `<div class="echoes-form-grid"><label>\u7EC4\u540D<input name="name" required maxlength="120"></label><label>\u7EC4 ID<input name="id" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label>${kind === "embedding" ? '<label>\u5D4C\u5165\u7A7A\u95F4 ID<input name="embeddingSpaceId" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label><label>\u7EF4\u5EA6<input name="dimensions" type="number" min="1" max="65536" required></label><label class="echoes-check echoes-form-span" title="\u5173\u95ED\u540E\u4EC5\u6821\u9A8C\u8FD4\u56DE\u5411\u91CF\u7EF4\u5EA6\uFF0C\u9002\u7528\u4E8E\u4E0D\u63A5\u53D7 dimensions \u53C2\u6570\u7684\u56FA\u5B9A\u7EF4\u5EA6 API\u3002"><input name="requestDimensions" type="checkbox">\u5411 API \u8BF7\u6C42\u6B64\u7EF4\u5EA6</label>' : ""}</div><div class="echoes-section-heading"><h3>\u7AEF\u70B9</h3><button type="button" class="menu_button" data-add-retrieval-endpoint><i class="fa-solid fa-plus"></i> \u6DFB\u52A0\u7AEF\u70B9</button></div><div class="echoes-endpoint-editor" data-endpoint-editor></div>`;
     body.querySelector("[name=name]").value = current?.name ?? "";
     body.querySelector("[name=id]").value = current?.id ?? uid2(kind);
     body.querySelector("[name=id]").disabled = Boolean(current);
@@ -25970,6 +25974,7 @@ var ApiConfigPanel = class {
       const embedding = current;
       body.querySelector("[name=embeddingSpaceId]").value = embedding?.embeddingSpaceId ?? uid2("space");
       body.querySelector("[name=dimensions]").value = String(embedding?.dimensions ?? 1536);
+      body.querySelector("[name=requestDimensions]").checked = embedding?.requestDimensions !== false;
     }
     const rows = structuredClone(current?.endpoints ?? []);
     const editor = body.querySelector("[data-endpoint-editor]");
@@ -25984,7 +25989,12 @@ var ApiConfigPanel = class {
       this.syncRetrievalEndpointEditor(editor, rows);
       if (rows.length === 0) throw new Error("\u81F3\u5C11\u9700\u8981\u4E00\u4E2A\u7AEF\u70B9\u3002");
       const base = { id: current?.id ?? fieldValue(body, "[name=id]"), name: fieldValue(body, "[name=name]"), endpoints: rows.map((endpoint, index) => ({ ...endpoint, order: index })) };
-      return kind === "embedding" ? { ...base, embeddingSpaceId: fieldValue(body, "[name=embeddingSpaceId]"), dimensions: Number(fieldValue(body, "[name=dimensions]")) } : base;
+      return kind === "embedding" ? {
+        ...base,
+        embeddingSpaceId: fieldValue(body, "[name=embeddingSpaceId]"),
+        dimensions: Number(fieldValue(body, "[name=dimensions]")),
+        requestDimensions: body.querySelector("[name=requestDimensions]").checked
+      } : base;
     }, { errorTitle: `${kind === "embedding" ? "Embedding" : "Rerank"} \u7AEF\u70B9\u7EC4\u65E0\u6548` });
   }
   renderRetrievalEndpointEditor(host, rows, redraw) {
@@ -26076,7 +26086,12 @@ var ApiConfigPanel = class {
     const group = groups.find((item) => item.id === target.dataset.groupId);
     const endpoint = group?.endpoints.find((item) => item.id === target.dataset.endpointId);
     if (!group || !endpoint) throw new Error("\u7AEF\u70B9\u914D\u7F6E\u4E0D\u5B58\u5728\u3002");
-    const completed = await waitJob(await echoesApi.testRetrievalEndpoint({ kind, endpoint }), endpoint.timeoutMs + 3e4);
+    const requestedDimensions = kind === "embedding" && group.requestDimensions !== false ? group.dimensions : void 0;
+    const completed = await waitJob(await echoesApi.testRetrievalEndpoint({
+      kind,
+      endpoint,
+      ...requestedDimensions !== void 0 ? { requestedDimensions } : {}
+    }), endpoint.timeoutMs + 3e4);
     const latency = completed.result?.latencyMs ?? 0;
     const detectedDimensions = completed.result?.dimensions;
     if (kind !== "embedding" || !detectedDimensions) {
