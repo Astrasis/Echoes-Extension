@@ -313,7 +313,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "0.3.8",
+  version: "0.3.9",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -24534,6 +24534,7 @@ function openExtractionReviewDialog(items, types, rows) {
   notice.textContent = "\u6709\u6548\u64CD\u4F5C\u9ED8\u8BA4\u9009\u4E2D\uFF1B\u65E0\u6548\u64CD\u4F5C\u4E0D\u53EF\u63D0\u4EA4\u3002\u63D0\u4EA4\u540E\uFF0C\u672A\u9009\u9879\u4E0E\u65E0\u6548\u9879\u4F1A\u88AB\u660E\u786E\u8DF3\u8FC7\u5E76\u63A8\u8FDB\u68C0\u67E5\u70B9\u3002\u5BA1\u6838\u4EC5\u4FDD\u5B58\u5728\u5F53\u524D\u9875\u9762\u5185\u5B58\u4E2D\u3002";
   const list = document.createElement("div");
   list.className = "echoes-extraction-review-list";
+  const validInputs = [];
   for (const item of items) {
     const row = document.createElement("article");
     row.className = `echoes-extraction-review-item ${item.state}`;
@@ -24543,6 +24544,7 @@ function openExtractionReviewDialog(items, types, rows) {
     select.checked = item.state === "valid";
     select.disabled = item.state === "rejected";
     select.setAttribute("aria-label", `\u9009\u62E9\u64CD\u4F5C ${item.index + 1}`);
+    if (item.state === "valid") validInputs.push(select);
     const summary = document.createElement("div");
     summary.className = "echoes-extraction-review-summary";
     const heading = document.createElement("strong");
@@ -24560,7 +24562,37 @@ function openExtractionReviewDialog(items, types, rows) {
     row.append(select, summary, details);
     list.append(row);
   }
-  body.append(notice, list);
+  const toolbar = document.createElement("div");
+  toolbar.className = "echoes-extraction-review-toolbar";
+  const bulk = document.createElement("label");
+  bulk.className = "echoes-check echoes-extraction-review-select-all";
+  const bulkInput = document.createElement("input");
+  bulkInput.type = "checkbox";
+  bulkInput.checked = validInputs.length > 0;
+  bulkInput.disabled = validInputs.length === 0;
+  bulkInput.dataset.reviewSelectAll = "";
+  const bulkText = document.createElement("span");
+  bulkText.textContent = "\u9009\u62E9\u5168\u90E8\u6709\u6548\u9879";
+  bulk.append(bulkInput, bulkText);
+  const counts = document.createElement("small");
+  counts.textContent = `${validInputs.length} \u9879\u53EF\u63D0\u4EA4 \xB7 ${items.length - validInputs.length} \u9879\u9700\u8DF3\u8FC7`;
+  const bulkControls = document.createElement("div");
+  bulkControls.className = "echoes-extraction-review-bulk";
+  bulkControls.append(counts, bulk);
+  toolbar.append(notice, bulkControls);
+  const syncBulk = () => {
+    const selected = validInputs.filter((input) => input.checked).length;
+    bulkInput.checked = selected === validInputs.length && validInputs.length > 0;
+    bulkInput.indeterminate = selected > 0 && selected < validInputs.length;
+  };
+  bulkInput.addEventListener("change", () => {
+    validInputs.forEach((input) => {
+      input.checked = bulkInput.checked;
+    });
+    syncBulk();
+  });
+  validInputs.forEach((input) => input.addEventListener("change", syncBulk));
+  body.append(toolbar, list);
   const footer = dialog.querySelector(".echoes-dialog-footer");
   footer.innerHTML = `
     <button type="button" class="menu_button" data-close>\u53D6\u6D88</button>
@@ -24712,6 +24744,19 @@ function errorMessage(error51) {
 function selectedValue(root, selector) {
   return root.querySelector(selector)?.value.trim() ?? "";
 }
+function emptyState(icon, title, description, compact = false) {
+  const element = document.createElement("div");
+  element.className = `echoes-empty-state${compact ? " echoes-empty-state-compact" : ""}`;
+  const symbol2 = document.createElement("i");
+  symbol2.className = `fa-solid fa-${icon}`;
+  symbol2.setAttribute("aria-hidden", "true");
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const detail = document.createElement("span");
+  detail.textContent = description;
+  element.append(symbol2, heading, detail);
+  return element;
+}
 var RetrievalPanel = class {
   constructor(root) {
     this.root = root;
@@ -24786,10 +24831,7 @@ var RetrievalPanel = class {
     actions.replaceChildren(iconButton("rotate", "\u5237\u65B0\u96C6\u5408", "retrieval-refresh"));
     list.replaceChildren();
     if (this.collections.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "echoes-empty-note";
-      empty.textContent = "\u6682\u65E0\u96C6\u5408";
-      list.append(empty);
+      list.append(emptyState("database", "\u6682\u65E0\u96C6\u5408", "\u65B0\u5EFA\u96C6\u5408\u540E\u53EF\u5BFC\u5165\u548C\u68C0\u7D22\u6587\u6863\u3002", true));
       return;
     }
     for (const item of this.collections) {
@@ -24861,10 +24903,7 @@ var RetrievalPanel = class {
   }
   renderCollectionTable(host) {
     if (this.collections.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "echoes-empty-note";
-      empty.textContent = "\u6682\u65E0\u68C0\u7D22\u96C6\u5408";
-      host.replaceChildren(empty);
+      host.replaceChildren(emptyState("database", "\u6682\u65E0\u68C0\u7D22\u96C6\u5408", "\u4F7F\u7528\u53F3\u4E0A\u89D2\u201C\u65B0\u5EFA\u96C6\u5408\u201D\u521B\u5EFA\u7B2C\u4E00\u4E2A\u672C\u5730\u68C0\u7D22\u96C6\u5408\u3002"));
       return;
     }
     const table = document.createElement("table");
@@ -24908,6 +24947,26 @@ var RetrievalPanel = class {
   populateCollectionControls(host) {
     const select = host.querySelector("[name=collectionId]");
     const queryCollections = host.querySelector("[data-query-collections]");
+    const query = getSettings().retrieval.query;
+    host.querySelector("[name=vectorEnabled]").checked = query.vectorEnabled;
+    host.querySelector("[name=bm25Enabled]").checked = query.bm25Enabled;
+    host.querySelector("[name=rerankEnabled]").checked = query.rerankEnabled;
+    host.querySelector("[name=finalTopK]").value = String(query.finalTopK);
+    if (this.collections.length === 0) {
+      select.add(new Option("\u8BF7\u5148\u65B0\u5EFA\u96C6\u5408", ""));
+      select.disabled = true;
+      queryCollections.classList.add("is-empty");
+      queryCollections.replaceChildren(emptyState("magnifying-glass", "\u6682\u65E0\u53EF\u67E5\u8BE2\u96C6\u5408", "\u65B0\u5EFA\u96C6\u5408\u5E76\u5BFC\u5165\u6587\u6863\u540E\uFF0C\u67E5\u8BE2\u5B9E\u9A8C\u53F0\u5C06\u81EA\u52A8\u542F\u7528\u3002"));
+      const unavailableControls = host.querySelectorAll(
+        '[data-retrieval-manual-form] :is(input, select, textarea, button), [data-jsonl-file], [data-retrieval-action="import-jsonl"], [data-retrieval-query-form] :is(input, select, textarea, button)'
+      );
+      unavailableControls.forEach((control) => {
+        control.disabled = true;
+      });
+      host.querySelector("[data-retrieval-manual-form]").setAttribute("aria-disabled", "true");
+      host.querySelector("[data-retrieval-query-form]").setAttribute("aria-disabled", "true");
+      return;
+    }
     for (const item of this.collections) {
       const option = document.createElement("option");
       option.value = item.collection.id;
@@ -24922,11 +24981,6 @@ var RetrievalPanel = class {
       label.append(input, document.createTextNode(` ${item.collection.name}`));
       queryCollections.append(label);
     }
-    const query = getSettings().retrieval.query;
-    host.querySelector("[name=vectorEnabled]").checked = query.vectorEnabled;
-    host.querySelector("[name=bm25Enabled]").checked = query.bm25Enabled;
-    host.querySelector("[name=rerankEnabled]").checked = query.rerankEnabled;
-    host.querySelector("[name=finalTopK]").value = String(query.finalTopK);
   }
   async createCollection() {
     const groups = getSettings().retrieval.embeddingGroups;
@@ -25668,10 +25722,29 @@ var ApiConfigPanel = class {
     const modelSelect = root.querySelector("[data-model-select]");
     const status = root.querySelector("[data-model-status]");
     if (!button3 || !baseUrl || !credential || !model || !modelSelect || !timeout || !allowPrivateNetwork || !status) return;
+    let catalogVersion = 0;
+    const syncTitles = () => {
+      model.title = model.value.trim();
+      modelSelect.title = modelSelect.selectedOptions[0]?.textContent ?? "";
+    };
+    const invalidateCatalog = () => {
+      catalogVersion += 1;
+      modelSelect.replaceChildren(new Option("\u62C9\u53D6\u540E\u9009\u62E9", ""));
+      modelSelect.hidden = true;
+      modelSelect.title = "";
+      modelSelect.closest(".echoes-model-control")?.classList.remove("echoes-model-control-with-select");
+      status.textContent = "";
+    };
     status.setAttribute("aria-live", "polite");
     modelSelect.addEventListener("change", () => {
       if (modelSelect.value) model.value = modelSelect.value;
+      syncTitles();
     });
+    model.addEventListener("input", syncTitles);
+    syncTitles();
+    baseUrl.addEventListener("input", invalidateCatalog);
+    credential.addEventListener("change", invalidateCatalog);
+    allowPrivateNetwork.addEventListener("change", invalidateCatalog);
     button3.addEventListener("click", () => {
       if (!baseUrl.reportValidity() || !timeout.reportValidity()) return;
       const timeoutMs = Number(timeout.value) * 1e3;
@@ -25683,19 +25756,27 @@ var ApiConfigPanel = class {
       button3.setAttribute("aria-busy", "true");
       status.textContent = "\u6B63\u5728\u4ECE API \u62C9\u53D6\u6A21\u578B...";
       const credentialId = credential.value.trim();
+      const requestVersion = catalogVersion;
       void echoesApi.listEndpointModels({
         baseUrl: baseUrl.value.trim(),
         allowPrivateNetwork: allowPrivateNetwork.checked,
         ...credentialId ? { credentialId } : {},
         timeoutMs
       }).then((job) => waitJob(job, timeoutMs + 3e4)).then((completed) => {
+        if (requestVersion !== catalogVersion) return;
         const models = completed.result?.models ?? [];
         if (models.length === 0) throw new Error("API \u6CA1\u6709\u8FD4\u56DE\u53EF\u7528\u6A21\u578B\u3002");
         const currentModel = model.value.trim();
-        modelSelect.replaceChildren(new Option("\u9009\u62E9\u6A21\u578B", ""), ...models.map((name) => new Option(name, name)));
+        const options = models.map((name) => {
+          const option = new Option(name, name);
+          option.title = name;
+          return option;
+        });
+        modelSelect.replaceChildren(new Option("\u9009\u62E9\u6A21\u578B", ""), ...options);
         modelSelect.hidden = false;
         modelSelect.closest(".echoes-model-control")?.classList.add("echoes-model-control-with-select");
         modelSelect.value = currentModel && models.includes(currentModel) ? currentModel : "";
+        syncTitles();
         status.textContent = `\u5DF2\u62C9\u53D6 ${models.length} \u4E2A\u6A21\u578B\uFF0C\u53EF\u4ECE\u4E0B\u62C9\u5217\u8868\u9009\u62E9\u6216\u624B\u52A8\u8F93\u5165\u3002`;
         toastr.success(`\u5DF2\u52A0\u8F7D ${models.length} \u4E2A\u6A21\u578B\u3002`, "\u6A21\u578B\u5217\u8868");
         modelSelect.focus();
@@ -25704,6 +25785,7 @@ var ApiConfigPanel = class {
         } catch {
         }
       }).catch((error51) => {
+        if (requestVersion !== catalogVersion) return;
         status.textContent = `\u62C9\u53D6\u5931\u8D25\uFF1A${message(error51)}`;
         toastr.error(message(error51), "\u65E0\u6CD5\u62C9\u53D6\u6A21\u578B");
       }).finally(() => {
@@ -28800,7 +28882,16 @@ var RecallPanel = class {
     const options = this.available.filter((source) => source.catalog.namespaceId !== locked.catalog.namespaceId && !attached.has(source.catalog.namespaceId));
     const picker = dialogShell("\u9644\u52A0\u804A\u5929\u603B\u7ED3\u6E90", { className: "echoes-preview-dialog", closeOnly: true });
     const body = picker.querySelector(".echoes-dialog-body");
+    if (options.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "echoes-empty-state";
+      empty.innerHTML = '<i class="fa-solid fa-link-slash" aria-hidden="true"></i><strong>\u6CA1\u6709\u53EF\u9644\u52A0\u7684\u804A\u5929\u603B\u7ED3</strong><span>\u5176\u4ED6\u804A\u5929\u9700\u8981\u5148\u751F\u6210\u603B\u7ED3\uFF0C\u4E14\u4E0D\u80FD\u5DF2\u7ECF\u9644\u52A0\u5230\u5F53\u524D\u804A\u5929\u3002</span>';
+      body.append(empty);
+      picker.showModal();
+      return;
+    }
     const select = document.createElement("select");
+    select.setAttribute("aria-label", "\u9009\u62E9\u8981\u9644\u52A0\u7684\u804A\u5929\u603B\u7ED3\u6E90");
     for (const source of options) {
       const option = document.createElement("option");
       option.value = source.catalog.namespaceId;
@@ -28811,7 +28902,6 @@ var RecallPanel = class {
     add.type = "button";
     add.className = "menu_button echoes-primary";
     add.textContent = "\u9644\u52A0";
-    add.disabled = options.length === 0;
     body.append(select, add);
     add.addEventListener("click", () => this.run(async () => {
       if (this.current !== locked || SillyTavern.getContext().chatId !== lockedChatId || window.TavernHelper?.getChatWorldbookName("current") !== locked.worldbookName) {
@@ -30826,8 +30916,8 @@ var StatusPanel = class {
             </div>
             <div class="echoes-status-sync" data-status-sync></div>
           </section>
-          <section class="echoes-summary-section">
-            <header><h2>\u5F53\u524D\u72B6\u6001</h2><div><button type="button" class="menu_button" data-status-action="preview"><i class="fa-solid fa-eye"></i> \u6700\u7EC8\u63D0\u793A\u8BCD</button> <button type="button" class="menu_button" data-status-action="reset"><i class="fa-solid fa-rotate-left"></i> \u6062\u590D\u521D\u59CB\u503C</button> <button type="button" class="menu_button echoes-primary" data-status-action="save-yaml"><i class="fa-solid fa-floppy-disk"></i> \u6821\u9A8C\u5E76\u4FDD\u5B58</button></div></header>
+          <section class="echoes-summary-section echoes-status-editor-section">
+            <header class="echoes-status-editor-toolbar"><h2>\u5F53\u524D\u72B6\u6001</h2><div><button type="button" class="menu_button" data-status-action="preview"><i class="fa-solid fa-eye"></i> \u6700\u7EC8\u63D0\u793A\u8BCD</button> <button type="button" class="menu_button" data-status-action="reset"><i class="fa-solid fa-rotate-left"></i> \u6062\u590D\u521D\u59CB\u503C</button> <button type="button" class="menu_button echoes-primary" data-status-action="save-yaml"><i class="fa-solid fa-floppy-disk"></i> \u6821\u9A8C\u5E76\u4FDD\u5B58</button></div></header>
             <textarea class="echoes-status-yaml" data-status-yaml spellcheck="false"></textarea>
           </section>
           <section class="echoes-summary-section"><header><h2>\u6700\u8FD1\u4EFB\u52A1\u8BCA\u65AD</h2></header><pre class="echoes-recall-trace" data-status-trace></pre></section>

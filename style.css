@@ -105,6 +105,22 @@
   min-height: 104px;
 }
 
+.echoes-window input[type="search"]::-webkit-search-cancel-button,
+.echoes-dialog input[type="search"]::-webkit-search-cancel-button {
+  display: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.echoes-window input::-ms-clear,
+.echoes-window input::-ms-reveal,
+.echoes-dialog input::-ms-clear,
+.echoes-dialog input::-ms-reveal {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 .echoes-window :is(input, textarea)::placeholder,
 .echoes-dialog :is(input, textarea)::placeholder {
   color: #7f8992 !important;
@@ -678,6 +694,47 @@
   text-align: center;
 }
 
+.echoes-empty-state {
+  width: 100%;
+  min-width: 0;
+  min-height: 116px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 5px;
+  padding: 22px 18px;
+  color: var(--echoes-muted);
+  background: rgb(255 255 255 / 1.5%);
+  border: 1px dashed var(--echoes-border);
+  border-radius: 6px;
+  text-align: center;
+}
+
+.echoes-empty-state i {
+  margin-bottom: 3px;
+  color: var(--echoes-accent-strong);
+  font-size: 20px;
+  opacity: 0.8;
+}
+
+.echoes-empty-state strong {
+  color: var(--echoes-text);
+  font-size: 13px;
+}
+
+.echoes-empty-state span {
+  max-width: 520px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.echoes-empty-state-compact {
+  width: auto;
+  min-height: 78px;
+  margin: 6px;
+  padding: 12px;
+}
+
 .echoes-job-status {
   min-height: 38px;
   display: grid;
@@ -909,7 +966,44 @@
 .echoes-extraction-review-list {
   display: grid;
   gap: 8px;
-  margin-top: 12px;
+  margin: 0;
+  padding: 12px 18px 18px;
+}
+
+.echoes-extraction-review-dialog .echoes-dialog-body {
+  padding: 0;
+}
+
+.echoes-extraction-review-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 18px;
+  background: var(--echoes-bg);
+  border-bottom: 1px solid var(--echoes-border);
+  box-shadow: 0 6px 12px rgb(0 0 0 / 14%);
+}
+
+.echoes-extraction-review-toolbar .echoes-extraction-review-notice {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.echoes-extraction-review-bulk {
+  flex: 0 0 auto;
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+}
+
+.echoes-extraction-review-bulk small {
+  color: var(--echoes-muted);
+  font-size: 11px;
 }
 
 .echoes-extraction-review-item {
@@ -1342,11 +1436,26 @@
 
 .echoes-status-yaml {
   width: 100%;
-  min-height: 280px;
+  height: clamp(200px, 36dvh, 360px);
+  min-height: 160px;
+  max-height: min(58dvh, 560px);
   resize: vertical;
   font-family: ui-monospace, Consolas, monospace;
   line-height: 1.5;
   white-space: pre;
+}
+
+.echoes-status-editor-section {
+  min-height: 0;
+}
+
+.echoes-status-editor-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding-block: 4px;
+  background: var(--echoes-bg);
+  box-shadow: 0 6px 10px rgb(0 0 0 / 10%);
 }
 
 .echoes-status-profile {
@@ -1983,11 +2092,13 @@
 }
 
 .echoes-model-control-with-select {
-  grid-template-columns: minmax(0, 1fr) minmax(96px, 44%) max-content;
+  grid-template-columns: minmax(0, 1fr) max-content;
 }
 
 .echoes-model-select {
-  min-width: 96px;
+  min-width: 0;
+  grid-column: 1 / -1;
+  text-overflow: ellipsis;
 }
 
 .echoes-model-field > small {
@@ -2138,6 +2249,14 @@
 /* 13. Responsive ---------------------------------------------------------- */
 
 @media (max-width: 1100px) {
+  .echoes-endpoint-dialog .echoes-endpoint-editor-row {
+    grid-template-columns: minmax(120px, 0.8fr) minmax(180px, 1.2fr) minmax(160px, 1fr) minmax(130px, 1fr);
+  }
+
+  .echoes-endpoint-dialog .echoes-endpoint-editor-actions {
+    justify-content: flex-end;
+  }
+
   .echoes-summary-control-row,
   .echoes-compression-controls,
   .echoes-status-controls .echoes-summary-control-row {
@@ -2279,6 +2398,23 @@
 
   .echoes-extraction-review-item pre {
     grid-column: 2;
+  }
+
+  .echoes-extraction-review-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .echoes-extraction-review-bulk {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .echoes-status-yaml {
+    height: clamp(180px, 34dvh, 280px);
+    max-height: 46dvh;
   }
 
   .echoes-retrieval-page {
