@@ -313,7 +313,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "0.3.9",
+  version: "0.3.10",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -15740,7 +15740,7 @@ var endpointTestRequestSchema = external_exports.discriminatedUnion("kind", [
   external_exports.object({
     kind: external_exports.literal("embedding"),
     endpoint: retrievalEndpointSchema,
-    expectedDimensions: external_exports.number().int().min(1).max(65536)
+    expectedDimensions: external_exports.number().int().min(1).max(65536).optional()
   }),
   external_exports.object({
     kind: external_exports.literal("rerank"),
@@ -26076,8 +26076,47 @@ var ApiConfigPanel = class {
     const group = groups.find((item) => item.id === target.dataset.groupId);
     const endpoint = group?.endpoints.find((item) => item.id === target.dataset.endpointId);
     if (!group || !endpoint) throw new Error("\u7AEF\u70B9\u914D\u7F6E\u4E0D\u5B58\u5728\u3002");
-    const completed = await waitJob(await echoesApi.testRetrievalEndpoint({ kind, endpoint, ...kind === "embedding" ? { expectedDimensions: group.dimensions } : {} }), endpoint.timeoutMs + 3e4);
-    toastr.success(`${completed.result?.latencyMs ?? 0} ms${completed.result?.dimensions ? ` \xB7 ${completed.result.dimensions} \u7EF4` : ""}`, "\u7AEF\u70B9\u6D4B\u8BD5\u5B8C\u6210");
+    const completed = await waitJob(await echoesApi.testRetrievalEndpoint({ kind, endpoint }), endpoint.timeoutMs + 3e4);
+    const latency = completed.result?.latencyMs ?? 0;
+    const detectedDimensions = completed.result?.dimensions;
+    if (kind !== "embedding" || !detectedDimensions) {
+      toastr.success(`${latency} ms`, "\u7AEF\u70B9\u6D4B\u8BD5\u5B8C\u6210");
+      return;
+    }
+    const embeddingGroup = group;
+    if (detectedDimensions === embeddingGroup.dimensions) {
+      toastr.success(`${latency} ms \xB7 ${detectedDimensions} \u7EF4`, "\u7AEF\u70B9\u6D4B\u8BD5\u5B8C\u6210");
+      return;
+    }
+    const collections = await echoesApi.listRetrievalCollections();
+    const dependentCollections = collections.filter((item) => item.collection.embeddingSpaceId === embeddingGroup.embeddingSpaceId);
+    const createsNewSpace = dependentCollections.length > 0;
+    const accepted = confirm(createsNewSpace ? `\u7AEF\u70B9\u5B9E\u9645\u8FD4\u56DE ${detectedDimensions} \u7EF4\uFF0C\u4F46\u7AEF\u70B9\u7EC4\u914D\u7F6E\u4E3A ${embeddingGroup.dimensions} \u7EF4\u3002
+
+\u5D4C\u5165\u7A7A\u95F4\u201C${embeddingGroup.embeddingSpaceId}\u201D\u5DF2\u6709 ${dependentCollections.length} \u4E2A\u96C6\u5408\u3002\u4E3A\u907F\u514D\u4E0D\u540C\u7EF4\u5EA6\u7684\u5411\u91CF\u6DF7\u5165\u65E7\u7D22\u5F15\uFF0CEchoes \u5C06\u4E3A\u8BE5\u7AEF\u70B9\u7EC4\u521B\u5EFA\u65B0\u7684\u5D4C\u5165\u7A7A\u95F4\u5E76\u5E94\u7528\u5B9E\u6D4B\u7EF4\u5EA6\u3002\u65E7\u96C6\u5408\u4E0D\u4F1A\u88AB\u5220\u9664\uFF1B\u603B\u7ED3\u96C6\u5408\u4F1A\u5728\u540E\u7EED\u540C\u6B65\u65F6\u91CD\u5EFA\uFF0C\u666E\u901A\u96C6\u5408\u9700\u8981\u65B0\u5EFA\u540E\u91CD\u65B0\u5BFC\u5165\u3002
+
+\u662F\u5426\u7EE7\u7EED\uFF1F` : `\u7AEF\u70B9\u5B9E\u9645\u8FD4\u56DE ${detectedDimensions} \u7EF4\uFF0C\u4F46\u7AEF\u70B9\u7EC4\u914D\u7F6E\u4E3A ${embeddingGroup.dimensions} \u7EF4\u3002\u662F\u5426\u5C06\u8BE5\u7EC4\u66F4\u65B0\u4E3A\u5B9E\u6D4B\u7EF4\u5EA6\uFF1F`);
+    if (!accepted) {
+      toastr.warning(
+        `\u5B9E\u6D4B ${detectedDimensions} \u7EF4\uFF0C\u5F53\u524D\u4ECD\u914D\u7F6E\u4E3A ${embeddingGroup.dimensions} \u7EF4\uFF1B\u5728\u4FEE\u6B63\u524D\u8BE5\u7AEF\u70B9\u65E0\u6CD5\u7528\u4E8E\u5411\u91CF\u4EFB\u52A1\u3002`,
+        "Embedding \u7EF4\u5EA6\u4E0D\u5339\u914D"
+      );
+      return;
+    }
+    const latestSettings = getSettings();
+    const latestGroup = latestSettings.retrieval.embeddingGroups.find((item) => item.id === embeddingGroup.id);
+    const latestEndpoint = latestGroup?.endpoints.find((item) => item.id === endpoint.id);
+    if (!latestGroup || !latestEndpoint || latestEndpoint.baseUrl !== endpoint.baseUrl || latestEndpoint.model !== endpoint.model || latestEndpoint.credentialId !== endpoint.credentialId) {
+      throw new Error("\u6D4B\u8BD5\u671F\u95F4\u7AEF\u70B9\u914D\u7F6E\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6D4B\u8BD5\u540E\u518D\u5E94\u7528\u7EF4\u5EA6\u3002");
+    }
+    latestGroup.dimensions = detectedDimensions;
+    if (createsNewSpace) latestGroup.embeddingSpaceId = uid2("space");
+    saveSettings(latestSettings);
+    await this.render(kind);
+    toastr.success(
+      `${latency} ms \xB7 \u5DF2\u5E94\u7528 ${detectedDimensions} \u7EF4${createsNewSpace ? "\u5E76\u521B\u5EFA\u65B0\u5D4C\u5165\u7A7A\u95F4" : ""}\u3002\u8BF7\u7EE7\u7EED\u6D4B\u8BD5\u540C\u7EC4\u5176\u4ED6\u7AEF\u70B9\u3002`,
+      "Embedding \u7AEF\u70B9\u6D4B\u8BD5\u5B8C\u6210"
+    );
   }
   renderCredentials() {
     const legacy = legacyCredentialEndpoints();
