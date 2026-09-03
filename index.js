@@ -313,7 +313,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "0.3.7",
+  version: "0.3.8",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -25635,7 +25635,7 @@ var ApiConfigPanel = class {
     await this.render("generation");
   }
   generationEndpointFields() {
-    return `<label>\u7AEF\u70B9\u540D\u79F0<input name="endpointName" required maxlength="120"></label><label class="echoes-form-span">API \u5730\u5740<input name="baseUrl" type="url" required></label><label class="echoes-model-field">\u6A21\u578B<span class="echoes-model-control"><input name="model" required><button type="button" class="menu_button echoes-model-fetch" data-model-fetch title="\u4ECE API \u62C9\u53D6\u6A21\u578B\u5217\u8868"><i class="fa-solid fa-cloud-arrow-down"></i> \u62C9\u53D6\u6A21\u578B</button></span><small data-model-status></small></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select name="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input name="timeout" type="number" min="10" max="1800"></label><label>\u6E29\u5EA6<input name="temperature" type="number" min="0" max="2" step="0.1"></label><label class="echoes-check" title="\u4EC5\u5728\u4F60\u4FE1\u4EFB\u8BE5 API \u4E3B\u673A\u65F6\u542F\u7528\uFF1B\u5141\u8BB8\u8BF7\u6C42\u8BBF\u95EE\u672C\u673A\u3001\u5C40\u57DF\u7F51\u6216\u89E3\u6790\u5230\u4FDD\u7559\u5730\u5740\u7684\u4E3B\u673A\u3002"><input name="allowPrivateNetwork" type="checkbox">\u5141\u8BB8\u672C\u5730/\u79C1\u7F51\u5730\u5740</label><label class="echoes-check"><input name="streaming" type="checkbox">\u6D41\u5F0F</label><label class="echoes-check"><input name="jsonMode" type="checkbox">JSON \u6A21\u5F0F</label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label>`;
+    return `<label>\u7AEF\u70B9\u540D\u79F0<input name="endpointName" required maxlength="120"></label><label class="echoes-form-span">API \u5730\u5740<input name="baseUrl" type="url" required></label><label class="echoes-model-field">\u6A21\u578B<span class="echoes-model-control"><input name="model" required><select class="echoes-model-select" data-model-select hidden aria-label="\u4ECE\u5DF2\u62C9\u53D6\u7684\u6A21\u578B\u4E2D\u9009\u62E9"><option value="">\u62C9\u53D6\u540E\u9009\u62E9</option></select><button type="button" class="menu_button echoes-model-fetch" data-model-fetch title="\u4ECE API \u62C9\u53D6\u6A21\u578B\u5217\u8868"><i class="fa-solid fa-cloud-arrow-down"></i> \u62C9\u53D6\u6A21\u578B</button></span><small data-model-status></small></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select name="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input name="timeout" type="number" min="10" max="1800"></label><label>\u6E29\u5EA6<input name="temperature" type="number" min="0" max="2" step="0.1"></label><label class="echoes-check" title="\u4EC5\u5728\u4F60\u4FE1\u4EFB\u8BE5 API \u4E3B\u673A\u65F6\u542F\u7528\uFF1B\u5141\u8BB8\u8BF7\u6C42\u8BBF\u95EE\u672C\u673A\u3001\u5C40\u57DF\u7F51\u6216\u89E3\u6790\u5230\u4FDD\u7559\u5730\u5740\u7684\u4E3B\u673A\u3002"><input name="allowPrivateNetwork" type="checkbox">\u5141\u8BB8\u672C\u5730/\u79C1\u7F51\u5730\u5740</label><label class="echoes-check"><input name="streaming" type="checkbox">\u6D41\u5F0F</label><label class="echoes-check"><input name="jsonMode" type="checkbox">JSON \u6A21\u5F0F</label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label>`;
   }
   populateGenerationEndpointForm(body, current) {
     const credential = body.querySelector("[name=credentialId]");
@@ -25665,9 +25665,13 @@ var ApiConfigPanel = class {
     const model = root.querySelector(modelSelector);
     const timeout = root.querySelector(timeoutSelector);
     const allowPrivateNetwork = root.querySelector(privateNetworkSelector);
+    const modelSelect = root.querySelector("[data-model-select]");
     const status = root.querySelector("[data-model-status]");
-    if (!button3 || !baseUrl || !credential || !model || !timeout || !allowPrivateNetwork || !status) return;
+    if (!button3 || !baseUrl || !credential || !model || !modelSelect || !timeout || !allowPrivateNetwork || !status) return;
     status.setAttribute("aria-live", "polite");
+    modelSelect.addEventListener("change", () => {
+      if (modelSelect.value) model.value = modelSelect.value;
+    });
     button3.addEventListener("click", () => {
       if (!baseUrl.reportValidity() || !timeout.reportValidity()) return;
       const timeoutMs = Number(timeout.value) * 1e3;
@@ -25687,18 +25691,16 @@ var ApiConfigPanel = class {
       }).then((job) => waitJob(job, timeoutMs + 3e4)).then((completed) => {
         const models = completed.result?.models ?? [];
         if (models.length === 0) throw new Error("API \u6CA1\u6709\u8FD4\u56DE\u53EF\u7528\u6A21\u578B\u3002");
-        const previousList = model.getAttribute("list");
-        if (previousList) document.getElementById(previousList)?.remove();
-        const list = document.createElement("datalist");
-        list.id = uid2("model_catalog");
-        list.replaceChildren(...models.map((name) => new Option(name, name)));
-        root.append(list);
-        model.setAttribute("list", list.id);
-        status.textContent = `\u5DF2\u62C9\u53D6 ${models.length} \u4E2A\u6A21\u578B\uFF0C\u53EF\u8F93\u5165\u540D\u79F0\u6216\u4ECE\u5EFA\u8BAE\u4E2D\u9009\u62E9\u3002`;
+        const currentModel = model.value.trim();
+        modelSelect.replaceChildren(new Option("\u9009\u62E9\u6A21\u578B", ""), ...models.map((name) => new Option(name, name)));
+        modelSelect.hidden = false;
+        modelSelect.closest(".echoes-model-control")?.classList.add("echoes-model-control-with-select");
+        modelSelect.value = currentModel && models.includes(currentModel) ? currentModel : "";
+        status.textContent = `\u5DF2\u62C9\u53D6 ${models.length} \u4E2A\u6A21\u578B\uFF0C\u53EF\u4ECE\u4E0B\u62C9\u5217\u8868\u9009\u62E9\u6216\u624B\u52A8\u8F93\u5165\u3002`;
         toastr.success(`\u5DF2\u52A0\u8F7D ${models.length} \u4E2A\u6A21\u578B\u3002`, "\u6A21\u578B\u5217\u8868");
-        model.focus();
+        modelSelect.focus();
         try {
-          model.showPicker();
+          modelSelect.showPicker();
         } catch {
         }
       }).catch((error51) => {
@@ -25909,7 +25911,7 @@ var ApiConfigPanel = class {
       const row = document.createElement("div");
       row.className = "echoes-endpoint-editor-row";
       row.dataset.index = String(index);
-      row.innerHTML = '<label>\u540D\u79F0<input data-field="name" required></label><label>\u5730\u5740<input data-field="baseUrl" type="url" required></label><label class="echoes-model-field">\u6A21\u578B<span class="echoes-model-control"><input data-field="model" required><button type="button" class="echoes-icon-button echoes-model-fetch" data-model-fetch title="\u4ECE API \u62C9\u53D6\u6A21\u578B\u5217\u8868" aria-label="\u62C9\u53D6\u6A21\u578B\u5217\u8868"><i class="fa-solid fa-cloud-arrow-down"></i></button></span><small data-model-status></small></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select data-field="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input data-field="timeout" type="number" min="1" max="600" required></label><label class="echoes-check echoes-private-network-check" title="\u4EC5\u5728\u4F60\u4FE1\u4EFB\u8BE5 API \u4E3B\u673A\u65F6\u542F\u7528\uFF1B\u5141\u8BB8\u8BF7\u6C42\u8BBF\u95EE\u672C\u673A\u3001\u5C40\u57DF\u7F51\u6216\u89E3\u6790\u5230\u4FDD\u7559\u5730\u5740\u7684\u4E3B\u673A\u3002"><input data-field="allowPrivateNetwork" type="checkbox">\u5141\u8BB8\u79C1\u7F51</label><label class="echoes-check"><input data-field="enabled" type="checkbox">\u542F\u7528</label><div class="echoes-endpoint-editor-actions"></div>';
+      row.innerHTML = '<label>\u540D\u79F0<input data-field="name" required></label><label>\u5730\u5740<input data-field="baseUrl" type="url" required></label><label class="echoes-model-field">\u6A21\u578B<span class="echoes-model-control"><input data-field="model" required><select class="echoes-model-select" data-model-select hidden aria-label="\u4ECE\u5DF2\u62C9\u53D6\u7684\u6A21\u578B\u4E2D\u9009\u62E9"><option value="">\u62C9\u53D6\u540E\u9009\u62E9</option></select><button type="button" class="echoes-icon-button echoes-model-fetch" data-model-fetch title="\u4ECE API \u62C9\u53D6\u6A21\u578B\u5217\u8868" aria-label="\u62C9\u53D6\u6A21\u578B\u5217\u8868"><i class="fa-solid fa-cloud-arrow-down"></i></button></span><small data-model-status></small></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select data-field="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input data-field="timeout" type="number" min="1" max="600" required></label><label class="echoes-check echoes-private-network-check" title="\u4EC5\u5728\u4F60\u4FE1\u4EFB\u8BE5 API \u4E3B\u673A\u65F6\u542F\u7528\uFF1B\u5141\u8BB8\u8BF7\u6C42\u8BBF\u95EE\u672C\u673A\u3001\u5C40\u57DF\u7F51\u6216\u89E3\u6790\u5230\u4FDD\u7559\u5730\u5740\u7684\u4E3B\u673A\u3002"><input data-field="allowPrivateNetwork" type="checkbox">\u5141\u8BB8\u79C1\u7F51</label><label class="echoes-check"><input data-field="enabled" type="checkbox">\u542F\u7528</label><div class="echoes-endpoint-editor-actions"></div>';
       row.querySelector("[data-field=name]").value = endpoint.name;
       row.querySelector("[data-field=baseUrl]").value = endpoint.baseUrl;
       row.querySelector("[data-field=model]").value = endpoint.model;

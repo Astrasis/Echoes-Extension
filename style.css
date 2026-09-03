@@ -1982,6 +1982,14 @@
   gap: 6px;
 }
 
+.echoes-model-control-with-select {
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 44%) max-content;
+}
+
+.echoes-model-select {
+  min-width: 96px;
+}
+
 .echoes-model-field > small {
   min-height: 15px;
   overflow: hidden;
