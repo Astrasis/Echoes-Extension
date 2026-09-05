@@ -15020,6 +15020,7 @@ var structuredMemoryCatalogSchema = external_exports.object({
   automation: external_exports.object({
     enabled: external_exports.boolean().default(false)
   }).default({ enabled: false }),
+  builtInTypeSetVersion: external_exports.number().int().min(0).default(0),
   lastProcessedMessageId: external_exports.string().max(240).optional(),
   updatedAt: external_exports.string().datetime()
 }).superRefine((catalog, context) => {
@@ -16215,6 +16216,161 @@ var DEFAULT_TYPE_TEMPLATE = {
   createdAt: DEFAULT_TEMPLATE_TIME,
   updatedAt: DEFAULT_TEMPLATE_TIME
 };
+var PEOPLE_MEMORY_TEMPLATE_ID = "echoes_people_template";
+var RELATIONSHIP_MEMORY_TEMPLATE_ID = "echoes_relationships_template";
+var CONCEPT_MEMORY_TEMPLATE_ID = "echoes_concepts_template";
+var FACTION_MEMORY_TEMPLATE_ID = "echoes_factions_template";
+var LOCATION_MEMORY_TEMPLATE_ID = "echoes_locations_template";
+var OBJECT_MEMORY_TEMPLATE_ID = "echoes_objects_template";
+function builtInMemoryTemplate(id2, name, description, columns, writePrompt) {
+  return {
+    id: id2,
+    name,
+    description,
+    columns,
+    writePrompt,
+    builtIn: true,
+    version: 1,
+    createdAt: DEFAULT_TEMPLATE_TIME,
+    updatedAt: DEFAULT_TEMPLATE_TIME
+  };
+}
+var PEOPLE_MEMORY_TEMPLATE = builtInMemoryTemplate(
+  PEOPLE_MEMORY_TEMPLATE_ID,
+  "\u4EBA\u7269\u6863\u6848\u6A21\u677F",
+  "\u8BB0\u5F55\u5177\u540D\u4EBA\u7269\u7684\u8EAB\u4EFD\u3001\u7A33\u5B9A\u7279\u5F81\u3001\u80FD\u529B\u9650\u5236\u3001\u6240\u5C5E\u7ACB\u573A\u548C\u5176\u4ED6\u957F\u671F\u6709\u6548\u4FE1\u606F\u3002",
+  [
+    { id: "identity", name: "\u8EAB\u4EFD\u4E0E\u5B9A\u4F4D", type: "long_text", required: true, description: "\u59D3\u540D\u4E4B\u5916\u7684\u8EAB\u4EFD\u3001\u804C\u4E1A\u3001\u5730\u4F4D\u3001\u7269\u79CD\u3001\u6765\u5386\u6216\u5267\u60C5\u5B9A\u4F4D\u3002" },
+    { id: "traits", name: "\u7A33\u5B9A\u7279\u5F81", type: "long_text", required: false, description: "\u957F\u671F\u6027\u683C\u3001\u5916\u8C8C\u7279\u5F81\u3001\u4EF7\u503C\u53D6\u5411\u3001\u4E60\u60EF\u6216\u5176\u4ED6\u7A33\u5B9A\u8FA8\u8BC6\u4FE1\u606F\u3002" },
+    { id: "capabilities", name: "\u80FD\u529B\u4E0E\u9650\u5236", type: "long_text", required: false, description: "\u957F\u671F\u80FD\u529B\u3001\u6280\u80FD\u3001\u8D44\u6E90\u3001\u5F31\u70B9\u3001\u4EE3\u4EF7\u3001\u9650\u5236\u53CA\u4E0D\u786E\u5B9A\u5224\u65AD\u3002" },
+    { id: "affiliations", name: "\u6240\u5C5E\u4E0E\u7ACB\u573A", type: "long_text", required: false, description: "\u6240\u5C5E\u52BF\u529B\u3001\u804C\u4F4D\u3001\u9635\u8425\u3001\u957F\u671F\u76EE\u6807\u548C\u7A33\u5B9A\u7ACB\u573A\u3002" },
+    { id: "notes", name: "\u5176\u4ED6\u957F\u671F\u4FE1\u606F", type: "long_text", required: false, description: "\u65E0\u6CD5\u5F52\u5165\u5176\u4ED6\u5B57\u6BB5\u4F46\u5BF9\u540E\u7EED\u5267\u60C5\u6301\u7EED\u6709\u7528\u7684\u4FE1\u606F\u3002" }
+  ],
+  `Maintain ONE row per durable named person.
+Use the canonical character name as dataName. Put established aliases in keywords, not in separate duplicate rows.
+Record identity, role, stable distinguishing traits, durable goals, affiliations, capabilities, costs, weaknesses, and lasting constraints. Preserve attributed suspicions or uncertain claims with explicit uncertainty.
+Do NOT record a fictional "User". Do NOT store current location, current clothing, temporary emotion, transient injury, momentary action, scene transcript, or a complete event history.
+When a person changes role, allegiance, capability, or another durable property, update the existing row and preserve all still-valid information.
+Use status "keyword". Include the canonical name and useful established aliases as keywords.
+Write all generated field content in concise Chinese.`
+);
+var RELATIONSHIP_MEMORY_TEMPLATE = builtInMemoryTemplate(
+  RELATIONSHIP_MEMORY_TEMPLATE_ID,
+  "\u4EBA\u7269\u5173\u7CFB\u6A21\u677F",
+  "\u8BB0\u5F55\u5177\u540D\u4EBA\u7269\u4E4B\u95F4\u957F\u671F\u6709\u6548\u4E14\u53EF\u80FD\u5F71\u54CD\u540E\u7EED\u884C\u4E3A\u7684\u53CC\u5411\u6216\u5355\u5411\u5173\u7CFB\u3002",
+  [
+    { id: "participants", name: "\u5173\u7CFB\u4E3B\u4F53", type: "text", required: true, description: "\u4F7F\u7528\u201C\u4EBA\u7269A \u2014 \u4EBA\u7269B\u201D\u660E\u786E\u5217\u51FA\u5173\u7CFB\u53CC\u65B9\u3002" },
+    { id: "relationship", name: "\u5173\u7CFB\u6027\u8D28\u4E0E\u73B0\u72B6", type: "long_text", required: true, description: "\u4EB2\u7F18\u3001\u5408\u4F5C\u3001\u654C\u5BF9\u3001\u4E0A\u4E0B\u7EA7\u3001\u4FE1\u4EFB\u3001\u4F9D\u8D56\u7B49\u5173\u7CFB\u53CA\u5F53\u524D\u957F\u671F\u72B6\u6001\u3002" },
+    { id: "direction", name: "\u65B9\u5411\u4E0E\u60C5\u611F", type: "long_text", required: false, description: "\u5206\u522B\u8BB0\u5F55\u53CC\u65B9\u7684\u8BA4\u77E5\u3001\u611F\u60C5\u3001\u6001\u5EA6\u548C\u671F\u5F85\uFF0C\u4E0D\u9ED8\u8BA4\u4E92\u60E0\u3002" },
+    { id: "basis", name: "\u4F9D\u636E\u4E0E\u7EA6\u675F", type: "long_text", required: false, description: "\u5F62\u6210\u5173\u7CFB\u7684\u5173\u952E\u539F\u56E0\u3001\u957F\u671F\u627F\u8BFA\u3001\u503A\u52A1\u3001\u8FB9\u754C\u6216\u5229\u76CA\u7EA6\u675F\u3002" },
+    { id: "secrecy", name: "\u516C\u5F00\u4E0E\u77E5\u60C5\u60C5\u51B5", type: "long_text", required: false, description: "\u5173\u7CFB\u662F\u5426\u516C\u5F00\u3001\u7531\u8C01\u77E5\u60C5\u4EE5\u53CA\u76F8\u5173\u4E0D\u786E\u5B9A\u6027\u3002" }
+  ],
+  `Maintain ONE row per meaningful relationship between two named fictional characters.
+Use dataName in the canonical form "\u4EBA\u7269A \u2014 \u4EBA\u7269B". Do not create reversed duplicate rows.
+Record durable kinship, friendship, love, attraction, trust, distrust, rivalry, hostility, mentorship, command, protection, debt, dependence, secrecy, or other continuing expectations.
+Represent direction explicitly. A's feelings toward B do not prove B feels the same way. Preserve uncertain or one-sided interpretations as uncertain or one-sided.
+Record only brief historical causes needed to understand the current durable relationship. Do NOT store ordinary interaction, temporary mood, or scene-by-scene development.
+The message sender or Game Master is not a fictional relationship participant.
+Use status "keyword". Include both canonical character names and only useful relationship aliases as keywords.
+Write all generated field content in concise Chinese.`
+);
+var CONCEPT_MEMORY_TEMPLATE = builtInMemoryTemplate(
+  CONCEPT_MEMORY_TEMPLATE_ID,
+  "\u6982\u5FF5\u4E0E\u89C4\u5219\u6A21\u677F",
+  "\u8BB0\u5F55\u4E16\u754C\u6982\u5FF5\u3001\u5236\u5EA6\u3001\u6280\u672F\u3001\u80FD\u529B\u4F53\u7CFB\u548C\u53EF\u590D\u7528\u89C4\u5219\u7684\u5B9A\u4E49\u3001\u673A\u5236\u4E0E\u9650\u5236\u3002",
+  [
+    { id: "definition", name: "\u5B9A\u4E49", type: "long_text", required: true, description: "\u6982\u5FF5\u6216\u89C4\u5219\u662F\u4EC0\u4E48\uFF0C\u4EE5\u53CA\u5B83\u5728\u4E16\u754C\u4E2D\u7684\u57FA\u672C\u610F\u4E49\u3002" },
+    { id: "mechanism", name: "\u673A\u5236", type: "long_text", required: false, description: "\u8FD0\u4F5C\u65B9\u5F0F\u3001\u56E0\u679C\u5173\u7CFB\u3001\u6B65\u9AA4\u3001\u4F5C\u7528\u8303\u56F4\u6216\u53EF\u89C2\u5BDF\u6548\u679C\u3002" },
+    { id: "conditions", name: "\u6761\u4EF6\u4E0E\u9650\u5236", type: "long_text", required: false, description: "\u524D\u63D0\u3001\u6210\u672C\u3001\u9608\u503C\u3001\u98CE\u9669\u3001\u5931\u8D25\u6761\u4EF6\u3001\u4F8B\u5916\u548C\u8FB9\u754C\u3002" },
+    { id: "examples", name: "\u5173\u8054\u5B9E\u4F8B", type: "long_text", required: false, description: "\u6709\u52A9\u4E8E\u7406\u89E3\u89C4\u5219\u7684\u5177\u540D\u4EBA\u7269\u3001\u5730\u70B9\u3001\u52BF\u529B\u3001\u7269\u54C1\u6216\u7B80\u77ED\u5B9E\u4F8B\u3002" },
+    { id: "uncertainty", name: "\u4E0D\u786E\u5B9A\u4E0E\u4E89\u8BAE", type: "long_text", required: false, description: "\u5C1A\u672A\u8BC1\u5B9E\u7684\u89E3\u91CA\u3001\u4E89\u8BAE\u7248\u672C\u3001\u5DF2\u77E5\u4FE1\u606F\u7F3A\u53E3\u53CA\u5176\u5F52\u5C5E\u3002" }
+  ],
+  `Maintain ONE row per independently reusable concept, law, system, procedure, technology, supernatural principle, social convention, or setting rule.
+Use the canonical concept term as dataName. Keep a rule together with its mechanism, prerequisites, costs, limits, failure conditions, and exceptions so the row can be applied when retrieved alone.
+Newly introduced setting information is valid even when it was created during the current plot and has not caused a major event.
+Preserve hypotheses, approximate rules, disputed explanations, and incomplete models with explicit attribution and uncertainty. Never promote them to confirmed universal truth.
+Do NOT store character biographies, organization profiles, location profiles, item profiles, current scene state, or long event narratives here.
+Use status "vectorized" unless the concept has one uniquely reliable canonical trigger and keyword activation is clearly sufficient.
+Write all generated field content in concise Chinese.`
+);
+var FACTION_MEMORY_TEMPLATE = builtInMemoryTemplate(
+  FACTION_MEMORY_TEMPLATE_ID,
+  "\u52BF\u529B\u4E0E\u7EC4\u7EC7\u6A21\u677F",
+  "\u8BB0\u5F55\u56FD\u5BB6\u3001\u516C\u53F8\u3001\u673A\u6784\u3001\u5BB6\u65CF\u3001\u519B\u961F\u3001\u6559\u56E2\u548C\u5176\u4ED6\u957F\u671F\u5B58\u5728\u7684\u7EC4\u7EC7\u5B9E\u4F53\u3002",
+  [
+    { id: "profile", name: "\u6027\u8D28\u4E0E\u5B9A\u4F4D", type: "long_text", required: true, description: "\u7EC4\u7EC7\u6027\u8D28\u3001\u793E\u4F1A\u5B9A\u4F4D\u3001\u516C\u5F00\u8EAB\u4EFD\u53CA\u6838\u5FC3\u7279\u5F81\u3002" },
+    { id: "goals", name: "\u76EE\u6807\u4E0E\u7ACB\u573A", type: "long_text", required: false, description: "\u957F\u671F\u76EE\u6807\u3001\u539F\u5219\u3001\u5229\u76CA\u3001\u516C\u5F00\u6216\u9690\u79D8\u7ACB\u573A\u53CA\u4E0D\u786E\u5B9A\u5224\u65AD\u3002" },
+    { id: "structure", name: "\u7ED3\u6784\u4E0E\u6210\u5458", type: "long_text", required: false, description: "\u9886\u5BFC\u8005\u3001\u90E8\u95E8\u3001\u5C42\u7EA7\u3001\u5173\u952E\u6210\u5458\u548C\u5185\u90E8\u6D3E\u7CFB\u3002" },
+    { id: "relations", name: "\u5173\u7CFB\u4E0E\u5F71\u54CD", type: "long_text", required: false, description: "\u4E0E\u4EBA\u7269\u3001\u5176\u4ED6\u52BF\u529B\u3001\u5730\u70B9\u6216\u5F53\u524D\u6545\u4E8B\u7684\u957F\u671F\u5173\u7CFB\u548C\u5F71\u54CD\u3002" },
+    { id: "resources", name: "\u8D44\u6E90\u4E0E\u9650\u5236", type: "long_text", required: false, description: "\u4E3B\u8981\u8D44\u6E90\u3001\u6743\u9650\u3001\u80FD\u529B\u8303\u56F4\u3001\u5F31\u70B9\u3001\u9650\u5236\u548C\u5DF2\u77E5\u98CE\u9669\u3002" }
+  ],
+  `Maintain ONE row per durable organization, faction, nation, company, institution, family, military force, religion, or political group.
+Use the canonical organization name as dataName and established abbreviations or former names as keywords.
+Record its nature, durable goals, ideology or interests, leadership, meaningful structure, important members, resources, limitations, and lasting relations.
+Update leadership, policy, alignment, structure, or status when changed. Do not delete a faction merely because it is defeated, dissolved, hidden, or inactive when its identity or consequences remain useful.
+Do NOT write a complete institutional history, scene transcript, temporary deployment, or every minor member.
+Use status "keyword". Include the canonical name and useful established aliases as keywords.
+Write all generated field content in concise Chinese.`
+);
+var LOCATION_MEMORY_TEMPLATE = builtInMemoryTemplate(
+  LOCATION_MEMORY_TEMPLATE_ID,
+  "\u5730\u70B9\u6863\u6848\u6A21\u677F",
+  "\u8BB0\u5F55\u5BF9\u884C\u52A8\u3001\u7406\u89E3\u8BBE\u5B9A\u6216\u540E\u7EED\u5267\u60C5\u6709\u6301\u7EED\u4EF7\u503C\u7684\u5177\u540D\u5730\u70B9\u4E0E\u7A7A\u95F4\u3002",
+  [
+    { id: "profile", name: "\u7C7B\u578B\u4E0E\u5B9A\u4F4D", type: "long_text", required: true, description: "\u5730\u70B9\u7C7B\u578B\u3001\u6240\u5C5E\u533A\u57DF\u6216\u52BF\u529B\u3001\u7A7A\u95F4\u5C42\u7EA7\u53CA\u57FA\u672C\u5B9A\u4F4D\u3002" },
+    { id: "layout", name: "\u7ED3\u6784\u4E0E\u8FDE\u63A5", type: "long_text", required: false, description: "\u7A33\u5B9A\u5E03\u5C40\u3001\u5206\u533A\u3001\u5165\u53E3\u3001\u51FA\u53E3\u3001\u901A\u9053\u53CA\u4E0E\u5176\u4ED6\u5730\u70B9\u7684\u8FDE\u63A5\u3002" },
+    { id: "functions", name: "\u529F\u80FD\u4E0E\u76F8\u5173\u5B9E\u4F53", type: "long_text", required: false, description: "\u4E3B\u8981\u7528\u9014\u3001\u5173\u952E\u8BBE\u65BD\u3001\u957F\u671F\u6D3B\u52A8\u53CA\u76F8\u5173\u4EBA\u7269\u6216\u52BF\u529B\u3002" },
+    { id: "access", name: "\u6743\u9650\u4E0E\u89C4\u5219", type: "long_text", required: false, description: "\u8FDB\u5165\u6761\u4EF6\u3001\u6743\u9650\u3001\u8DEF\u7EBF\u3001\u76D1\u63A7\u3001\u5C01\u9501\u548C\u9002\u7528\u89C4\u5219\u3002" },
+    { id: "hazards", name: "\u5371\u9669\u4E0E\u7279\u6B8A\u6761\u4EF6", type: "long_text", required: false, description: "\u6301\u7EED\u5371\u9669\u3001\u5F02\u5E38\u73AF\u5883\u3001\u635F\u6BC1\u3001\u9650\u5236\u3001\u79D8\u5BC6\u548C\u4E0D\u786E\u5B9A\u4FE1\u606F\u3002" }
+  ],
+  `Maintain ONE row per named location whose identity, layout, function, access conditions, connections, hazards, or ownership may matter again.
+Use the most useful canonical full location name as dataName. Put shorter established names and aliases in keywords.
+Record stable spatial hierarchy, layout, entrances, routes, functions, ownership, permissions, restrictions, hazards, and persistent changes.
+Current presence at a location belongs to active state, not this table. Record a visit only when it reveals or changes reusable location information.
+Do NOT store scenic prose, weather, lighting, temporary crowd positions, ordinary travel narration, or an exhaustive room inventory.
+Use status "keyword". Include the canonical location name and useful established aliases as keywords.
+Write all generated field content in concise Chinese.`
+);
+var OBJECT_MEMORY_TEMPLATE = builtInMemoryTemplate(
+  OBJECT_MEMORY_TEMPLATE_ID,
+  "\u91CD\u8981\u7269\u54C1\u6A21\u677F",
+  "\u8BB0\u5F55\u5177\u6709\u6301\u7EED\u5267\u60C5\u4EF7\u503C\u7684\u5177\u540D\u7269\u54C1\u3001\u6587\u4EF6\u3001\u88C5\u5907\u3001\u9057\u7269\u3001\u94A5\u5319\u548C\u5176\u4ED6\u5BF9\u8C61\u3002",
+  [
+    { id: "profile", name: "\u6027\u8D28\u4E0E\u8BC6\u522B", type: "long_text", required: true, description: "\u7269\u54C1\u7C7B\u522B\u3001\u5916\u89C2\u8BC6\u522B\u3001\u6765\u6E90\u6216\u533A\u522B\u4E8E\u540C\u7C7B\u7269\u54C1\u7684\u6838\u5FC3\u7279\u5F81\u3002" },
+    { id: "functions", name: "\u529F\u80FD\u4E0E\u7528\u9014", type: "long_text", required: false, description: "\u80FD\u529B\u3001\u7528\u9014\u3001\u4FE1\u606F\u5185\u5BB9\u3001\u53EF\u64CD\u4F5C\u6548\u679C\u548C\u76F8\u5173\u673A\u5236\u3002" },
+    { id: "ownership", name: "\u6301\u6709\u4E0E\u5B58\u653E", type: "long_text", required: false, description: "\u6240\u6709\u8005\u3001\u6301\u6709\u8005\u3001\u4FDD\u7BA1\u8005\u3001\u7A33\u5B9A\u5B58\u653E\u5730\u70B9\u53CA\u8BBF\u95EE\u6743\u9650\u3002" },
+    { id: "conditions", name: "\u6761\u4EF6\u4E0E\u9650\u5236", type: "long_text", required: false, description: "\u4F7F\u7528\u6761\u4EF6\u3001\u6210\u672C\u3001\u98CE\u9669\u3001\u8010\u4E45\u3001\u6743\u9650\u3001\u5931\u6548\u65B9\u5F0F\u548C\u4E0D\u786E\u5B9A\u6027\u3002" },
+    { id: "significance", name: "\u5173\u8054\u4E0E\u610F\u4E49", type: "long_text", required: false, description: "\u4E0E\u4EBA\u7269\u3001\u52BF\u529B\u3001\u5730\u70B9\u3001\u89C4\u5219\u6216\u957F\u671F\u5267\u60C5\u7684\u5173\u7CFB\u3002" }
+  ],
+  `Maintain ONE row per distinctive object, document, device, weapon, key, artifact, resource, or other item with continuing narrative utility.
+Use the canonical item name or a precise unique description as dataName. Do not create rows for generic consumables or ordinary possessions without future significance.
+Record identity, origin when useful, function, information content, ownership, stable storage, access, operating conditions, costs, limitations, risks, and durable significance.
+Update the same row when the item is transferred, damaged, altered, lost, destroyed, decoded, or gains a newly revealed function. Keep prior history only when needed to understand current ownership or significance.
+Do NOT store every temporary carried object, routine inventory change, or play-by-play use.
+Use status "keyword". Include the canonical item name, identifier, and only useful established aliases as keywords.
+Write all generated field content in concise Chinese.`
+);
+var BUILT_IN_MEMORY_TYPE_TEMPLATES = [
+  DEFAULT_TYPE_TEMPLATE,
+  PEOPLE_MEMORY_TEMPLATE,
+  RELATIONSHIP_MEMORY_TEMPLATE,
+  CONCEPT_MEMORY_TEMPLATE,
+  FACTION_MEMORY_TEMPLATE,
+  LOCATION_MEMORY_TEMPLATE,
+  OBJECT_MEMORY_TEMPLATE
+];
+var DEFAULT_CHAT_MEMORY_TYPE_TEMPLATES = [
+  PEOPLE_MEMORY_TEMPLATE,
+  RELATIONSHIP_MEMORY_TEMPLATE,
+  CONCEPT_MEMORY_TEMPLATE,
+  FACTION_MEMORY_TEMPLATE,
+  LOCATION_MEMORY_TEMPLATE,
+  OBJECT_MEMORY_TEMPLATE
+];
+var BUILT_IN_MEMORY_TEMPLATE_IDS = new Set(
+  BUILT_IN_MEMORY_TYPE_TEMPLATES.map((template) => template.id)
+);
+var CURRENT_BUILT_IN_MEMORY_TYPE_SET_VERSION = 1;
 var DEFAULT_STATUS_TASK_PROMPT = `<task>
 Act as a STRICT Character-Known Active State Recorder.
 
@@ -16544,7 +16700,7 @@ var DEFAULT_SETTINGS = {
     status: { groupId: "", failoverPolicy: "confirm_ambiguous" }
   },
   extractionMessageCount: 20,
-  typeTemplates: [DEFAULT_TYPE_TEMPLATE],
+  typeTemplates: BUILT_IN_MEMORY_TYPE_TEMPLATES,
   statusTemplates: [DEFAULT_STATUS_TEMPLATE],
   summary: {
     messageCount: 30,
@@ -16686,8 +16842,13 @@ function uniqueId(prefix) {
 }
 function normalizeTemplates(raw) {
   const templates = Array.isArray(raw) ? raw.filter((item) => Boolean(item && typeof item === "object")) : [];
-  const withoutBuiltIn = templates.filter((template) => template.id !== DEFAULT_TEMPLATE_ID);
-  return [structuredClone(DEFAULT_TYPE_TEMPLATE), ...structuredClone(withoutBuiltIn)];
+  const withoutBuiltIn = templates.filter(
+    (template) => !BUILT_IN_MEMORY_TEMPLATE_IDS.has(template.id)
+  );
+  return [
+    ...structuredClone(BUILT_IN_MEMORY_TYPE_TEMPLATES),
+    ...structuredClone(withoutBuiltIn)
+  ];
 }
 function normalizeStatusTemplates(raw) {
   const templates = Array.isArray(raw) ? raw.filter((item) => Boolean(item && typeof item === "object")) : [];
@@ -16917,7 +17078,7 @@ function saveTypeTemplate(rawInput, current) {
   return structuredClone(template);
 }
 function deleteTypeTemplate(templateId) {
-  if (templateId === DEFAULT_TEMPLATE_ID) return false;
+  if (BUILT_IN_MEMORY_TEMPLATE_IDS.has(templateId)) return false;
   const settings = getSettings();
   const originalLength = settings.typeTemplates.length;
   settings.typeTemplates = settings.typeTemplates.filter((template) => template.id !== templateId);
@@ -16925,7 +17086,7 @@ function deleteTypeTemplate(templateId) {
   saveSettings(settings);
   return true;
 }
-function instantiateType(template, name = "\u901A\u7528\u8BB0\u5FC6") {
+function instantiateType(template, name = template.name.replace(/模板$/, "")) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   return {
     id: uniqueId("type"),
@@ -16940,6 +17101,28 @@ function instantiateType(template, name = "\u901A\u7528\u8BB0\u5FC6") {
     updatedAt: now
   };
 }
+function instantiateCatalogBuiltInType(template, catalog) {
+  const baseId = `type_${template.id}`;
+  let id2 = baseId;
+  let suffix = 2;
+  while (catalog.types.some((type) => type.id === id2)) {
+    id2 = `${baseId}_${suffix}`;
+    suffix += 1;
+  }
+  const timestamp2 = catalog.updatedAt || DEFAULT_TEMPLATE_TIME;
+  return {
+    ...instantiateType(template),
+    id: id2,
+    createdAt: timestamp2,
+    updatedAt: timestamp2
+  };
+}
+function builtInWriterPromptId(typeId) {
+  return `prompt_writer_${typeId}`;
+}
+function isUntouchedLegacyGenericType(type) {
+  return type.templateId === DEFAULT_TEMPLATE_ID && type.name === "\u901A\u7528\u8BB0\u5FC6" && type.description === DEFAULT_TYPE_TEMPLATE.description && JSON.stringify(type.columns) === JSON.stringify(DEFAULT_TYPE_TEMPLATE.columns) && (type.writePrompt === DEFAULT_WRITE_PROMPT || type.writePrompt === LEGACY_WRITE_PROMPT);
+}
 function refreshBuiltInMemoryPrompts(catalog) {
   const refreshed = structuredClone(catalog);
   for (const item of refreshed.promptPreset.items) {
@@ -16952,11 +17135,43 @@ function refreshBuiltInMemoryPrompts(catalog) {
       type.writePrompt = DEFAULT_WRITE_PROMPT;
     }
   }
+  if ((refreshed.builtInTypeSetVersion ?? 0) < CURRENT_BUILT_IN_MEMORY_TYPE_SET_VERSION) {
+    const missingTemplates = DEFAULT_CHAT_MEMORY_TYPE_TEMPLATES.filter(
+      (template) => !refreshed.types.some((type) => type.templateId === template.id)
+    );
+    if (missingTemplates.length > 0) {
+      for (const type of refreshed.types) {
+        if (isUntouchedLegacyGenericType(type)) type.enabled = false;
+      }
+      for (const template of missingTemplates) {
+        const type = instantiateCatalogBuiltInType(template, refreshed);
+        refreshed.types.push(type);
+        const basePromptId = builtInWriterPromptId(type.id);
+        let promptId = basePromptId;
+        let suffix = 2;
+        while (refreshed.promptPreset.items.some((item) => item.id === promptId)) {
+          promptId = `${basePromptId}_${suffix}`;
+          suffix += 1;
+        }
+        refreshed.promptPreset.items.push({
+          id: promptId,
+          kind: "type_writer",
+          title: `${type.name}\u5199\u8868\u63D0\u793A\u8BCD`,
+          role: "system",
+          enabled: true,
+          typeId: type.id
+        });
+      }
+    }
+    refreshed.builtInTypeSetVersion = CURRENT_BUILT_IN_MEMORY_TYPE_SET_VERSION;
+  }
   return refreshed;
 }
 function createDefaultCatalog(chatId) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  const type = instantiateType(DEFAULT_TYPE_TEMPLATE);
+  const types = DEFAULT_CHAT_MEMORY_TYPE_TEMPLATES.map(
+    (template) => instantiateType(template)
+  );
   const promptPreset = {
     id: "default_prompt_preset",
     name: "\u9ED8\u8BA4\u589E\u91CF\u8BB0\u5FC6\u9884\u8BBE",
@@ -16969,23 +17184,24 @@ function createDefaultCatalog(chatId) {
         enabled: true,
         content: DEFAULT_MAIN_PROMPT
       },
-      {
-        id: uniqueId("prompt"),
+      ...types.map((type) => ({
+        id: builtInWriterPromptId(type.id),
         kind: "type_writer",
         title: `${type.name}\u5199\u8868\u63D0\u793A\u8BCD`,
         role: "system",
         enabled: true,
         typeId: type.id
-      }
+      }))
     ],
     updatedAt: now
   };
   return {
     formatVersion: 1,
     chatId,
-    types: [type],
+    types,
     promptPreset,
     automation: { enabled: false },
+    builtInTypeSetVersion: CURRENT_BUILT_IN_MEMORY_TYPE_SET_VERSION,
     updatedAt: now
   };
 }
