@@ -323,7 +323,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "1.0.4",
+  version: "1.0.5",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -377,8 +377,8 @@ var ECHOES_BUILD_INFO = {
 function canonical(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  const record2 = value;
-  return `{${Object.keys(record2).sort().map((key) => `${JSON.stringify(key)}:${canonical(record2[key])}`).join(",")}}`;
+  const record3 = value;
+  return `{${Object.keys(record3).sort().map((key) => `${JSON.stringify(key)}:${canonical(record3[key])}`).join(",")}}`;
 }
 async function sha256(value) {
   const bytes = new TextEncoder().encode(canonical(value));
@@ -1095,9 +1095,9 @@ function assertNever(_x) {
 }
 function assert(_) {
 }
-function getEnumValues(entries) {
-  const numericValues = Object.values(entries).filter((v) => typeof v === "number");
-  const values = Object.entries(entries).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
+function getEnumValues(entries2) {
+  const numericValues = Object.values(entries2).filter((v) => typeof v === "number");
+  const values = Object.entries(entries2).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
   return values;
 }
 function joinValues(array2, separator = "|") {
@@ -11557,18 +11557,18 @@ function _set(Class2, valueType2, params) {
 }
 // @__NO_SIDE_EFFECTS__
 function _enum(Class2, values, params) {
-  const entries = Array.isArray(values) ? Object.fromEntries(values.map((v) => [v, v])) : values;
+  const entries2 = Array.isArray(values) ? Object.fromEntries(values.map((v) => [v, v])) : values;
   return new Class2({
     type: "enum",
-    entries,
+    entries: entries2,
     ...normalizeParams(params)
   });
 }
 // @__NO_SIDE_EFFECTS__
-function _nativeEnum(Class2, entries, params) {
+function _nativeEnum(Class2, entries2, params) {
   return new Class2({
     type: "enum",
-    entries,
+    entries: entries2,
     ...normalizeParams(params)
   });
 }
@@ -13110,14 +13110,14 @@ var safeDecodeAsync2 = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
 var _installedGroups = /* @__PURE__ */ new WeakMap();
 function _installLazyMethods(inst, group, methods) {
   const proto = Object.getPrototypeOf(inst);
-  let installed = _installedGroups.get(proto);
-  if (!installed) {
-    installed = /* @__PURE__ */ new Set();
-    _installedGroups.set(proto, installed);
+  let installed2 = _installedGroups.get(proto);
+  if (!installed2) {
+    installed2 = /* @__PURE__ */ new Set();
+    _installedGroups.set(proto, installed2);
   }
-  if (installed.has(group))
+  if (installed2.has(group))
     return;
-  installed.add(group);
+  installed2.add(group);
   for (const key in methods) {
     const fn = methods[key];
     Object.defineProperty(proto, key, {
@@ -14026,17 +14026,17 @@ var ZodEnum = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
   };
 });
 function _enum2(values, params) {
-  const entries = Array.isArray(values) ? Object.fromEntries(values.map((v) => [v, v])) : values;
+  const entries2 = Array.isArray(values) ? Object.fromEntries(values.map((v) => [v, v])) : values;
   return new ZodEnum({
     type: "enum",
-    entries,
+    entries: entries2,
     ...util_exports.normalizeParams(params)
   });
 }
-function nativeEnum(entries, params) {
+function nativeEnum(entries2, params) {
   return new ZodEnum({
     type: "enum",
-    entries,
+    entries: entries2,
     ...util_exports.normalizeParams(params)
   });
 }
@@ -17029,11 +17029,11 @@ function parseImportedSettings(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("Imported global settings must be an object.");
   }
-  const record2 = structuredClone(raw);
-  if (record2.formatVersion !== void 0 && record2.formatVersion !== 1 && record2.formatVersion !== 2) {
-    throw new Error(`Unsupported Echoes settings format: ${String(record2.formatVersion)}.`);
+  const record3 = structuredClone(raw);
+  if (record3.formatVersion !== void 0 && record3.formatVersion !== 1 && record3.formatVersion !== 2) {
+    throw new Error(`Unsupported Echoes settings format: ${String(record3.formatVersion)}.`);
   }
-  const candidate = record2.formatVersion === 2 ? record2 : normalizeSettings(record2);
+  const candidate = record3.formatVersion === 2 ? record3 : normalizeSettings(record3);
   const parsed = validateEchoesSettings(candidate);
   const endpoints = [
     ...parsed.generationGroups.flatMap((group) => group.endpoints),
@@ -23695,8 +23695,8 @@ function echoesMetadata(entry) {
   if (metadata3.kind !== "catalog" && metadata3.kind !== "row") return null;
   return metadata3;
 }
-function catalogFromEntries(entries) {
-  const entry = entries.find((candidate) => echoesMetadata(candidate)?.kind === "catalog");
+function catalogFromEntries(entries2) {
+  const entry = entries2.find((candidate) => echoesMetadata(candidate)?.kind === "catalog");
   if (!entry) throw new Error("The current worldbook has no Echoes memory catalog.");
   const metadata3 = echoesMetadata(entry);
   return {
@@ -23816,12 +23816,12 @@ function uniqueDataName(rows, typeId, dataName, exceptRowId) {
     (row) => row.typeId === typeId && row.id !== exceptRowId && row.dataName.trim().toLocaleLowerCase() === normalized
   );
 }
-function applyOperationsToEntries(entries, catalog, operations, sourceBase) {
+function applyOperationsToEntries(entries2, catalog, operations, sourceBase) {
   const summary = { added: 0, updated: 0, deleted: 0 };
   const typeById = new Map(catalog.types.filter((type) => type.enabled).map((type) => [type.id, type]));
   const rows = [];
   const entryByRowId = /* @__PURE__ */ new Map();
-  for (const entry of entries) {
+  for (const entry of entries2) {
     const metadata3 = echoesMetadata(entry);
     if (metadata3?.kind !== "row") continue;
     const type = typeById.get(metadata3.typeId);
@@ -23853,7 +23853,7 @@ function applyOperationsToEntries(entries, catalog, operations, sourceBase) {
         updatedAt: now
       };
       rows.push(row);
-      entries.push(rowEntry(type, row));
+      entries2.push(rowEntry(type, row));
       summary.added += 1;
       continue;
     }
@@ -23864,8 +23864,8 @@ function applyOperationsToEntries(entries, catalog, operations, sourceBase) {
       throw new Error(`Operation references an unavailable row: ${operation.rowId}`);
     }
     if (operation.action === "delete") {
-      const entryIndex = entries.indexOf(entry);
-      if (entryIndex >= 0) entries.splice(entryIndex, 1);
+      const entryIndex = entries2.indexOf(entry);
+      if (entryIndex >= 0) entries2.splice(entryIndex, 1);
       rows.splice(rowIndex, 1);
       entryByRowId.delete(operation.rowId);
       summary.deleted += 1;
@@ -23914,7 +23914,7 @@ var WorldbookMemoryStore = class {
       throw new Error("A new memory type must be based on an existing type template.");
     }
     let savedId = currentId ?? "";
-    await this.mutate((entries, catalog) => {
+    await this.mutate((entries2, catalog) => {
       const now = (/* @__PURE__ */ new Date()).toISOString();
       const current = currentId ? catalog.types.find((type) => type.id === currentId) : void 0;
       if (currentId && !current) throw new Error("Memory type not found.");
@@ -23933,7 +23933,7 @@ var WorldbookMemoryStore = class {
       };
       savedId = saved.id;
       if (current) {
-        for (const entry of entries) {
+        for (const entry of entries2) {
           const metadata3 = echoesMetadata(entry);
           if (metadata3?.kind !== "row" || metadata3.typeId !== current.id) continue;
           const oldRow = rowFromEntry(entry, current);
@@ -23970,7 +23970,7 @@ var WorldbookMemoryStore = class {
     return state.catalog.types.find((type) => type.id === savedId);
   }
   async deleteType(typeId) {
-    await this.mutate((entries, catalog) => {
+    await this.mutate((entries2, catalog) => {
       if (!catalog.types.some((type) => type.id === typeId)) throw new Error("Memory type not found.");
       catalog.types = catalog.types.filter((type) => type.id !== typeId);
       catalog.promptPreset.items = catalog.promptPreset.items.filter(
@@ -23978,20 +23978,20 @@ var WorldbookMemoryStore = class {
       );
       const now = (/* @__PURE__ */ new Date()).toISOString();
       catalog.promptPreset.updatedAt = now;
-      for (let index = entries.length - 1; index >= 0; index -= 1) {
-        const metadata3 = echoesMetadata(entries[index]);
-        if (metadata3?.kind === "row" && metadata3.typeId === typeId) entries.splice(index, 1);
+      for (let index = entries2.length - 1; index >= 0; index -= 1) {
+        const metadata3 = echoesMetadata(entries2[index]);
+        if (metadata3?.kind === "row" && metadata3.typeId === typeId) entries2.splice(index, 1);
       }
     });
   }
   async setTypeEnabled(typeId, enabled) {
-    await this.mutate((entries, catalog) => {
+    await this.mutate((entries2, catalog) => {
       const type = catalog.types.find((candidate) => candidate.id === typeId);
       if (!type) throw new Error("Memory type not found.");
       type.enabled = enabled;
       type.version += 1;
       type.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-      for (const entry of entries) {
+      for (const entry of entries2) {
         const metadata3 = echoesMetadata(entry);
         if (metadata3?.kind === "row" && metadata3.typeId === typeId) entry.enabled = enabled;
       }
@@ -24032,8 +24032,8 @@ var WorldbookMemoryStore = class {
         return { ...row, ...created ? { worldbookUid: created.uid } : {} };
       }
       let saved = null;
-      await requiredHelper().updateWorldbookWith(worldbookName, (entries) => {
-        const entry = entries.find((candidate) => {
+      await requiredHelper().updateWorldbookWith(worldbookName, (entries2) => {
+        const entry = entries2.find((candidate) => {
           const metadata3 = echoesMetadata(candidate);
           return metadata3?.kind === "row" && metadata3.rowId === rowId;
         });
@@ -24051,20 +24051,20 @@ var WorldbookMemoryStore = class {
           updatedAt: now
         };
         applyRowToEntry(entry, type, saved);
-        return entries;
+        return entries2;
       }, { render: "debounced" });
       if (!saved) throw new Error("Memory row was not updated.");
       return saved;
     });
   }
   async deleteRow(rowId) {
-    await this.mutate((entries) => {
-      const index = entries.findIndex((entry) => {
+    await this.mutate((entries2) => {
+      const index = entries2.findIndex((entry) => {
         const metadata3 = echoesMetadata(entry);
         return metadata3?.kind === "row" && metadata3.rowId === rowId;
       });
       if (index < 0) throw new Error("Memory row not found.");
-      entries.splice(index, 1);
+      entries2.splice(index, 1);
     });
   }
   async savePromptPreset(preset) {
@@ -24092,22 +24092,22 @@ var WorldbookMemoryStore = class {
   async commitExtractionBatch(options) {
     return worldbookWriteCoordinator.run(options.worldbookName, async () => {
       let committed = null;
-      await requiredHelper().updateWorldbookWith(options.worldbookName, async (entries) => {
-        const { entry: catalogEntryValue, catalog } = catalogFromEntries(entries);
+      await requiredHelper().updateWorldbookWith(options.worldbookName, async (entries2) => {
+        const { entry: catalogEntryValue, catalog } = catalogFromEntries(entries2);
         if (catalog.chatId !== options.chatId) {
           throw new Error("The locked worldbook no longer belongs to the extraction chat.");
         }
         if ((catalog.lastProcessedMessageId ?? null) !== options.expectedCheckpoint) {
           throw new Error("The structured-memory checkpoint changed while extraction was running.");
         }
-        const state = this.stateFromEntries(options.worldbookName, entries);
+        const state = this.stateFromEntries(options.worldbookName, entries2);
         const types = state.catalog.types.filter((type) => type.enabled);
         const typeIds = new Set(types.map((type) => type.id));
         const rows = state.rows.filter((row) => typeIds.has(row.typeId));
         if (await structuredExtractionContextHash(types, rows) !== options.batch.contextHash) {
           throw new Error("Structured-memory types or rows changed while extraction was running.");
         }
-        committed = applyOperationsToEntries(entries, catalog, options.operations, {
+        committed = applyOperationsToEntries(entries2, catalog, options.operations, {
           kind: "extraction",
           messageIds: [...options.batch.messageIds],
           jobId: options.jobId,
@@ -24118,7 +24118,7 @@ var WorldbookMemoryStore = class {
         catalog.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
         updateCatalogEntry(catalogEntryValue, catalog);
         structuredMemoryCatalogSchema.parse(catalog);
-        return entries;
+        return entries2;
       }, { render: "debounced" });
       if (!committed) throw new Error("The extraction batch was not committed.");
       return committed;
@@ -24128,14 +24128,14 @@ var WorldbookMemoryStore = class {
     return this.enqueue(async (target) => {
       const worldbookName = await this.ensureCurrentCatalog(target);
       let summary = { added: 0, updated: 0, deleted: 0 };
-      await requiredHelper().updateWorldbookWith(worldbookName, (entries) => {
-        const { catalog } = catalogFromEntries(entries);
-        summary = applyOperationsToEntries(entries, catalog, operations, {
+      await requiredHelper().updateWorldbookWith(worldbookName, (entries2) => {
+        const { catalog } = catalogFromEntries(entries2);
+        summary = applyOperationsToEntries(entries2, catalog, operations, {
           kind: "extraction",
           messageIds: [],
           jobId
         });
-        return entries;
+        return entries2;
       }, { render: "debounced" });
       return summary;
     });
@@ -24149,9 +24149,9 @@ var WorldbookMemoryStore = class {
       }
       const additions = [];
       const summary = { added: 0, updated: 0, deleted: 0 };
-      await requiredHelper().updateWorldbookWith(targetWorldbookName, (entries) => {
-        const { entry: catalogEntryValue, catalog } = catalogFromEntries(entries);
-        const targetState = this.stateFromEntries(targetWorldbookName, entries);
+      await requiredHelper().updateWorldbookWith(targetWorldbookName, (entries2) => {
+        const { entry: catalogEntryValue, catalog } = catalogFromEntries(entries2);
+        const targetState = this.stateFromEntries(targetWorldbookName, entries2);
         const selectedTypes = source.catalog.types.filter((type) => selectedTypeIds.includes(type.id));
         for (const sourceType of selectedTypes) {
           const existingType = catalog.types.find((type) => type.id === sourceType.id);
@@ -24173,10 +24173,10 @@ var WorldbookMemoryStore = class {
           importedType.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
           if (existingType && policy === "overwrite") {
             let removedRows = 0;
-            for (let index2 = entries.length - 1; index2 >= 0; index2 -= 1) {
-              const metadata3 = echoesMetadata(entries[index2]);
+            for (let index2 = entries2.length - 1; index2 >= 0; index2 -= 1) {
+              const metadata3 = echoesMetadata(entries2[index2]);
               if (metadata3?.kind !== "row" || metadata3.typeId !== existingType.id) continue;
-              entries.splice(index2, 1);
+              entries2.splice(index2, 1);
               removedRows += 1;
             }
             targetState.rows = targetState.rows.filter((row) => row.typeId !== existingType.id);
@@ -24223,7 +24223,7 @@ var WorldbookMemoryStore = class {
         catalog.promptPreset.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
         catalog.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
         updateCatalogEntry(catalogEntryValue, catalog);
-        return [...entries, ...additions];
+        return [...entries2, ...additions];
       }, { render: "debounced" });
       return summary;
     });
@@ -24252,8 +24252,8 @@ var WorldbookMemoryStore = class {
       worldbookName = await helper6.getOrCreateChatWorldbook("current", `Echoes-${baseName}`);
       this.assertCurrentChat(target.chatId);
     }
-    let entries = await helper6.getWorldbook(worldbookName);
-    const existingCatalogEntry = entries.find(
+    let entries2 = await helper6.getWorldbook(worldbookName);
+    const existingCatalogEntry = entries2.find(
       (entry) => echoesMetadata(entry)?.kind === "catalog"
     );
     if (existingCatalogEntry) {
@@ -24272,10 +24272,10 @@ var WorldbookMemoryStore = class {
         await helper6.rebindChatWorldbook("current", candidate);
         this.assertCurrentChat(target.chatId);
         worldbookName = candidate;
-        entries = [];
+        entries2 = [];
       }
     }
-    if (!entries.some((entry) => echoesMetadata(entry)?.kind === "catalog")) {
+    if (!entries2.some((entry) => echoesMetadata(entry)?.kind === "catalog")) {
       await helper6.createWorldbookEntries(
         worldbookName,
         [catalogEntry(createDefaultCatalog(target.chatId))],
@@ -24285,15 +24285,15 @@ var WorldbookMemoryStore = class {
     return worldbookName;
   }
   async readWorldbook(worldbookName) {
-    const entries = await requiredHelper().getWorldbook(worldbookName);
-    return this.stateFromEntries(worldbookName, entries);
+    const entries2 = await requiredHelper().getWorldbook(worldbookName);
+    return this.stateFromEntries(worldbookName, entries2);
   }
-  stateFromEntries(worldbookName, entries) {
-    const { catalog } = catalogFromEntries(entries);
+  stateFromEntries(worldbookName, entries2) {
+    const { catalog } = catalogFromEntries(entries2);
     const typeById = new Map(catalog.types.map((type) => [type.id, type]));
     const rows = [];
     const issues = [];
-    for (const entry of entries) {
+    for (const entry of entries2) {
       const metadata3 = echoesMetadata(entry);
       if (metadata3?.kind !== "row") continue;
       const type = typeById.get(metadata3.typeId);
@@ -24312,13 +24312,13 @@ var WorldbookMemoryStore = class {
   async mutate(mutator) {
     await this.enqueue(async (target) => {
       const worldbookName = await this.ensureCurrentCatalog(target);
-      await requiredHelper().updateWorldbookWith(worldbookName, (entries) => {
-        const { entry, catalog } = catalogFromEntries(entries);
-        mutator(entries, catalog);
+      await requiredHelper().updateWorldbookWith(worldbookName, (entries2) => {
+        const { entry, catalog } = catalogFromEntries(entries2);
+        mutator(entries2, catalog);
         catalog.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
         updateCatalogEntry(entry, catalog);
         structuredMemoryCatalogSchema.parse(catalog);
-        return entries;
+        return entries2;
       }, { render: "debounced" });
     });
   }
@@ -25587,16 +25587,16 @@ var RetrievalPanel = class {
   renderSequence = 0;
   async render() {
     if (!this.root.classList.contains("echoes-retrieval-view")) return;
-    const sequence = ++this.renderSequence;
+    const sequence2 = ++this.renderSequence;
     this.setMessage("\u6B63\u5728\u8BFB\u53D6\u68C0\u7D22\u7D22\u5F15...");
     try {
       const collections = await echoesApi.listRetrievalCollections();
-      if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-retrieval-view")) return;
+      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-retrieval-view")) return;
       this.collections = collections;
       this.renderSidebar();
       this.renderWorkspace();
     } catch (error51) {
-      if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-retrieval-view")) return;
+      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-retrieval-view")) return;
       this.setMessage(errorMessage(error51), true);
     }
   }
@@ -26158,7 +26158,7 @@ var ApiConfigPanel = class {
   async render(tab = this.tab, refreshCredentials = false) {
     if (!this.root.classList.contains("echoes-api-view")) return;
     this.tab = tab;
-    const sequence = ++this.renderSequence;
+    const sequence2 = ++this.renderSequence;
     const shouldLoadCredentials = refreshCredentials || !this.credentialsLoaded;
     if (shouldLoadCredentials) {
       this.credentialsLoading = true;
@@ -26168,7 +26168,7 @@ var ApiConfigPanel = class {
     if (!shouldLoadCredentials) return;
     this.credentialLoadPromise ??= this.loadCredentials();
     await this.credentialLoadPromise;
-    if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-api-view")) return;
+    if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-api-view")) return;
     this.renderPage();
   }
   async loadCredentials() {
@@ -27289,12 +27289,12 @@ function sliceEntry(slice) {
     }
   };
 }
-function readState(worldbookName, entries) {
-  const catalogWorldbookEntry = entries.find((entry) => metadata(entry)?.kind === "summary_catalog");
+function readState(worldbookName, entries2) {
+  const catalogWorldbookEntry = entries2.find((entry) => metadata(entry)?.kind === "summary_catalog");
   if (!catalogWorldbookEntry) return null;
   const catalogMetadata2 = metadata(catalogWorldbookEntry);
   const catalog = summaryCatalogSchema.parse(catalogMetadata2.catalog);
-  const slices = entries.flatMap((entry) => {
+  const slices = entries2.flatMap((entry) => {
     const item = metadata(entry);
     if (!item || item.kind !== "summary_slice") return [];
     return [summarySliceSchema.parse({
@@ -27310,8 +27310,8 @@ function readState(worldbookName, entries) {
   }).sort((left, right) => left.batch.batchNumber - right.batch.batchNumber || left.sliceNumber - right.sliceNumber);
   return { worldbookName, catalog, slices };
 }
-function structuredCatalogChatId(entries) {
-  for (const entry of entries) {
+function structuredCatalogChatId(entries2) {
+  for (const entry of entries2) {
     const echoes = entry.extra?.echoes;
     if (echoes?.kind === "catalog" && typeof echoes.catalog?.chatId === "string") return echoes.catalog.chatId;
   }
@@ -27335,9 +27335,9 @@ var SummaryWorldbookStore = class {
           throw new Error("The active chat changed while the summary worldbook was being created.");
         }
       }
-      let entries = await api.getWorldbook(worldbookName);
-      let state = readState(worldbookName, entries);
-      if (state && state.catalog.chatId !== chatId || !state && structuredCatalogChatId(entries) && structuredCatalogChatId(entries) !== chatId) {
+      let entries2 = await api.getWorldbook(worldbookName);
+      let state = readState(worldbookName, entries2);
+      if (state && state.catalog.chatId !== chatId || !state && structuredCatalogChatId(entries2) && structuredCatalogChatId(entries2) !== chatId) {
         const names = new Set(api.getWorldbookNames());
         let candidate = `Echoes-${baseName}`;
         let suffix = 2;
@@ -27351,21 +27351,21 @@ var SummaryWorldbookStore = class {
           throw new Error("The active chat changed while the summary worldbook was being rebound.");
         }
         worldbookName = candidate;
-        entries = [];
+        entries2 = [];
         state = null;
       }
       if (!state) {
         await api.createWorldbookEntries(worldbookName, [catalogEntry2(createCatalog(chatId))]);
-        entries = await api.getWorldbook(worldbookName);
-        state = readState(worldbookName, entries);
+        entries2 = await api.getWorldbook(worldbookName);
+        state = readState(worldbookName, entries2);
       }
       if (!state) throw new Error("Failed to initialize the Echoes summary catalog.");
       return state;
     });
   }
   inspect(worldbookName) {
-    return helper().getWorldbook(worldbookName).then((entries) => {
-      const state = readState(worldbookName, entries);
+    return helper().getWorldbook(worldbookName).then((entries2) => {
+      const state = readState(worldbookName, entries2);
       if (!state) throw new Error("The worldbook has no Echoes summary catalog.");
       return state;
     });
@@ -27381,9 +27381,9 @@ var SummaryWorldbookStore = class {
       options.signal?.throwIfAborted();
       const api = helper();
       const now = (/* @__PURE__ */ new Date()).toISOString();
-      await api.updateWorldbookWith(options.worldbookName, (entries) => {
+      await api.updateWorldbookWith(options.worldbookName, (entries2) => {
         options.signal?.throwIfAborted();
-        const currentState = readState(options.worldbookName, entries);
+        const currentState = readState(options.worldbookName, entries2);
         if (!currentState || currentState.catalog.namespaceId !== options.catalog.namespaceId) {
           throw new Error("The summary worldbook changed while the generation task was running.");
         }
@@ -27428,7 +27428,7 @@ var SummaryWorldbookStore = class {
           ])],
           updatedAt: now
         });
-        const nextEntries = entries.flatMap((entry) => {
+        const nextEntries = entries2.flatMap((entry) => {
           const item = metadata(entry);
           if (item?.kind === "summary_catalog") {
             return [{ ...entry, ...catalogEntry2(nextCatalog) }];
@@ -27475,7 +27475,7 @@ var SummaryWorldbookStore = class {
       const api = helper();
       const now = (/* @__PURE__ */ new Date()).toISOString();
       const targets = sliceIds ? new Set(sliceIds) : null;
-      await api.updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => {
+      await api.updateWorldbookWith(worldbookName, (entries2) => entries2.map((entry) => {
         const item = metadata(entry);
         if (item?.kind !== "summary_slice" || item.batch.id !== batchId) return entry;
         if (targets && !targets.has(item.summaryId)) return entry;
@@ -27496,7 +27496,7 @@ var SummaryWorldbookStore = class {
       const now = (/* @__PURE__ */ new Date()).toISOString();
       const state = await this.inspect(worldbookName);
       const staleIds = state.slices.filter((slice) => slice.batch.source?.kind !== "imported" && slice.batch.batchNumber >= batchNumber).map((slice) => slice.id);
-      await api.updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => {
+      await api.updateWorldbookWith(worldbookName, (entries2) => entries2.map((entry) => {
         const item = metadata(entry);
         if (item?.kind !== "summary_slice" || item.batch.source?.kind === "imported" || item.batch.batchNumber < batchNumber) return entry;
         return {
@@ -27523,7 +27523,7 @@ var SummaryWorldbookStore = class {
       const api = helper();
       const parsed = summarySliceCandidateSchema.parse(candidate);
       const now = (/* @__PURE__ */ new Date()).toISOString();
-      await api.updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => {
+      await api.updateWorldbookWith(worldbookName, (entries2) => entries2.map((entry) => {
         const item = metadata(entry);
         if (item?.kind !== "summary_slice" || item.summaryId !== sliceId) return entry;
         const updated = {
@@ -27551,7 +27551,7 @@ var SummaryWorldbookStore = class {
       const state = await this.inspect(worldbookName);
       const removed = new Set(sliceIds);
       const existingIds = state.slices.filter((slice) => removed.has(slice.id)).map((slice) => slice.id);
-      await helper().updateWorldbookWith(worldbookName, (entries) => entries.filter((entry) => {
+      await helper().updateWorldbookWith(worldbookName, (entries2) => entries2.filter((entry) => {
         const item = metadata(entry);
         return item?.kind !== "summary_slice" || !removed.has(item.summaryId);
       }));
@@ -27589,7 +27589,7 @@ var SummaryWorldbookStore = class {
       const removed = state.slices.filter((slice) => slice.batch.source?.kind !== "imported" && slice.batch.batchNumber >= batchNumber);
       const retained = state.slices.filter((slice) => slice.batch.source?.kind !== "imported" && slice.batch.batchNumber < batchNumber);
       const previous = retained.at(-1)?.batch;
-      await helper().updateWorldbookWith(worldbookName, (entries) => entries.filter((entry) => {
+      await helper().updateWorldbookWith(worldbookName, (entries2) => entries2.filter((entry) => {
         const item = metadata(entry);
         return item?.kind !== "summary_slice" || item.batch.source?.kind === "imported" || item.batch.batchNumber < batchNumber;
       }));
@@ -27628,7 +27628,7 @@ var SummaryWorldbookStore = class {
   }
   async updateCatalog(worldbookName, catalog) {
     const parsed = summaryCatalogSchema.parse(catalog);
-    await helper().updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => {
+    await helper().updateWorldbookWith(worldbookName, (entries2) => entries2.map((entry) => {
       const item = metadata(entry);
       return item?.kind === "summary_catalog" ? { ...entry, ...catalogEntry2(parsed) } : entry;
     }));
@@ -27679,8 +27679,8 @@ var RecallWorldbookStore = class {
   async write(options) {
     await worldbookWriteCoordinator.run(options.worldbookName, async () => {
       const api = helper2();
-      const entries = await api.getWorldbook(options.worldbookName);
-      const existing = entries.find((candidate) => metadata2(candidate));
+      const entries2 = await api.getWorldbook(options.worldbookName);
+      const existing = entries2.find((candidate) => metadata2(candidate));
       const createdAt = existing ? metadata2(existing).createdAt : (/* @__PURE__ */ new Date()).toISOString();
       if (existing) {
         await api.updateWorldbookWith(options.worldbookName, (current) => current.map((candidate) => metadata2(candidate) ? {
@@ -27708,7 +27708,7 @@ var RecallWorldbookStore = class {
   }
   async clear(worldbookName) {
     await worldbookWriteCoordinator.run(worldbookName, async () => {
-      await helper2().updateWorldbookWith(worldbookName, (entries) => entries.map((candidate) => {
+      await helper2().updateWorldbookWith(worldbookName, (entries2) => entries2.map((candidate) => {
         const item = metadata2(candidate);
         if (!item) return candidate;
         return {
@@ -27725,7 +27725,7 @@ var RecallWorldbookStore = class {
   }
   async cleanupStale(worldbookName, now = Date.now()) {
     await worldbookWriteCoordinator.run(worldbookName, async () => {
-      await helper2().updateWorldbookWith(worldbookName, (entries) => entries.map((candidate) => {
+      await helper2().updateWorldbookWith(worldbookName, (entries2) => entries2.map((candidate) => {
         const item = metadata2(candidate);
         if (!item || !candidate.enabled || now - Date.parse(item.updatedAt) <= STALE_MS) {
           return candidate;
@@ -27809,11 +27809,11 @@ function matchRule(current, rulePath, index = 0, path = []) {
   }
   const segment = rulePath[index];
   if (segment === "*") {
-    const entries = Object.entries(current);
-    if (entries.length === 0) {
+    const entries2 = Object.entries(current);
+    if (entries2.length === 0) {
       return { values: [], missingPaths: [[...path, ...rulePath.slice(index)]] };
     }
-    return entries.reduce((result, [key, value]) => {
+    return entries2.reduce((result, [key, value]) => {
       const matched = matchRule(value, rulePath, index + 1, [...path, key]);
       result.values.push(...matched.values);
       result.missingPaths.push(...matched.missingPaths);
@@ -27994,16 +27994,16 @@ function injectionEntry(options) {
     }
   };
 }
-function readState2(worldbookName, entries) {
-  const entry = entries.find((candidate) => catalogMetadata(candidate));
+function readState2(worldbookName, entries2) {
+  const entry = entries2.find((candidate) => catalogMetadata(candidate));
   if (!entry) return null;
   return {
     worldbookName,
     catalog: statusCatalogSchema.parse(catalogMetadata(entry).catalog)
   };
 }
-function ownedChatId(entries) {
-  for (const entry of entries) {
+function ownedChatId(entries2) {
+  for (const entry of entries2) {
     const value = entry.extra?.echoes;
     if (["catalog", "summary_catalog", "status_catalog"].includes(String(value?.kind)) && typeof value?.catalog?.chatId === "string") return value.catalog.chatId;
   }
@@ -28027,9 +28027,9 @@ var StatusWorldbookStore = class {
           throw new Error("The active chat changed while the status worldbook was being created.");
         }
       }
-      let entries = await api.getWorldbook(worldbookName);
-      let state = readState2(worldbookName, entries);
-      const owner = ownedChatId(entries);
+      let entries2 = await api.getWorldbook(worldbookName);
+      let state = readState2(worldbookName, entries2);
+      const owner = ownedChatId(entries2);
       if (state && state.catalog.chatId !== chatId || !state && owner && owner !== chatId) {
         const names = new Set(api.getWorldbookNames());
         let candidate = `Echoes-${baseName}`;
@@ -28044,21 +28044,21 @@ var StatusWorldbookStore = class {
           throw new Error("The active chat changed while the status worldbook was being rebound.");
         }
         worldbookName = candidate;
-        entries = [];
+        entries2 = [];
         state = null;
       }
       if (!state) {
         await api.createWorldbookEntries(worldbookName, [catalogEntry3(createCatalog2(chatId))]);
-        entries = await api.getWorldbook(worldbookName);
-        state = readState2(worldbookName, entries);
+        entries2 = await api.getWorldbook(worldbookName);
+        state = readState2(worldbookName, entries2);
       }
       if (!state) throw new Error("Failed to initialize the Echoes status catalog.");
       return state;
     });
   }
   inspect(worldbookName) {
-    return helper3().getWorldbook(worldbookName).then((entries) => {
-      const state = readState2(worldbookName, entries);
+    return helper3().getWorldbook(worldbookName).then((entries2) => {
+      const state = readState2(worldbookName, entries2);
       if (!state) throw new Error("The worldbook has no Echoes status catalog.");
       return state;
     });
@@ -28071,15 +28071,15 @@ var StatusWorldbookStore = class {
         ...patch,
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       });
-      await helper3().updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => catalogMetadata(entry) ? { ...entry, ...catalogEntry3(catalog) } : entry));
+      await helper3().updateWorldbookWith(worldbookName, (entries2) => entries2.map((entry) => catalogMetadata(entry) ? { ...entry, ...catalogEntry3(catalog) } : entry));
       return { worldbookName, catalog };
     });
   }
   async writeInjection(state, content) {
     await worldbookWriteCoordinator.run(state.worldbookName, async () => {
       const api = helper3();
-      const entries = await api.getWorldbook(state.worldbookName);
-      const existing = entries.find((candidate) => injectionMetadata(candidate));
+      const entries2 = await api.getWorldbook(state.worldbookName);
+      const existing = entries2.find((candidate) => injectionMetadata(candidate));
       const createdAt = existing ? injectionMetadata(existing).createdAt : (/* @__PURE__ */ new Date()).toISOString();
       const replacement2 = injectionEntry({
         chatId: state.catalog.chatId,
@@ -28097,12 +28097,12 @@ var StatusWorldbookStore = class {
   }
   async clearInjection(worldbookName) {
     await worldbookWriteCoordinator.run(worldbookName, async () => {
-      await helper3().updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => injectionMetadata(entry) ? { ...entry, enabled: false, content: "" } : entry));
+      await helper3().updateWorldbookWith(worldbookName, (entries2) => entries2.map((entry) => injectionMetadata(entry) ? { ...entry, enabled: false, content: "" } : entry));
     });
   }
   async cleanupStale(worldbookName, now = Date.now()) {
     await worldbookWriteCoordinator.run(worldbookName, async () => {
-      await helper3().updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => {
+      await helper3().updateWorldbookWith(worldbookName, (entries2) => entries2.map((entry) => {
         const item = injectionMetadata(entry);
         return item && entry.enabled && now - Date.parse(item.updatedAt) > STALE_MS2 ? { ...entry, enabled: false, content: "" } : entry;
       }));
@@ -28336,8 +28336,8 @@ async function activatedWorldbookContent() {
   const helper6 = window.TavernHelper;
   const worldbookName = helper6?.getChatWorldbookName("current");
   if (content && helper6 && worldbookName) {
-    const entries = await helper6.getWorldbook(worldbookName);
-    for (const entry of entries) {
+    const entries2 = await helper6.getWorldbook(worldbookName);
+    for (const entry of entries2) {
       const kind = String(entry.extra?.echoes?.kind ?? "");
       if ((kind === "status_injection" || kind === "retrieval_injection") && entry.content) {
         content = content.replaceAll(entry.content, "");
@@ -28790,9 +28790,9 @@ ${yaml}`;
   setTrace(trace) {
     this.traces.set(trace.chatId, trace);
   }
-  async verifiedSnapshot(record2) {
-    if (!record2) return null;
-    return await statusStateHash(record2.snapshot.state) === record2.snapshot.stateHash ? record2.snapshot : null;
+  async verifiedSnapshot(record3) {
+    if (!record3) return null;
+    return await statusStateHash(record3.snapshot.state) === record3.snapshot.stateHash ? record3.snapshot : null;
   }
 };
 var statusCoordinator = new StatusCoordinator();
@@ -28940,26 +28940,26 @@ var RecallCoordinator = class {
       await this.clear();
       return;
     }
-    const sequence = ++this.runSequence;
+    const sequence2 = ++this.runSequence;
     this.previewSequence += 1;
     const previewJobId = this.previewJobId;
     if (previewJobId) {
       this.previewJobId = null;
       await echoesApi.cancelJob(previewJobId).catch(() => void 0);
     }
-    if (sequence !== this.runSequence) return;
+    if (sequence2 !== this.runSequence) return;
     const activeJobId = this.activeJobId;
     if (activeJobId) {
       this.activeJobId = null;
       await echoesApi.cancelJob(activeJobId).catch(() => void 0);
     }
-    if (sequence !== this.runSequence) return;
+    if (sequence2 !== this.runSequence) return;
     try {
-      await this.retrieve(chat, generationType, sequence, true, abort);
+      await this.retrieve(chat, generationType, sequence2, true, abort);
     } catch (error51) {
-      if (sequence !== this.runSequence) return;
+      if (sequence2 !== this.runSequence) return;
       await this.clear();
-      if (this.runSequence !== sequence + 1) return;
+      if (this.runSequence !== sequence2 + 1) return;
       const message3 = error51 instanceof Error ? error51.message : String(error51);
       const decision = await openDecisionDialog({
         message: message3,
@@ -28972,14 +28972,14 @@ var RecallCoordinator = class {
   }
   async preview(chat = SillyTavern.getContext().chat) {
     if (this.activeJobId) throw new Error("\u4E3B\u751F\u6210\u53EC\u56DE\u6B63\u5728\u8FD0\u884C\uFF0C\u8BF7\u7A0D\u540E\u518D\u9884\u89C8\u3002");
-    const sequence = ++this.previewSequence;
+    const sequence2 = ++this.previewSequence;
     const previewJobId = this.previewJobId;
     if (previewJobId) {
       this.previewJobId = null;
       await echoesApi.cancelJob(previewJobId).catch(() => void 0);
     }
-    if (sequence !== this.previewSequence) throw new RecallRunSupersededError();
-    return this.retrieve(chat, "preview", sequence, false);
+    if (sequence2 !== this.previewSequence) throw new RecallRunSupersededError();
+    return this.retrieve(chat, "preview", sequence2, false);
   }
   async clear() {
     this.runSequence += 1;
@@ -28999,7 +28999,7 @@ var RecallCoordinator = class {
     if (worldbookName) await this.injectionStore.clear(worldbookName).catch(() => void 0);
     if (this.lastInjection === ownership) this.lastInjection = null;
   }
-  async retrieve(chat, generationType, sequence, inject, abort) {
+  async retrieve(chat, generationType, sequence2, inject, abort) {
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
     const settings = getSettings();
     const recall = settings.retrieval.recall;
@@ -29021,7 +29021,7 @@ var RecallCoordinator = class {
     if (!current.catalog.recallEnabled || !prepared.query) {
       return this.finalizeRecall({
         current,
-        sequence,
+        sequence: sequence2,
         inject,
         generationType,
         startedAt,
@@ -29047,7 +29047,7 @@ var RecallCoordinator = class {
       toastr.warning(message3, "Echoes \u8BED\u4E49\u53EC\u56DE\u5931\u8D25");
       return this.finalizeRecall({
         current,
-        sequence,
+        sequence: sequence2,
         inject,
         generationType,
         startedAt,
@@ -29076,7 +29076,7 @@ var RecallCoordinator = class {
     if (resolved.active.length === 0) {
       return this.finalizeRecall({
         current,
-        sequence,
+        sequence: sequence2,
         inject,
         generationType,
         startedAt,
@@ -29106,7 +29106,7 @@ var RecallCoordinator = class {
     if (!vectorEnabled && !recall.bm25Enabled) {
       return this.finalizeRecall({
         current,
-        sequence,
+        sequence: sequence2,
         inject,
         generationType,
         startedAt,
@@ -29123,7 +29123,7 @@ var RecallCoordinator = class {
     if (recall.rerankEnabled && !rerankSet) {
       return this.finalizeRecall({
         current,
-        sequence,
+        sequence: sequence2,
         inject,
         generationType,
         startedAt,
@@ -29138,7 +29138,7 @@ var RecallCoordinator = class {
       });
     }
     const candidateTopK = Math.min(100, Math.max(recall.finalTopK, recall.finalTopK * 3));
-    const isSuperseded = () => inject ? sequence !== this.runSequence : sequence !== this.previewSequence;
+    const isSuperseded = () => inject ? sequence2 !== this.runSequence : sequence2 !== this.previewSequence;
     let trackedJobId = null;
     const trackJob = (jobId) => {
       trackedJobId = jobId;
@@ -29190,7 +29190,7 @@ var RecallCoordinator = class {
       toastr.warning(message3, "Echoes \u8BED\u4E49\u53EC\u56DE\u5931\u8D25");
       return this.finalizeRecall({
         current,
-        sequence,
+        sequence: sequence2,
         inject,
         generationType,
         startedAt,
@@ -29219,7 +29219,7 @@ var RecallCoordinator = class {
       if (decision === "abort") abort?.();
       return this.finalizeRecall({
         current,
-        sequence,
+        sequence: sequence2,
         inject: inject && decision !== "abort",
         generationType,
         startedAt,
@@ -29250,7 +29250,7 @@ var RecallCoordinator = class {
         await this.injectionStore.clear(lockedWorldbookName);
         return this.finalizeRecall({
           current,
-          sequence,
+          sequence: sequence2,
           inject: false,
           generationType,
           startedAt,
@@ -29301,7 +29301,7 @@ var RecallCoordinator = class {
       if (decision === "abort") abort?.();
       return this.finalizeRecall({
         current,
-        sequence,
+        sequence: sequence2,
         inject: inject && decision !== "abort",
         generationType,
         startedAt,
@@ -29328,7 +29328,7 @@ var RecallCoordinator = class {
     }
     return this.finalizeRecall({
       current,
-      sequence,
+      sequence: sequence2,
       inject,
       generationType,
       startedAt,
@@ -29515,20 +29515,20 @@ var RecallPanel = class {
   }
   async render() {
     if (!this.root.classList.contains("echoes-recall-view")) return;
-    const sequence = ++this.renderSequence;
+    const sequence2 = ++this.renderSequence;
     const chatId = SillyTavern.getContext().chatId;
     const host = this.root.querySelector(".echoes-grid-host");
     host.innerHTML = '<div class="echoes-grid-message">\u6B63\u5728\u8BFB\u53D6\u53EC\u56DE\u914D\u7F6E...</div>';
     try {
       const overview = await recallCoordinator.sourceOverview();
-      if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-recall-view") || SillyTavern.getContext().chatId !== chatId || overview.current.catalog.chatId !== chatId) return;
+      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-recall-view") || SillyTavern.getContext().chatId !== chatId || overview.current.catalog.chatId !== chatId) return;
       this.current = overview.current;
       this.available = overview.available;
       this.sourceTraces = overview.sources;
       this.renderSidebar();
       this.renderContent();
     } catch (error51) {
-      if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-recall-view") || SillyTavern.getContext().chatId !== chatId) return;
+      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-recall-view") || SillyTavern.getContext().chatId !== chatId) return;
       const note = document.createElement("div");
       note.className = "echoes-grid-message error";
       note.textContent = error51 instanceof Error ? error51.message : String(error51);
@@ -30212,8 +30212,8 @@ async function activatedWorldbookContent2(messages2) {
   const helper6 = window.TavernHelper;
   const worldbookName = helper6?.getChatWorldbookName("current");
   if (content && helper6 && worldbookName) {
-    const entries = await helper6.getWorldbook(worldbookName);
-    for (const entry of entries) {
+    const entries2 = await helper6.getWorldbook(worldbookName);
+    for (const entry of entries2) {
       const kind = String(entry.extra?.echoes?.kind ?? "");
       if ((kind === "status_injection" || kind === "retrieval_injection") && entry.content) {
         content = content.replaceAll(entry.content, "");
@@ -31261,7 +31261,7 @@ var SummaryPanel = class {
     const viewClass = mode === "settings" ? "echoes-summary-generation-view" : "echoes-summary-view";
     if (!this.root.classList.contains(viewClass)) return;
     this.mode = mode;
-    const sequence = ++this.renderSequence;
+    const sequence2 = ++this.renderSequence;
     const host = this.root.querySelector(".echoes-grid-host");
     host.innerHTML = '<div class="echoes-grid-message">\u6B63\u5728\u8BFB\u53D6\u603B\u7ED3\u4E16\u754C\u4E66...</div>';
     if (mode === "settings") {
@@ -31273,13 +31273,13 @@ var SummaryPanel = class {
     try {
       const state = await this.coordinator.checkIntegrity();
       const compressionStatus = await this.coordinator.compression.inspect(state);
-      if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-summary-view") || SillyTavern.getContext().chatId !== chatId || state.catalog.chatId !== chatId) return;
+      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-summary-view") || SillyTavern.getContext().chatId !== chatId || state.catalog.chatId !== chatId) return;
       this.state = state;
       this.compressionStatus = compressionStatus;
       this.renderSidebar();
       this.renderMemoryContent();
     } catch (error51) {
-      if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-summary-view") || SillyTavern.getContext().chatId !== chatId) return;
+      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-summary-view") || SillyTavern.getContext().chatId !== chatId) return;
       this.compressionStatus = null;
       host.innerHTML = "";
       const note = document.createElement("div");
@@ -31320,7 +31320,7 @@ var SummaryPanel = class {
       ["circle-check", "\u5C31\u7EEA", counts.get("ready") ?? 0],
       ["clock", "\u5F85\u540C\u6B65", counts.get("pending") ?? 0],
       ["triangle-exclamation", "\u5931\u6548", counts.get("stale") ?? 0],
-      ["eye-slash", "\u5DF2\u538B\u7F29", this.compressionStatus?.hidden ?? 0]
+      ["eye-slash", "\u5DF2\u9690\u85CF", this.compressionStatus?.hidden ?? 0]
     ]) {
       const item = document.createElement("div");
       item.className = "echoes-summary-stat";
@@ -31351,10 +31351,10 @@ var SummaryPanel = class {
           <div class="echoes-summary-task" data-summary-task></div>
         </section>
         <section class="echoes-summary-section echoes-compression-section">
-          <header><h2>\u4E0A\u4E0B\u6587\u538B\u7F29</h2><button type="button" class="menu_button" data-summary-action="compression-reconcile" title="\u6309\u5F53\u524D\u8BBE\u7F6E\u91CD\u65B0\u8BA1\u7B97\u6D88\u606F\u7684\u538B\u7F29\u72B6\u6001"><i class="fa-solid fa-arrows-rotate"></i> \u91CD\u65B0\u5E94\u7528\u538B\u7F29</button></header>
+          <header><h2>\u4E0A\u4E0B\u6587\u9690\u85CF</h2><button type="button" class="menu_button" data-summary-action="compression-reconcile" title="\u6309\u5F53\u524D\u8BBE\u7F6E\u91CD\u65B0\u8BA1\u7B97\u6D88\u606F\u7684\u9690\u85CF\u72B6\u6001"><i class="fa-solid fa-arrows-rotate"></i> \u91CD\u65B0\u5E94\u7528\u9690\u85CF</button></header>
           <div class="echoes-summary-control-row echoes-compression-controls">
             <label class="echoes-check"><input type="checkbox" data-compression-recall>\u603B\u7ED3\u53EC\u56DE\u603B\u5F00\u5173</label>
-            <label class="echoes-check"><input type="checkbox" data-compression-enabled>\u81EA\u52A8\u538B\u7F29</label>
+            <label class="echoes-check"><input type="checkbox" data-compression-enabled>\u81EA\u52A8\u9690\u85CF</label>
             <label>\u4FDD\u7559\u539F\u6D88\u606F X<input type="number" min="0" max="1000" data-compression-keep></label>
             <label>\u56FA\u5B9A\u8FD1\u671F\u6279\u6B21 Y<input type="number" min="0" max="100" data-compression-recent></label>
             <label>\u5220\u9664\u603B\u7ED3\u65F6<select data-compression-deletion>
@@ -31436,7 +31436,7 @@ var SummaryPanel = class {
     wrapper.className = "echoes-table-scroll";
     const table = document.createElement("table");
     table.className = "echoes-data-table echoes-summary-table";
-    table.innerHTML = '<thead><tr><th><input type="checkbox" data-summary-select-all aria-label="\u9009\u62E9\u5168\u90E8\u603B\u7ED3"></th><th>\u6279\u6B21</th><th>\u6D88\u606F\u8303\u56F4</th><th>\u65F6\u95F4</th><th>\u6807\u9898</th><th>\u72B6\u6001</th><th>\u538B\u7F29</th><th class="echoes-row-actions-heading">\u64CD\u4F5C</th></tr></thead>';
+    table.innerHTML = '<thead><tr><th><input type="checkbox" data-summary-select-all aria-label="\u9009\u62E9\u5168\u90E8\u603B\u7ED3"></th><th>\u6279\u6B21</th><th>\u6D88\u606F\u8303\u56F4</th><th>\u65F6\u95F4</th><th>\u6807\u9898</th><th>\u72B6\u6001</th><th>\u9690\u85CF</th><th class="echoes-row-actions-heading">\u64CD\u4F5C</th></tr></thead>';
     const body = document.createElement("tbody");
     for (const slice of slices) {
       const row = document.createElement("tr");
@@ -31492,7 +31492,7 @@ var SummaryPanel = class {
       ["\u72B6\u6001", status.active ? "\u8FD0\u884C\u4E2D" : "\u5DF2\u6682\u505C"],
       ["\u5DF2\u9690\u85CF", String(status.hidden)],
       ["\u56FA\u5B9A\u53EF\u89C1", String(status.pinned)],
-      ["\u5F85\u538B\u7F29", String(status.compressible)],
+      ["\u53EF\u9690\u85CF", String(status.compressible)],
       ["\u9690\u85CF\u622A\u6B62", status.hideThroughMessageId ?? "\u65E0"],
       ["\u7D22\u5F15", status.indexSafe ? "\u5B89\u5168" : "\u5B58\u5728\u7F3A\u53E3"]
     ]) {
@@ -31512,7 +31512,7 @@ var SummaryPanel = class {
       messages2.push(`\u6279\u6B21\u7D22\u5F15\u6587\u6863\u7F3A\u5931\uFF1A${status.unsafeBatchIds.join(", ")}`);
     }
     if (status.staleBatchNumbers.length > 0) {
-      messages2.push(`\u5B58\u5728\u8F83\u65E9\u5931\u6548\u6279\u6B21\uFF1A${status.staleBatchNumbers.join(", ")}\u3002\u81EA\u52A8\u603B\u7ED3\u548C\u65B0\u589E\u538B\u7F29\u5DF2\u505C\u6B62\u3002`);
+      messages2.push(`\u5B58\u5728\u8F83\u65E9\u5931\u6548\u6279\u6B21\uFF1A${status.staleBatchNumbers.join(", ")}\u3002\u81EA\u52A8\u603B\u7ED3\u548C\u65B0\u589E\u9690\u85CF\u5DF2\u505C\u6B62\u3002`);
     }
     warning.replaceChildren();
     if (messages2.length > 0) {
@@ -31803,7 +31803,7 @@ var SummaryPanel = class {
       <div class="echoes-bulk-actions">
         <button type="button" class="menu_button" data-bulk="rebuild"><i class="fa-solid fa-rotate"></i> \u91CD\u5EFA\u9009\u4E2D\u6279\u6B21</button>
         <button type="button" class="menu_button" data-bulk="restore"><i class="fa-solid fa-eye"></i> \u6062\u590D\u9009\u4E2D\u6279\u6B21</button>
-        <button type="button" class="menu_button" data-bulk="recompress"><i class="fa-solid fa-eye-slash"></i> \u91CD\u65B0\u538B\u7F29\u9009\u4E2D\u6279\u6B21</button>
+        <button type="button" class="menu_button" data-bulk="recompress"><i class="fa-solid fa-eye-slash"></i> \u91CD\u65B0\u9690\u85CF\u9009\u4E2D\u6279\u6B21</button>
         <button type="button" class="menu_button" data-bulk="reset"><i class="fa-solid fa-clock-rotate-left"></i> \u4ECE\u6700\u65E9\u9009\u4E2D\u6279\u6B21\u91CD\u7F6E</button>
         <button type="button" class="menu_button echoes-danger" data-bulk="delete"><i class="fa-solid fa-trash"></i> \u5220\u9664\u9009\u4E2D\u8BB0\u5F55</button>
       </div>`;
@@ -31824,7 +31824,7 @@ var SummaryPanel = class {
     for (const [icon, label, action] of [
       ["rotate", "\u91CD\u5EFA\u6279\u6B21", "rebuild-batch"],
       ["eye", "\u6062\u590D\u6279\u6B21\u6D88\u606F", "restore-batch"],
-      ["eye-slash", "\u91CD\u65B0\u538B\u7F29\u6279\u6B21", "recompress-batch"],
+      ["eye-slash", "\u91CD\u65B0\u9690\u85CF\u6279\u6B21", "recompress-batch"],
       ["clock-rotate-left", "\u4ECE\u6B64\u6279\u6B21\u91CD\u7F6E", "reset-batch"],
       ["trash", "\u5220\u9664\u5207\u7247", "delete-slice"]
     ]) {
@@ -32099,19 +32099,19 @@ var StatusPanel = class {
   }
   async render() {
     if (!this.root.classList.contains("echoes-status-view")) return;
-    const sequence = ++this.renderSequence;
+    const sequence2 = ++this.renderSequence;
     const chatId = SillyTavern.getContext().chatId;
     const host = this.root.querySelector(".echoes-grid-host");
     host.innerHTML = '<div class="echoes-grid-message">\u6B63\u5728\u8BFB\u53D6\u666E\u901A\u72B6\u6001...</div>';
     try {
       const state = await statusCoordinator.load();
-      if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-status-view") || SillyTavern.getContext().chatId !== chatId || state.catalog.chatId !== chatId) return;
+      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-status-view") || SillyTavern.getContext().chatId !== chatId || state.catalog.chatId !== chatId) return;
       this.state = state;
       this.records = statusCoordinator.history(state);
       this.renderSidebar();
       this.renderContent();
     } catch (error51) {
-      if (sequence !== this.renderSequence || !this.root.classList.contains("echoes-status-view") || SillyTavern.getContext().chatId !== chatId) return;
+      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-status-view") || SillyTavern.getContext().chatId !== chatId) return;
       host.innerHTML = "";
       const note = document.createElement("div");
       note.className = "echoes-grid-message error";
@@ -32230,22 +32230,22 @@ var StatusPanel = class {
       host.innerHTML = '<div class="echoes-empty-note">\u6682\u65E0\u72B6\u6001\u5FEB\u7167\u3002</div>';
       return;
     }
-    const byId = new Map(this.records.map((record2) => [record2.snapshot.snapshotId, record2.snapshot]));
+    const byId = new Map(this.records.map((record3) => [record3.snapshot.snapshotId, record3.snapshot]));
     const wrapper = document.createElement("div");
     wrapper.className = "echoes-table-scroll";
     const table = document.createElement("table");
     table.className = "echoes-data-table";
     table.innerHTML = "<thead><tr><th>\u52A9\u624B\u697C\u5C42</th><th>Swipe</th><th>\u6765\u6E90</th><th>\u4FEE\u8BA2</th><th>\u72B6\u6001\u54C8\u5E0C</th><th>\u53D8\u5316</th><th>\u64CD\u4F5C</th></tr></thead>";
     const body = document.createElement("tbody");
-    for (const record2 of [...this.records].reverse()) {
+    for (const record3 of [...this.records].reverse()) {
       const row = document.createElement("tr");
       for (const value of [
-        record2.messageId,
-        `${record2.swipeId}${record2.selected ? " \xB7 \u5F53\u524D" : ""}`,
-        record2.snapshot.origin,
-        String(record2.snapshot.revision),
-        record2.snapshot.stateHash.slice(0, 12),
-        diffSummary(record2.snapshot, record2.snapshot.parentSnapshotId ? byId.get(record2.snapshot.parentSnapshotId) : void 0)
+        record3.messageId,
+        `${record3.swipeId}${record3.selected ? " \xB7 \u5F53\u524D" : ""}`,
+        record3.snapshot.origin,
+        String(record3.snapshot.revision),
+        record3.snapshot.stateHash.slice(0, 12),
+        diffSummary(record3.snapshot, record3.snapshot.parentSnapshotId ? byId.get(record3.snapshot.parentSnapshotId) : void 0)
       ]) {
         const cell = document.createElement("td");
         cell.textContent = value;
@@ -32253,9 +32253,9 @@ var StatusPanel = class {
       }
       const actions = document.createElement("td");
       const inspect = button2("eye", "\u67E5\u770B\u5B8C\u6574\u5FEB\u7167", "inspect-history");
-      inspect.dataset.snapshotId = record2.snapshot.snapshotId;
+      inspect.dataset.snapshotId = record3.snapshot.snapshotId;
       const restore = button2("clock-rotate-left", "\u6062\u590D\u5230\u5F53\u524D\u6700\u540E\u4E00\u6761\u52A9\u624B\u6D88\u606F", "restore-history");
-      restore.dataset.snapshotId = record2.snapshot.snapshotId;
+      restore.dataset.snapshotId = record3.snapshot.snapshotId;
       actions.append(inspect, restore);
       row.append(actions);
       body.append(row);
@@ -32452,11 +32452,11 @@ var StatusPanel = class {
     } else if (action === "preview") await this.previewPrompt();
     else if (action === "save-profile") await this.saveProfile(true);
     else if (action === "inspect-history") {
-      const record2 = this.records.find((item) => item.snapshot.snapshotId === target.dataset.snapshotId);
-      if (record2) previewDialog(`\u72B6\u6001\u5FEB\u7167 ${record2.messageId}/${record2.swipeId}`, renderStatusYaml(record2.snapshot.state));
+      const record3 = this.records.find((item) => item.snapshot.snapshotId === target.dataset.snapshotId);
+      if (record3) previewDialog(`\u72B6\u6001\u5FEB\u7167 ${record3.messageId}/${record3.swipeId}`, renderStatusYaml(record3.snapshot.state));
     } else if (action === "restore-history") {
-      const record2 = this.records.find((item) => item.snapshot.snapshotId === target.dataset.snapshotId);
-      if (record2) await this.withBusy(() => statusCoordinator.restoreSnapshot(record2.snapshot));
+      const record3 = this.records.find((item) => item.snapshot.snapshotId === target.dataset.snapshotId);
+      if (record3) await this.withBusy(() => statusCoordinator.restoreSnapshot(record3.snapshot));
     } else if (action === "add-prompt") await this.editPrompt();
     else if (action === "edit-prompt") await this.editPrompt(Number(target.dataset.index));
     else if (action === "delete-prompt") {
@@ -33118,7 +33118,7 @@ var EchoesBackupManager = class {
   async create(includeGlobalSettings = false) {
     const { chatId, worldbookName } = currentWorldbook();
     const api = helper5();
-    const [entries, chat] = await Promise.all([
+    const [entries2, chat] = await Promise.all([
       api.getWorldbook(worldbookName),
       describeChat()
     ]);
@@ -33132,7 +33132,7 @@ var EchoesBackupManager = class {
       statusSnapshots: snapshots(item),
       ...compression(item.message) ? { compression: compression(item.message) } : {}
     }));
-    const worldbookEntries = entries.filter(persistentEchoesEntry).map(portableEntry);
+    const worldbookEntries = entries2.filter(persistentEchoesEntry).map(portableEntry);
     worldbookEntries.forEach(validatePortableEntry);
     const value = {
       formatVersion: 1,
@@ -33173,7 +33173,7 @@ var EchoesBackupManager = class {
     if (mode === "equivalent_chat" && (!mappedMessages2 || mappedMessages2.length !== backup.messages.length)) {
       throw new Error("The target transcript is missing messages or contains ambiguous swipe matches.");
     }
-    const entries = await helper5().getWorldbook(worldbookName);
+    const entries2 = await helper5().getWorldbook(worldbookName);
     return {
       mode,
       targetChatId: chatId,
@@ -33181,7 +33181,7 @@ var EchoesBackupManager = class {
       targetTranscriptFingerprint: await targetTranscriptFingerprint(target),
       restoreGlobalSettings: restoreGlobalSettings && Boolean(backup.globalSettings),
       mappedMessages: mappedMessages2 ?? [],
-      echoesEntriesToReplace: entries.filter((entry) => Boolean(echoesKind(entry))).length,
+      echoesEntriesToReplace: entries2.filter((entry) => Boolean(echoesKind(entry))).length,
       statusSnapshotsToReplace: backup.messages.reduce((sum, item) => sum + item.statusSnapshots.length, 0),
       compressionMarkersToReplace: backup.messages.filter((item) => item.compression).length,
       warnings: [
@@ -33247,8 +33247,8 @@ var EchoesBackupManager = class {
     try {
       await worldbookWriteCoordinator.run(current.worldbookName, async () => {
         await this.assertRestoreTarget(backup, plan);
-        await api.updateWorldbookWith(current.worldbookName, (entries) => [
-          ...entries.filter((entry) => !echoesKind(entry)),
+        await api.updateWorldbookWith(current.worldbookName, (entries2) => [
+          ...entries2.filter((entry) => !echoesKind(entry)),
           ...incoming
         ]);
         const targetMessages = await this.assertRestoreTarget(backup, plan);
@@ -33298,7 +33298,7 @@ var EchoesBackupManager = class {
         if (plan.mode === "seed_memories") {
           const latest = [...backup.messages].reverse().map((message3) => message3.statusSnapshots.find((item) => item.swipeId === message3.selectedSwipe)?.value).find((snapshot) => Boolean(snapshot));
           if (latest) {
-            await api.updateWorldbookWith(current.worldbookName, (entries) => entries.map((entry) => {
+            await api.updateWorldbookWith(current.worldbookName, (entries2) => entries2.map((entry) => {
               const echoes = entry.extra?.echoes;
               if (echoes?.kind !== "status_catalog") return entry;
               const rewritten = structuredClone(entry);
@@ -33354,6 +33354,71 @@ var EchoesBackupManager = class {
     };
   }
 };
+
+// src/extension/ui/console-log-recorder.ts
+var MAX_ENTRIES = 500;
+var SKIP_PATTERNS = [
+  /API key/i,
+  /authorization/i,
+  /bearer\s+[a-z0-9._-]+/i,
+  /credential\s+secret/i
+];
+var listeners = /* @__PURE__ */ new Set();
+var entries = [];
+var sequence = 0;
+var installed = false;
+function sanitize(value, depth = 0) {
+  if (value === void 0) return "undefined";
+  if (value === null) return "null";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value instanceof Error) return `${value.name}: ${value.message}`;
+  if (depth >= 3) return "[truncated]";
+  try {
+    return JSON.stringify(value, (_key, item) => {
+      if (item instanceof Error) return `${item.name}: ${item.message}`;
+      return item;
+    }, 2)?.slice(0, 2e4) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+function record2(level, prefix, args) {
+  const combined = args.map((item) => sanitize(item)).join(" ");
+  if (SKIP_PATTERNS.some((pattern) => pattern.test(combined))) return;
+  const entry = {
+    id: ++sequence,
+    time: (/* @__PURE__ */ new Date()).toISOString(),
+    level,
+    prefix,
+    message: combined.slice(0, 2e4)
+  };
+  entries.push(entry);
+  if (entries.length > MAX_ENTRIES) entries.splice(0, entries.length - MAX_ENTRIES);
+  for (const listener of listeners) listener();
+}
+function installConsoleLogRecorder() {
+  if (installed) return;
+  installed = true;
+  const original = {
+    log: console.log.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console)
+  };
+  for (const level of ["log", "warn", "error"]) {
+    console[level] = (...args) => {
+      record2(level, "Echoes", args);
+      original[level](...args);
+    };
+  }
+}
+function consoleLogEntries() {
+  return [...entries].reverse();
+}
+function subscribeConsoleLogs(listener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
 
 // src/extension/ui/maintenance-panel.ts
 function message2(error51) {
@@ -33412,6 +33477,7 @@ var MaintenancePanel = class {
         this.renderJobs();
       }
     });
+    this.consoleUnsubscribe = subscribeConsoleLogs(() => this.renderConsoleLogs());
   }
   root;
   backup = new EchoesBackupManager();
@@ -33425,9 +33491,10 @@ var MaintenancePanel = class {
   diagnosticBundle = null;
   renderSequence = 0;
   refreshSequence = 0;
+  consoleUnsubscribe = null;
   async render() {
     if (!this.root.classList.contains("echoes-maintenance-view")) return;
-    const sequence = ++this.renderSequence;
+    const sequence2 = ++this.renderSequence;
     const host = this.root.querySelector(".echoes-grid-host");
     host.innerHTML = `
       <div class="echoes-maintenance-page">
@@ -33435,15 +33502,21 @@ var MaintenancePanel = class {
         <section class="echoes-maintenance-section" data-credentials></section>
         <section class="echoes-maintenance-section" data-diagnostics></section>
         <section class="echoes-maintenance-section" data-jobs></section>
+        <section class="echoes-maintenance-section" data-console-log-section>
+          <details>
+            <summary><h2>\u63A7\u5236\u53F0\u65E5\u5FD7</h2><span>Echoes \u6D4F\u89C8\u5668\u7AEF\u8FD0\u884C\u8F93\u51FA\uFF1B\u670D\u52A1\u7AEF\u65E5\u5FD7\u4ECD\u5728 SillyTavern \u63A7\u5236\u53F0</span></summary>
+            <div data-console-log></div>
+          </details>
+        </section>
         <section class="echoes-maintenance-section" data-backup></section>
       </div>`;
     this.renderAll();
-    await this.refresh(sequence);
+    await this.refresh(sequence2);
   }
-  current(sequence, refreshSequence) {
-    return sequence === this.renderSequence && (refreshSequence === void 0 || refreshSequence === this.refreshSequence) && this.root.classList.contains("echoes-maintenance-view");
+  current(sequence2, refreshSequence) {
+    return sequence2 === this.renderSequence && (refreshSequence === void 0 || refreshSequence === this.refreshSequence) && this.root.classList.contains("echoes-maintenance-view");
   }
-  async refresh(sequence = this.renderSequence) {
+  async refresh(sequence2 = this.renderSequence) {
     const refreshSequence = ++this.refreshSequence;
     this.renderAll();
     try {
@@ -33452,7 +33525,7 @@ var MaintenancePanel = class {
         echoesApi.listCredentials(),
         echoesApi.listJobs({ limit: 200 })
       ]);
-      if (!this.current(sequence, refreshSequence)) return;
+      if (!this.current(sequence2, refreshSequence)) return;
       this.status = status.status === "fulfilled" ? status.value : null;
       this.credentials = credentials.status === "fulfilled" ? credentials.value : [];
       this.jobs = jobs.status === "fulfilled" ? jobs.value.jobs : [];
@@ -33464,12 +33537,12 @@ var MaintenancePanel = class {
         toastr.warning(`\u4EFB\u52A1\u65E5\u5FD7\u4E0D\u53EF\u7528\uFF1A${message2(jobs.reason)}`, "Echoes");
       }
     } catch (error51) {
-      if (!this.current(sequence, refreshSequence)) return;
+      if (!this.current(sequence2, refreshSequence)) return;
       this.status = null;
       this.credentials = [];
       toastr.warning(`\u670D\u52A1\u7AEF\u7EF4\u62A4\u63A5\u53E3\u4E0D\u53EF\u7528\uFF1A${message2(error51)}`, "Echoes");
     } finally {
-      if (this.current(sequence, refreshSequence)) this.renderAll();
+      if (this.current(sequence2, refreshSequence)) this.renderAll();
     }
   }
   renderAll() {
@@ -33478,6 +33551,7 @@ var MaintenancePanel = class {
     this.renderDiagnostics();
     this.renderJobs();
     this.renderBackup();
+    this.renderConsoleLogs();
     const sidebar = this.root.querySelector(".echoes-table-list");
     if (sidebar) {
       sidebar.innerHTML = `
@@ -33633,7 +33707,7 @@ var MaintenancePanel = class {
   async diagnose() {
     const api = window.TavernHelper;
     const worldbookName = api?.getChatWorldbookName("current");
-    const entries = worldbookName ? await api.getWorldbook(worldbookName) : [];
+    const entries2 = worldbookName ? await api.getWorldbook(worldbookName) : [];
     const summaryIndexMismatches = worldbookName ? await this.summaryIndexMismatches(worldbookName) : 0;
     const credentialIds = [...this.referencedCredentialIds()];
     const job = await echoesApi.startDiagnostics({
@@ -33649,13 +33723,13 @@ var MaintenancePanel = class {
         updateVariablesWith: typeof api?.updateVariablesWith === "function"
       },
       worldbook: {
-        formatVersions: entries.flatMap((entry) => {
+        formatVersions: entries2.flatMap((entry) => {
           const echoes = entry.extra?.echoes;
           if (!["summary_catalog", "summary_slice"].includes(String(echoes?.kind))) return [];
           const value = echoes?.catalog?.formatVersion ?? echoes?.formatVersion ?? echoes?.version;
           return Number.isInteger(value) ? [Number(value)] : [];
         }),
-        staleInjectionCount: entries.filter((entry) => {
+        staleInjectionCount: entries2.filter((entry) => {
           const kind = entry.extra?.echoes?.kind;
           const updatedAt = Date.parse(String(entry.extra?.echoes?.updatedAt ?? entry.extra?.echoes?.createdAt ?? ""));
           return ["retrieval_injection", "status_injection"].includes(kind) && (!Number.isFinite(updatedAt) || Date.now() - updatedAt > 5 * 6e4);
@@ -33669,6 +33743,19 @@ var MaintenancePanel = class {
     this.checks = result.checks;
     this.diagnosticBundle = result.bundle;
     this.renderAll();
+  }
+  renderConsoleLogs() {
+    const host = this.root.querySelector("[data-console-log]");
+    if (!host) return;
+    host.innerHTML = `
+      <div class="echoes-console-log-list">
+        ${consoleLogEntries().length === 0 ? '<p class="echoes-empty-note">\u6682\u65E0 Echoes \u6D4F\u89C8\u5668\u7AEF\u65E5\u5FD7\u3002\u670D\u52A1\u7AEF\u8FD0\u884C\u65E5\u5FD7\u8BF7\u67E5\u770B SillyTavern \u63A7\u5236\u53F0\u3002</p>' : consoleLogEntries().map((entry) => `
+            <div class="echoes-console-log-row" data-level="${entry.level}">
+              <time>${new Date(entry.time).toLocaleTimeString()}</time>
+              <span>${this.escape(entry.prefix)}</span>
+              <pre>${this.escape(entry.message)}</pre>
+            </div>`).join("")}
+      </div>`;
   }
   async refreshJobs() {
     const result = await echoesApi.listJobs({ limit: 200 });
@@ -33721,9 +33808,9 @@ var MaintenancePanel = class {
         const api = window.TavernHelper;
         const worldbookName = api?.getChatWorldbookName("current");
         if (!api || !worldbookName) throw new Error("\u5F53\u524D\u804A\u5929\u6CA1\u6709\u53EF\u7EF4\u62A4\u7684\u4E16\u754C\u4E66\u3002");
-        await worldbookWriteCoordinator.run(worldbookName, () => api.updateWorldbookWith(worldbookName, (entries) => {
+        await worldbookWriteCoordinator.run(worldbookName, () => api.updateWorldbookWith(worldbookName, (entries2) => {
           if (kind === "summary_format") {
-            return entries.map((entry) => {
+            return entries2.map((entry) => {
               const echoes = entry.extra?.echoes;
               if (!["summary_catalog", "summary_slice"].includes(String(echoes?.kind))) return entry;
               const updated = structuredClone(entry);
@@ -33735,7 +33822,7 @@ var MaintenancePanel = class {
               return updated;
             });
           }
-          return entries.filter((entry) => {
+          return entries2.filter((entry) => {
             const echoes = entry.extra?.echoes;
             if (!["retrieval_injection", "status_injection"].includes(String(echoes?.kind))) return true;
             const updatedAt = Date.parse(String(echoes?.updatedAt ?? echoes?.createdAt ?? ""));
@@ -33955,7 +34042,7 @@ var MemoryPanel = class {
     await this.reload();
   }
   async reload() {
-    const sequence = ++this.reloadSequence;
+    const sequence2 = ++this.reloadSequence;
     const chatId = SillyTavern.getContext().chatId;
     if (["api", "summary", "summary-settings", "status", "maintenance"].includes(this.view)) {
       this.render();
@@ -33964,7 +34051,7 @@ var MemoryPanel = class {
     this.setContentMessage("\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u5BF9\u8BDD\u4E16\u754C\u4E66...");
     try {
       const state = await this.store.load();
-      if (sequence !== this.reloadSequence || !["memory", "memory-settings"].includes(this.view) || SillyTavern.getContext().chatId !== chatId) return;
+      if (sequence2 !== this.reloadSequence || !["memory", "memory-settings"].includes(this.view) || SillyTavern.getContext().chatId !== chatId) return;
       this.state = state;
       if (!state.catalog.types.some((type) => type.id === this.activeTypeId)) {
         this.activeTypeId = state.catalog.types[0]?.id ?? null;
@@ -33974,7 +34061,7 @@ var MemoryPanel = class {
         toastr.warning(`\u6709 ${state.issues.length} \u4E2A\u4E16\u754C\u4E66\u6761\u76EE\u65E0\u6CD5\u89E3\u6790\uFF0C\u8BF7\u68C0\u67E5\u6761\u76EE YAML\u3002`, "Echoes");
       }
     } catch (error51) {
-      if (sequence !== this.reloadSequence || !["memory", "memory-settings"].includes(this.view) || SillyTavern.getContext().chatId !== chatId) return;
+      if (sequence2 !== this.reloadSequence || !["memory", "memory-settings"].includes(this.view) || SillyTavern.getContext().chatId !== chatId) return;
       this.state = null;
       this.renderSidebar();
       this.renderToolbar();
@@ -34217,7 +34304,7 @@ var MemoryPanel = class {
     }
     if (this.view === "summary") {
       title.textContent = "\u603B\u7ED3\u8BB0\u5FC6";
-      scope.textContent = "\u603B\u7ED3\u8BB0\u5F55 \xB7 \u4E0A\u4E0B\u6587\u538B\u7F29 \xB7 \u53EC\u56DE\u8BCA\u65AD";
+      scope.textContent = "\u603B\u7ED3\u8BB0\u5F55 \xB7 \u4E0A\u4E0B\u6587\u9690\u85CF \xB7 \u53EC\u56DE\u8BCA\u65AD";
       const refresh = iconButton3("rotate", "\u5237\u65B0", "unused");
       delete refresh.dataset.action;
       refresh.dataset.summaryAction = "refresh";
@@ -34839,6 +34926,7 @@ function addLaunchControls() {
 function initialize() {
   if (initialized || !document.body) return;
   initialized = true;
+  installConsoleLogRecorder();
   panel = new MemoryPanel();
   addLaunchControls();
   const events = SillyTavern.getContext().eventSource;

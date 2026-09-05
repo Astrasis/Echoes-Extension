@@ -2107,6 +2107,47 @@
 .echoes-job-log-row[data-state="running"] .echoes-diagnostic-state { color: #70a9d8; }
 .echoes-job-log-row[data-state="succeeded"] .echoes-diagnostic-state { color: #5fbf8f; }
 
+.echoes-maintenance-section[data-console-log-section] details {
+  padding-bottom: 8px;
+}
+
+.echoes-maintenance-section[data-console-log-section] summary {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.echoes-console-log-list {
+  max-height: 420px;
+  overflow: auto;
+  border-top: 1px solid var(--echoes-border);
+}
+
+.echoes-console-log-row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 7px 4px;
+  border-bottom: 1px solid var(--echoes-border);
+}
+
+.echoes-console-log-row time,
+.echoes-console-log-row span {
+  color: var(--echoes-muted);
+  font-size: 12px;
+}
+
+.echoes-console-log-row pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.echoes-console-log-row[data-level="error"] pre { color: #e06c75; }
+.echoes-console-log-row[data-level="warn"] pre { color: #e1af55; }
+
 .echoes-restore-preview {
   display: flex;
   flex-direction: column;
