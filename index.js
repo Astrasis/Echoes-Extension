@@ -153,6 +153,14 @@ var init_client = __esm({
       systemStatus() {
         return requestJson("/system/status");
       },
+      async listJobs(filter = {}) {
+        const query = new URLSearchParams();
+        if (filter.status) query.set("status", filter.status);
+        if (filter.type) query.set("type", filter.type);
+        if (filter.limit !== void 0) query.set("limit", String(filter.limit));
+        const suffix = query.size > 0 ? `?${query.toString()}` : "";
+        return requestJson(`/jobs${suffix}`);
+      },
       async startDiagnostics(input) {
         const result = await requestJson("/system/diagnostics", {
           method: "POST",
@@ -315,7 +323,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "1.0.2",
+  version: "1.0.3",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -33373,6 +33381,16 @@ async function waitJob2(job) {
 function stateLabel2(state) {
   return { pass: "\u6B63\u5E38", warning: "\u8B66\u544A", fail: "\u5931\u8D25", unavailable: "\u4E0D\u53EF\u7528" }[state];
 }
+function jobStatusLabel(status) {
+  return {
+    queued: "\u6392\u961F\u4E2D",
+    running: "\u8FD0\u884C\u4E2D",
+    succeeded: "\u6210\u529F",
+    failed: "\u5931\u8D25",
+    cancelled: "\u5DF2\u53D6\u6D88",
+    ambiguous: "\u4E0D\u786E\u5B9A"
+  }[status];
+}
 var MaintenancePanel = class {
   constructor(root) {
     this.root = root;
@@ -33387,6 +33405,11 @@ var MaintenancePanel = class {
       const input = event.target;
       if (input.dataset.maintenanceFile === "backup" && input.files?.[0]) {
         void this.loadBackup(input.files[0]).catch((error51) => toastr.error(message2(error51), "Echoes \u5907\u4EFD"));
+        return;
+      }
+      if (input.dataset.jobStatusFilter !== void 0) {
+        this.jobStatusFilter = input.value;
+        this.renderJobs();
       }
     });
   }
@@ -33397,6 +33420,8 @@ var MaintenancePanel = class {
   status = null;
   credentials = [];
   checks = [];
+  jobs = [];
+  jobStatusFilter = "";
   diagnosticBundle = null;
   renderSequence = 0;
   refreshSequence = 0;
@@ -33409,6 +33434,7 @@ var MaintenancePanel = class {
         <section class="echoes-maintenance-section" data-system></section>
         <section class="echoes-maintenance-section" data-credentials></section>
         <section class="echoes-maintenance-section" data-diagnostics></section>
+        <section class="echoes-maintenance-section" data-jobs></section>
         <section class="echoes-maintenance-section" data-backup></section>
       </div>`;
     this.renderAll();
@@ -33421,16 +33447,21 @@ var MaintenancePanel = class {
     const refreshSequence = ++this.refreshSequence;
     this.renderAll();
     try {
-      const [status, credentials] = await Promise.allSettled([
+      const [status, credentials, jobs] = await Promise.allSettled([
         echoesApi.systemStatus(),
-        echoesApi.listCredentials()
+        echoesApi.listCredentials(),
+        echoesApi.listJobs({ limit: 200 })
       ]);
       if (!this.current(sequence, refreshSequence)) return;
       this.status = status.status === "fulfilled" ? status.value : null;
       this.credentials = credentials.status === "fulfilled" ? credentials.value : [];
+      this.jobs = jobs.status === "fulfilled" ? jobs.value.jobs : [];
       if (status.status === "rejected" && credentials.status === "rejected") throw status.reason;
       if (credentials.status === "rejected") {
         toastr.warning(`\u51ED\u636E\u5B50\u7CFB\u7EDF\u4E0D\u53EF\u7528\uFF1A${message2(credentials.reason)}`, "Echoes");
+      }
+      if (jobs.status === "rejected" && status.status !== "rejected") {
+        toastr.warning(`\u4EFB\u52A1\u65E5\u5FD7\u4E0D\u53EF\u7528\uFF1A${message2(jobs.reason)}`, "Echoes");
       }
     } catch (error51) {
       if (!this.current(sequence, refreshSequence)) return;
@@ -33445,6 +33476,7 @@ var MaintenancePanel = class {
     this.renderSystem();
     this.renderCredentials();
     this.renderDiagnostics();
+    this.renderJobs();
     this.renderBackup();
     const sidebar = this.root.querySelector(".echoes-table-list");
     if (sidebar) {
@@ -33518,6 +33550,49 @@ var MaintenancePanel = class {
           </div>`).join("")}
       </div>`;
   }
+  renderJobs() {
+    const host = this.root.querySelector("[data-jobs]");
+    if (!host) return;
+    const filtered = this.jobStatusFilter ? this.jobs.filter((job) => job.status === this.jobStatusFilter) : this.jobs;
+    host.innerHTML = `
+      <div class="echoes-section-heading">
+        <div><h2>\u4EFB\u52A1\u65E5\u5FD7</h2><span>\u663E\u793A\u4EFB\u52A1\u5143\u6570\u636E\u4E0E\u9519\u8BEF\uFF1B\u4E0D\u5305\u542B\u6A21\u578B\u7ED3\u679C\u3001\u63D0\u793A\u8BCD\u6216\u6B63\u6587</span></div>
+        <div class="echoes-maintenance-actions">
+          <select data-job-status-filter aria-label="\u4EFB\u52A1\u72B6\u6001\u7B5B\u9009">
+            <option value="">\u5168\u90E8\u72B6\u6001</option>
+            <option value="failed">\u5931\u8D25</option>
+            <option value="ambiguous">\u4E0D\u786E\u5B9A</option>
+            <option value="running">\u8FD0\u884C\u4E2D</option>
+            <option value="queued">\u6392\u961F\u4E2D</option>
+            <option value="succeeded">\u6210\u529F</option>
+            <option value="cancelled">\u5DF2\u53D6\u6D88</option>
+          </select>
+          <button type="button" class="menu_button" data-maintenance-action="refresh-jobs"><i class="fa-solid fa-rotate"></i> \u5237\u65B0\u4EFB\u52A1</button>
+        </div>
+      </div>
+      <div class="echoes-job-log-list">
+        ${filtered.length === 0 ? '<p class="echoes-empty-note">\u5F53\u524D\u7528\u6237\u6682\u65E0\u4EFB\u52A1\u8BB0\u5F55\u3002</p>' : filtered.map((job) => `
+          <details class="echoes-job-log-row" data-state="${job.status}">
+            <summary>
+              <span class="echoes-diagnostic-state">${jobStatusLabel(job.status)}</span>
+              <span><strong>${this.escape(job.type)}</strong><small>${this.escape(job.message)}</small></span>
+              <time>${new Date(job.updatedAt).toLocaleString()}</time>
+            </summary>
+            <pre>${this.escape(JSON.stringify({
+      id: job.id,
+      type: job.type,
+      status: job.status,
+      progress: job.progress,
+      message: job.message,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+      error: job.error
+    }, null, 2))}</pre>
+          </details>`).join("")}
+      </div>`;
+    const select = host.querySelector("[data-job-status-filter]");
+    if (select) select.value = this.jobStatusFilter;
+  }
   renderBackup() {
     const host = this.root.querySelector("[data-backup]");
     if (!host) return;
@@ -33542,6 +33617,7 @@ var MaintenancePanel = class {
   }
   async action(action, target) {
     if (action === "refresh") await this.refresh();
+    else if (action === "refresh-jobs") await this.refreshJobs();
     else if (action === "diagnose") await this.diagnose();
     else if (action === "export-diagnostics" && this.diagnosticBundle) downloadJson(`echoes-diagnostics-${Date.now()}.json`, this.diagnosticBundle);
     else if (action === "repair") await this.repair(target.dataset.kind);
@@ -33588,6 +33664,11 @@ var MaintenancePanel = class {
     this.checks = result.checks;
     this.diagnosticBundle = result.bundle;
     this.renderAll();
+  }
+  async refreshJobs() {
+    const result = await echoesApi.listJobs({ limit: 200 });
+    this.jobs = result.jobs;
+    this.renderJobs();
   }
   async summaryIndexMismatches(worldbookName) {
     let state;

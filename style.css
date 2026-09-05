@@ -2054,6 +2054,52 @@
 .echoes-diagnostic-row[data-state="fail"] .echoes-diagnostic-state { color: #e06c75; }
 .echoes-diagnostic-row[data-state="unavailable"] .echoes-diagnostic-state { color: var(--echoes-muted); }
 
+.echoes-job-log-list {
+  border-top: 1px solid var(--echoes-border);
+}
+
+.echoes-job-log-row {
+  border-bottom: 1px solid var(--echoes-border);
+}
+
+.echoes-job-log-row summary {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 4px;
+  cursor: pointer;
+}
+
+.echoes-job-log-row summary > span:nth-child(2) {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.echoes-job-log-row small {
+  overflow: hidden;
+  color: var(--echoes-muted);
+  text-overflow: ellipsis;
+}
+
+.echoes-job-log-row pre {
+  max-height: 260px;
+  margin: 0 0 10px;
+  padding: 10px;
+  overflow: auto;
+  background: var(--echoes-panel);
+  border: 1px solid var(--echoes-border);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.echoes-job-log-row[data-state="failed"] .echoes-diagnostic-state { color: #e06c75; }
+.echoes-job-log-row[data-state="ambiguous"] .echoes-diagnostic-state { color: #e1af55; }
+.echoes-job-log-row[data-state="running"] .echoes-diagnostic-state { color: #70a9d8; }
+.echoes-job-log-row[data-state="succeeded"] .echoes-diagnostic-state { color: #5fbf8f; }
+
 .echoes-restore-preview {
   display: flex;
   flex-direction: column;
