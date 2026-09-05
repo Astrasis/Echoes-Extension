@@ -323,7 +323,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "1.0.6",
+  version: "1.0.7",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -15157,7 +15157,7 @@ var structuredExtractionBatchSchema = external_exports.object({
 var extractionReviewItemSchema = external_exports.object({
   index: external_exports.number().int().min(0).max(499),
   state: external_exports.enum(["valid", "rejected"]),
-  operation: extractionOperationSchema,
+  operation: external_exports.unknown(),
   reason: external_exports.string().max(2e3).optional()
 }).strict().superRefine((item, context) => {
   if (item.state === "rejected" && !item.reason) {
@@ -25315,11 +25315,14 @@ function openPreviewDialog(blocks, runtimeInput) {
 }
 function extractionOperationTarget(item, types, rows) {
   const operation = item.operation;
-  const type = types.find((candidate) => candidate.id === operation.typeId);
-  const typeName = type?.name ?? operation.typeId;
-  if (operation.action === "add") return `${typeName} / ${operation.dataName}`;
-  const row = rows.find((candidate) => candidate.id === operation.rowId);
-  return `${typeName} / ${row?.dataName ?? operation.rowId}`;
+  const action = operation?.action ?? "INVALID";
+  const typeId = operation?.typeId ?? "";
+  const type = types.find((candidate) => candidate.id === typeId);
+  const typeName = type?.name ?? typeId ?? "\u672A\u77E5\u8868\u683C";
+  if (action === "add") return `${typeName} / ${operation?.dataName ?? "\u7F3A\u5C11\u6570\u636E\u540D"}`;
+  const rowId = operation?.rowId ?? "";
+  const row = rows.find((candidate) => candidate.id === rowId);
+  return `${typeName} / ${row?.dataName ?? rowId ?? "\u672A\u77E5\u76EE\u6807"}`;
 }
 function openExtractionReviewDialog(items, types, rows) {
   const dialog = dialogShell("\u5BA1\u6838\u7ED3\u6784\u5316\u8BB0\u5FC6\u6279\u6B21", "echoes-extraction-review-dialog");
@@ -25343,7 +25346,8 @@ function openExtractionReviewDialog(items, types, rows) {
     const summary = document.createElement("div");
     summary.className = "echoes-extraction-review-summary";
     const heading = document.createElement("strong");
-    heading.textContent = `${item.index + 1}. ${item.operation.action.toUpperCase()} \xB7 ${extractionOperationTarget(item, types, rows)}`;
+    const action = typeof item.operation === "object" && item.operation !== null ? String(item.operation.action ?? "INVALID").toUpperCase() : "INVALID";
+    heading.textContent = `${item.index + 1}. ${action} \xB7 ${extractionOperationTarget(item, types, rows)}`;
     summary.append(heading);
     if (item.reason) {
       const reason = document.createElement("p");
