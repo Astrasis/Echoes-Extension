@@ -315,7 +315,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "1.0.1",
+  version: "1.0.2",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -27462,13 +27462,15 @@ var SummaryWorldbookStore = class {
       retrievalEmbeddingSpaceId: embeddingSpaceId
     }));
   }
-  markBatchState(worldbookName, batchId, state) {
+  markBatchState(worldbookName, batchId, state, sliceIds) {
     return this.serialize(worldbookName, async () => {
       const api = helper();
       const now = (/* @__PURE__ */ new Date()).toISOString();
+      const targets = sliceIds ? new Set(sliceIds) : null;
       await api.updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => {
         const item = metadata(entry);
         if (item?.kind !== "summary_slice" || item.batch.id !== batchId) return entry;
+        if (targets && !targets.has(item.summaryId)) return entry;
         return {
           ...entry,
           extra: {
@@ -30970,8 +30972,12 @@ var SummaryCoordinator = class {
     return this.syncSlices(updated, [], updated.catalog.pendingRetrievalDeletes);
   }
   async repairIndex(decide = defaultDecision) {
+    const chatId = SillyTavern.getContext().chatId;
     let state = await this.load();
-    const active = state.slices.filter((slice) => slice.batch.state !== "stale");
+    if (chatId && state.catalog.chatId === chatId) this.pausedAutomatic.delete(chatId);
+    const configuredGroup = getSettings().retrieval.embeddingGroups.find((group) => group.id === getSettings().summary.embeddingGroupId);
+    const collectionSpaceChanged = Boolean(configuredGroup && state.catalog.retrievalEmbeddingSpaceId !== configuredGroup.embeddingSpaceId);
+    const active = state.slices.filter((slice) => slice.batch.state !== "stale" && (slice.batch.state !== "ready" || collectionSpaceChanged));
     if (active.length === 0 && state.catalog.pendingRetrievalDeletes.length > 0) {
       return this.syncSlices(state, [], state.catalog.pendingRetrievalDeletes, decide);
     }
@@ -31135,9 +31141,18 @@ var SummaryCoordinator = class {
       const stateByDocumentId = new Map(statuses.documents.map((document2) => [document2.documentId, document2.vectorState]));
       const documentIdBySliceId = new Map(targetSlices.map((slice, index) => [slice.id, documents[index].documentId]));
       for (const batchId of batches) {
-        const vectorStates = targetSlices.filter((slice) => slice.batch.id === batchId).map((slice) => stateByDocumentId.get(documentIdBySliceId.get(slice.id)));
+        const batchSlices = targetSlices.filter((slice) => slice.batch.id === batchId);
+        const vectorStates = batchSlices.map((slice) => stateByDocumentId.get(documentIdBySliceId.get(slice.id)));
         const syncState = vectorStates.includes("ambiguous") ? "ambiguous" : vectorStates.includes("failed") ? "failed" : vectorStates.includes("pending") || vectorStates.includes(void 0) ? "pending" : "ready";
         state = await this.store.markBatchState(state.worldbookName, batchId, syncState);
+        for (const slice of state.slices.filter((item) => item.batch.id === batchId && !documentIdBySliceId.has(item.id))) {
+          state = await this.store.markBatchState(
+            state.worldbookName,
+            batchId,
+            syncState,
+            [slice.id]
+          );
+        }
       }
     }
     if (result.deleted >= 0 && deletedSliceIds.length > 0) {
