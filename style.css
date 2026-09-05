@@ -2084,6 +2084,13 @@
   text-overflow: ellipsis;
 }
 
+.echoes-job-log-row em {
+  color: #e06c75;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
 .echoes-job-log-row pre {
   max-height: 260px;
   margin: 0 0 10px;

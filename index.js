@@ -323,7 +323,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "1.0.3",
+  version: "1.0.4",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -33575,7 +33575,11 @@ var MaintenancePanel = class {
           <details class="echoes-job-log-row" data-state="${job.status}">
             <summary>
               <span class="echoes-diagnostic-state">${jobStatusLabel(job.status)}</span>
-              <span><strong>${this.escape(job.type)}</strong><small>${this.escape(job.message)}</small></span>
+              <span>
+                <strong>${this.escape(job.type)}</strong>
+                <small>${this.escape(job.message)}</small>
+                ${job.resultSummary?.failed || job.resultSummary?.ambiguous ? `<em>\u5411\u91CF\u5931\u8D25 ${job.resultSummary.failed ?? 0} \xB7 \u4E0D\u786E\u5B9A ${job.resultSummary.ambiguous ?? 0}</em>` : ""}
+              </span>
               <time>${new Date(job.updatedAt).toLocaleString()}</time>
             </summary>
             <pre>${this.escape(JSON.stringify({
@@ -33586,7 +33590,8 @@ var MaintenancePanel = class {
       message: job.message,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
-      error: job.error
+      error: job.error,
+      resultSummary: job.resultSummary
     }, null, 2))}</pre>
           </details>`).join("")}
       </div>`;
