@@ -323,7 +323,7 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "1.0.5",
+  version: "1.0.6",
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -15588,6 +15588,7 @@ var retrievalDocumentInputSchema = external_exports.object({
 var retrievalRequestOptions = {
   failoverPolicy: failoverPolicySchema.default("confirm_ambiguous"),
   embeddingGroup: embeddingEndpointGroupSchema.optional(),
+  embeddingBatchSize: external_exports.number().int().min(1).max(100).default(10),
   resumeAfterEndpointId: identifierSchema.optional()
 };
 var retrievalUpsertRequestSchema = external_exports.object({
@@ -16772,6 +16773,7 @@ var DEFAULT_SETTINGS = {
   summary: {
     messageCount: 30,
     embeddingGroupId: "",
+    embeddingBatchSize: 10,
     preprocessRules: [],
     promptPreset: DEFAULT_SUMMARY_PROMPT_PRESET
   },
@@ -16844,7 +16846,8 @@ var echoesSettingsV2Schema = external_exports.object({
     messageCount: external_exports.number().int().min(2).max(500),
     promptPreset: summaryPromptPresetSchema,
     preprocessRules: external_exports.array(summaryPreprocessRuleSchema).max(200),
-    embeddingGroupId: external_exports.string().max(240)
+    embeddingGroupId: external_exports.string().max(240),
+    embeddingBatchSize: external_exports.number().int().min(1).max(100).default(10)
   }).strict(),
   retrieval: external_exports.object({
     failoverPolicy: failoverPolicySchema,
@@ -31132,6 +31135,7 @@ var SummaryCoordinator = class {
           deleteDocumentIds,
           embeddingGroup,
           failoverPolicy: settings.retrieval.failoverPolicy,
+          embeddingBatchSize: settings.summary.embeddingBatchSize,
           ...resumeAfterEndpointId ? { resumeAfterEndpointId } : {}
         });
         result = (await (signal ? this.trackedJob(state.catalog.chatId, start, signal) : waitForJob4(await start()))).result;
@@ -31405,6 +31409,7 @@ var SummaryPanel = class {
             <span>\u6545\u969C\u7B56\u7565<strong data-summary-binding-policy></strong></span>
             <span>Embedding \u7EC4<strong data-summary-binding-embedding></strong></span>
             <label>\u81EA\u52A8\u603B\u7ED3\u6D88\u606F\u9608\u503C<input type="number" min="2" max="500" data-summary-count></label>
+            <label>\u5355\u6279\u5411\u91CF\u5316\u6570\u91CF<input type="number" min="1" max="100" data-summary-embedding-batch-size></label>
           </div>
         </section>
         <section class="echoes-summary-section"><header><h2>\u603B\u7ED3\u63D0\u793A\u8BCD</h2><button type="button" class="menu_button" data-summary-action="add-prompt"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-summary-prompts></div></section>
@@ -31418,6 +31423,7 @@ var SummaryPanel = class {
     }[workflow.failoverPolicy];
     host.querySelector("[data-summary-binding-embedding]").textContent = embeddingGroup?.name ?? "\u4EC5\u540C\u6B65 BM25";
     host.querySelector("[data-summary-count]").value = String(settings.summary.messageCount);
+    host.querySelector("[data-summary-embedding-batch-size]").value = String(settings.summary.embeddingBatchSize);
     this.renderPrompts();
     this.renderRules();
   }
@@ -31724,7 +31730,9 @@ var SummaryPanel = class {
       return;
     }
     if (target.matches("[data-summary-count]")) settings.summary.messageCount = Math.max(2, Math.min(500, Number(target.value)));
-    else if (target.dataset.promptToggle !== void 0) settings.summary.promptPreset.items[Number(target.dataset.promptToggle)].enabled = target.checked;
+    else if (target.matches("[data-summary-embedding-batch-size]")) {
+      settings.summary.embeddingBatchSize = Math.max(1, Math.min(100, Number(target.value)));
+    } else if (target.dataset.promptToggle !== void 0) settings.summary.promptPreset.items[Number(target.dataset.promptToggle)].enabled = target.checked;
     else if (target.dataset.ruleToggle !== void 0) settings.summary.preprocessRules[Number(target.dataset.ruleToggle)].enabled = target.checked;
     else return;
     saveSettings(settings);
@@ -33501,7 +33509,12 @@ var MaintenancePanel = class {
         <section class="echoes-maintenance-section" data-system></section>
         <section class="echoes-maintenance-section" data-credentials></section>
         <section class="echoes-maintenance-section" data-diagnostics></section>
-        <section class="echoes-maintenance-section" data-jobs></section>
+        <section class="echoes-maintenance-section" data-jobs-section>
+          <details data-job-log-details>
+            <summary><h2>\u4EFB\u52A1\u65E5\u5FD7</h2><span>\u9ED8\u8BA4\u6298\u53E0\uFF1B\u5C55\u5F00\u540E\u663E\u793A\u4EFB\u52A1\u5143\u6570\u636E\u3001\u7ED3\u679C\u6458\u8981\u548C\u9519\u8BEF</span></summary>
+            <div data-jobs></div>
+          </details>
+        </section>
         <section class="echoes-maintenance-section" data-console-log-section>
           <details>
             <summary><h2>\u63A7\u5236\u53F0\u65E5\u5FD7</h2><span>Echoes \u6D4F\u89C8\u5668\u7AEF\u8FD0\u884C\u8F93\u51FA\uFF1B\u670D\u52A1\u7AEF\u65E5\u5FD7\u4ECD\u5728 SillyTavern \u63A7\u5236\u53F0</span></summary>
@@ -33629,20 +33642,17 @@ var MaintenancePanel = class {
     if (!host) return;
     const filtered = this.jobStatusFilter ? this.jobs.filter((job) => job.status === this.jobStatusFilter) : this.jobs;
     host.innerHTML = `
-      <div class="echoes-section-heading">
-        <div><h2>\u4EFB\u52A1\u65E5\u5FD7</h2><span>\u663E\u793A\u4EFB\u52A1\u5143\u6570\u636E\u4E0E\u9519\u8BEF\uFF1B\u4E0D\u5305\u542B\u6A21\u578B\u7ED3\u679C\u3001\u63D0\u793A\u8BCD\u6216\u6B63\u6587</span></div>
-        <div class="echoes-maintenance-actions">
-          <select data-job-status-filter aria-label="\u4EFB\u52A1\u72B6\u6001\u7B5B\u9009">
-            <option value="">\u5168\u90E8\u72B6\u6001</option>
-            <option value="failed">\u5931\u8D25</option>
-            <option value="ambiguous">\u4E0D\u786E\u5B9A</option>
-            <option value="running">\u8FD0\u884C\u4E2D</option>
-            <option value="queued">\u6392\u961F\u4E2D</option>
-            <option value="succeeded">\u6210\u529F</option>
-            <option value="cancelled">\u5DF2\u53D6\u6D88</option>
-          </select>
-          <button type="button" class="menu_button" data-maintenance-action="refresh-jobs"><i class="fa-solid fa-rotate"></i> \u5237\u65B0\u4EFB\u52A1</button>
-        </div>
+      <div class="echoes-maintenance-actions">
+        <select data-job-status-filter aria-label="\u4EFB\u52A1\u72B6\u6001\u7B5B\u9009">
+          <option value="">\u5168\u90E8\u72B6\u6001</option>
+          <option value="failed">\u5931\u8D25</option>
+          <option value="ambiguous">\u4E0D\u786E\u5B9A</option>
+          <option value="running">\u8FD0\u884C\u4E2D</option>
+          <option value="queued">\u6392\u961F\u4E2D</option>
+          <option value="succeeded">\u6210\u529F</option>
+          <option value="cancelled">\u5DF2\u53D6\u6D88</option>
+        </select>
+        <button type="button" class="menu_button" data-maintenance-action="refresh-jobs"><i class="fa-solid fa-rotate"></i> \u5237\u65B0\u4EFB\u52A1</button>
       </div>
       <div class="echoes-job-log-list">
         ${filtered.length === 0 ? '<p class="echoes-empty-note">\u5F53\u524D\u7528\u6237\u6682\u65E0\u4EFB\u52A1\u8BB0\u5F55\u3002</p>' : filtered.map((job) => `

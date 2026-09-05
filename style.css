@@ -2119,6 +2119,24 @@
   cursor: pointer;
 }
 
+.echoes-maintenance-section[data-jobs] summary {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.echoes-maintenance-section[data-jobs] summary h2,
+.echoes-maintenance-section[data-console-log-section] summary h2 {
+  margin: 0;
+}
+
+.echoes-maintenance-section[data-jobs] summary span,
+.echoes-maintenance-section[data-console-log-section] summary span {
+  color: var(--echoes-muted);
+}
+
 .echoes-console-log-list {
   max-height: 420px;
   overflow: auto;
