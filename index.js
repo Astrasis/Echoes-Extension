@@ -323,7 +323,11 @@ var init_client = __esm({
 // package.json
 var package_default = {
   name: "echoes-memory-system",
-  version: "1.0.7",
+  version: "2.0.0",
+  echoesVersions: {
+    extension: "2.0.0",
+    server: "1.1.0"
+  },
   private: true,
   type: "module",
   description: "A reliable structured and semantic memory system for SillyTavern.",
@@ -335,9 +339,10 @@ var package_default = {
     build: "node scripts/build.mjs",
     check: "npm run typecheck && npm run test && npm run build",
     test: "vitest run",
-    "test:browser": "npm run build && playwright test",
+    "test:browser": "npm run build && playwright test --config playwright.workbench.config.ts",
     "test:watch": "vitest",
     "serve:harness": "node scripts/ui-harness-server.mjs",
+    "serve:workbench": "node scripts/workbench-server.mjs",
     "stress:retrieval": "node scripts/retrieval-stress.mjs 200000",
     "audit:dependencies": "npm audit --registry=https://registry.npmjs.org/ --omit=dev --audit-level=high",
     "audit:release": "node scripts/audit-release.mjs",
@@ -367,53 +372,25 @@ var package_default = {
 
 // src/shared/build-info.ts
 init_domain();
+var ECHOES_VERSIONS = Object.freeze({
+  extension: package_default.echoesVersions.extension,
+  server: package_default.echoesVersions.server
+});
 var ECHOES_BUILD_INFO = {
-  appVersion: package_default.version,
+  appVersion: ECHOES_VERSIONS.extension,
+  apiProtocolVersion: API_PROTOCOL_VERSION,
+  service: "echoes-memory"
+};
+var ECHOES_SERVER_BUILD_INFO = {
+  appVersion: ECHOES_VERSIONS.server,
   apiProtocolVersion: API_PROTOCOL_VERSION,
   service: "echoes-memory"
 };
 
-// src/shared/extraction-core.ts
-function canonical(value) {
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  const record3 = value;
-  return `{${Object.keys(record3).sort().map((key) => `${JSON.stringify(key)}:${canonical(record3[key])}`).join(",")}}`;
-}
-async function sha256(value) {
-  const bytes = new TextEncoder().encode(canonical(value));
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-function structuredExtractionMessageHash(messages2) {
-  return sha256(messages2.map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content })));
-}
-function structuredExtractionContextHash(types, rows) {
-  return sha256({
-    types: [...types].sort((left, right) => left.id.localeCompare(right.id)).map((type) => ({
-      id: type.id,
-      templateId: type.templateId,
-      name: type.name,
-      description: type.description,
-      columns: type.columns,
-      writePrompt: type.writePrompt,
-      enabled: type.enabled,
-      version: type.version
-    })),
-    rows: [...rows].sort((left, right) => left.id.localeCompare(right.id)).map((row) => ({
-      id: row.id,
-      typeId: row.typeId,
-      dataName: row.dataName,
-      keywords: row.keywords,
-      status: row.status,
-      values: row.values,
-      enabled: row.enabled,
-      revision: row.revision
-    }))
-  });
-}
+// src/extension/workbench/app.ts
+init_client();
 
-// src/extension/memory/extraction-coordinator.ts
+// src/extension/summary/summary-coordinator.ts
 init_client();
 
 // node_modules/zod/v4/classic/external.js
@@ -1095,9 +1072,9 @@ function assertNever(_x) {
 }
 function assert(_) {
 }
-function getEnumValues(entries2) {
-  const numericValues = Object.values(entries2).filter((v) => typeof v === "number");
-  const values = Object.entries(entries2).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
+function getEnumValues(entries) {
+  const numericValues = Object.values(entries).filter((v) => typeof v === "number");
+  const values = Object.entries(entries).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
   return values;
 }
 function joinValues(array2, separator = "|") {
@@ -1602,14 +1579,14 @@ function prefixIssues(path, issues) {
     return iss;
   });
 }
-function unwrapMessage(message3) {
-  return typeof message3 === "string" ? message3 : message3?.message;
+function unwrapMessage(message) {
+  return typeof message === "string" ? message : message?.message;
 }
 function finalizeIssue(iss, ctx, config2) {
-  const message3 = iss.message ? iss.message : unwrapMessage(iss.inst?._zod.def?.error?.(iss)) ?? unwrapMessage(ctx?.error?.(iss)) ?? unwrapMessage(config2.customError?.(iss)) ?? unwrapMessage(config2.localeError?.(iss)) ?? "Invalid input";
+  const message = iss.message ? iss.message : unwrapMessage(iss.inst?._zod.def?.error?.(iss)) ?? unwrapMessage(ctx?.error?.(iss)) ?? unwrapMessage(config2.customError?.(iss)) ?? unwrapMessage(config2.localeError?.(iss)) ?? "Invalid input";
   const { inst: _inst, continue: _continue, input: _input, ...rest } = iss;
   rest.path ?? (rest.path = []);
-  rest.message = message3;
+  rest.message = message;
   if (ctx?.reportInput) {
     rest.input = _input;
   }
@@ -1667,7 +1644,7 @@ function issue(...args) {
 function cleanEnum(obj) {
   return Object.entries(obj).filter(([k, _]) => {
     return Number.isNaN(Number.parseInt(k, 10));
-  }).map((el) => el[1]);
+  }).map((el2) => el2[1]);
 }
 function base64ToUint8Array(base643) {
   const binaryString = atob(base643);
@@ -1761,15 +1738,15 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
           let curr = fieldErrors;
           let i = 0;
           while (i < fullpath.length) {
-            const el = fullpath[i];
+            const el2 = fullpath[i];
             const terminal = i === fullpath.length - 1;
             if (!terminal) {
-              curr[el] = curr[el] || { _errors: [] };
+              curr[el2] = curr[el2] || { _errors: [] };
             } else {
-              curr[el] = curr[el] || { _errors: [] };
-              curr[el]._errors.push(mapper(issue2));
+              curr[el2] = curr[el2] || { _errors: [] };
+              curr[el2]._errors.push(mapper(issue2));
             }
-            curr = curr[el];
+            curr = curr[el2];
             i++;
           }
         }
@@ -1799,16 +1776,16 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
         let curr = result;
         let i = 0;
         while (i < fullpath.length) {
-          const el = fullpath[i];
+          const el2 = fullpath[i];
           const terminal = i === fullpath.length - 1;
-          if (typeof el === "string") {
+          if (typeof el2 === "string") {
             curr.properties ?? (curr.properties = {});
-            (_a3 = curr.properties)[el] ?? (_a3[el] = { errors: [] });
-            curr = curr.properties[el];
+            (_a3 = curr.properties)[el2] ?? (_a3[el2] = { errors: [] });
+            curr = curr.properties[el2];
           } else {
             curr.items ?? (curr.items = []);
-            (_b = curr.items)[el] ?? (_b[el] = { errors: [] });
-            curr = curr.items[el];
+            (_b = curr.items)[el2] ?? (_b[el2] = { errors: [] });
+            curr = curr.items[el2];
           }
           if (terminal) {
             curr.errors.push(mapper(issue2));
@@ -3473,10 +3450,10 @@ var $ZodObject = /* @__PURE__ */ $constructor("$ZodObject", (inst, def) => {
     const proms = [];
     const shape = value.shape;
     for (const key of value.keys) {
-      const el = shape[key];
-      const isOptionalIn = el._zod.optin === "optional";
-      const isOptionalOut = el._zod.optout === "optional";
-      const r = el._zod.run({ value: input[key], issues: [] }, ctx);
+      const el2 = shape[key];
+      const isOptionalIn = el2._zod.optin === "optional";
+      const isOptionalOut = el2._zod.optout === "optional";
+      const r = el2._zod.run({ value: input[key], issues: [] }, ctx);
       if (r instanceof Promise) {
         proms.push(r.then((r2) => handlePropertyResult(r2, payload, key, input, isOptionalIn, isOptionalOut)));
       } else {
@@ -3954,9 +3931,9 @@ var $ZodTuple = /* @__PURE__ */ $constructor("$ZodTuple", (inst, def) => {
     if (def.rest) {
       let i = items.length - 1;
       const rest = input.slice(items.length);
-      for (const el of rest) {
+      for (const el2 of rest) {
         i++;
-        const result = def.rest._zod.run({ value: el, issues: [] }, ctx);
+        const result = def.rest._zod.run({ value: el2, issues: [] }, ctx);
         if (result instanceof Promise) {
           proms.push(result.then((r) => handleTupleResult(r, payload, i)));
         } else {
@@ -11557,18 +11534,18 @@ function _set(Class2, valueType2, params) {
 }
 // @__NO_SIDE_EFFECTS__
 function _enum(Class2, values, params) {
-  const entries2 = Array.isArray(values) ? Object.fromEntries(values.map((v) => [v, v])) : values;
+  const entries = Array.isArray(values) ? Object.fromEntries(values.map((v) => [v, v])) : values;
   return new Class2({
     type: "enum",
-    entries: entries2,
+    entries,
     ...normalizeParams(params)
   });
 }
 // @__NO_SIDE_EFFECTS__
-function _nativeEnum(Class2, entries2, params) {
+function _nativeEnum(Class2, entries, params) {
   return new Class2({
     type: "enum",
-    entries: entries2,
+    entries,
     ...normalizeParams(params)
   });
 }
@@ -13192,8 +13169,8 @@ var ZodType = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
       reg.add(this, meta3);
       return this;
     },
-    refine(check2, params) {
-      return this.check(refine(check2, params));
+    refine(check4, params) {
+      return this.check(refine(check4, params));
     },
     superRefine(refinement, params) {
       return this.check(superRefine(refinement, params));
@@ -14026,17 +14003,17 @@ var ZodEnum = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
   };
 });
 function _enum2(values, params) {
-  const entries2 = Array.isArray(values) ? Object.fromEntries(values.map((v) => [v, v])) : values;
+  const entries = Array.isArray(values) ? Object.fromEntries(values.map((v) => [v, v])) : values;
   return new ZodEnum({
     type: "enum",
-    entries: entries2,
+    entries,
     ...util_exports.normalizeParams(params)
   });
 }
-function nativeEnum(entries2, params) {
+function nativeEnum(entries, params) {
   return new ZodEnum({
     type: "enum",
-    entries: entries2,
+    entries,
     ...util_exports.normalizeParams(params)
   });
 }
@@ -15178,7 +15155,7 @@ var extractionRequestSchema = external_exports.object({
   failoverPolicy: failoverPolicySchema.default("confirm_ambiguous"),
   resumeAfterEndpointId: identifierSchema.optional()
 }).superRefine((request, context) => {
-  const requestMessageIds = request.messages.map((message3) => message3.id);
+  const requestMessageIds = request.messages.map((message) => message.id);
   if (JSON.stringify(requestMessageIds) !== JSON.stringify(request.batch.messageIds)) {
     context.addIssue({ code: "custom", path: ["batch", "messageIds"], message: "Batch messages must match request messages in order." });
   }
@@ -15389,13 +15366,13 @@ var summaryGenerationRequestSchema = external_exports.object({
   failoverPolicy: failoverPolicySchema.default("confirm_ambiguous"),
   resumeAfterEndpointId: identifierSchema.optional()
 }).superRefine((request, context) => {
-  if (!request.promptMessages.some((message3) => message3.content.trim())) {
+  if (!request.promptMessages.some((message) => message.content.trim())) {
     context.addIssue({ code: "custom", path: ["promptMessages"], message: "Summary prompt is empty." });
   }
   if (JSON.stringify({ promptMessages: request.promptMessages, messages: request.messages }).length > MAX_EXTRACTION_CHARACTERS) {
     context.addIssue({ code: "custom", path: ["messages"], message: "Summary input is too large." });
   }
-  const messageIds = request.messages.map((message3) => message3.id);
+  const messageIds = request.messages.map((message) => message.id);
   if (new Set(messageIds).size !== messageIds.length) {
     context.addIssue({ code: "custom", path: ["messages"], message: "Summary message IDs must be unique." });
   }
@@ -15522,7 +15499,7 @@ var statusUpdateRequestSchema = external_exports.object({
   failoverPolicy: failoverPolicySchema.default("confirm_ambiguous"),
   resumeAfterEndpointId: identifierSchema.optional()
 }).superRefine((request, context) => {
-  const ids = request.messages.map((message3) => message3.id);
+  const ids = request.messages.map((message) => message.id);
   if (new Set(ids).size !== ids.length) {
     context.addIssue({ code: "custom", path: ["messages"], message: "Status message IDs must be unique." });
   }
@@ -15621,6 +15598,7 @@ var retrievalRebuildRequestSchema = external_exports.object({
   collectionIds: external_exports.array(identifierSchema).min(1).max(100),
   failoverPolicy: failoverPolicySchema.default("confirm_ambiguous"),
   embeddingGroup: embeddingEndpointGroupSchema,
+  embeddingBatchSize: external_exports.number().int().min(1).max(100).default(10),
   resumeAfterEndpointId: identifierSchema.optional()
 });
 var retrievalQueryPresetBase = {
@@ -16038,11 +16016,6 @@ function validateMemoryValues(columns, rawValues, options = {}) {
 var SETTINGS_KEY = "echoes_memory_system";
 var DEFAULT_TEMPLATE_ID = "echoes_default_template";
 var DEFAULT_STATUS_TEMPLATE_ID = "echoes_default_status_template";
-function storedSettingsFormatVersion() {
-  const stored = SillyTavern.getContext().extensionSettings[SETTINGS_KEY];
-  if (!stored || typeof stored !== "object") return 2;
-  return Number.isInteger(stored.formatVersion) ? Number(stored.formatVersion) : 1;
-}
 var LEGACY_MAIN_PROMPT = `\u4F60\u662F\u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6\u7EF4\u62A4\u5668\u3002\u4F60\u7684\u552F\u4E00\u4EFB\u52A1\u662F\u6839\u636E\u5F53\u524D\u8868\u683C\u548C\u65B0\u589E\u5BF9\u8BDD\uFF0C\u751F\u6210\u53EF\u9760\u7684\u589E\u91CF\u8BB0\u5FC6\u64CD\u4F5C\u3002
 
 \u4E25\u683C\u7EA6\u675F\uFF1A
@@ -16060,6 +16033,13 @@ var LEGACY_MAIN_PROMPT = `\u4F60\u662F\u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6
   {"action":"update","typeId":"...","rowId":"...","changes":{"dataName":"...","keywords":[],"status":"vectorized","values":{}},"evidenceMessageIds":["..."]},
   {"action":"delete","typeId":"...","rowId":"...","evidenceMessageIds":["..."]}
 ]}`;
+var STRUCTURED_JSON_INTEGRITY_GUARD = `<json_integrity>
+Construct and validate the complete JSON internally before emitting it. Every element of "operations" MUST be one complete JSON operation object; strings, comments, draft fragments, and other values are invalid.
+Never expose planning notes, field checklists, reasoning, self-corrections, or commentary inside the JSON, between operation objects, or after the final closing brace.
+Do not visibly repair or continue a partially written response. If any syntax or schema mistake is noticed, silently rebuild the entire JSON object and emit only the corrected final object.
+Before sending, verify that JSON.parse would accept the exact response and that every element of "operations" matches one supported operation shape.
+</json_integrity>
+`;
 var DEFAULT_MAIN_PROMPT = `<task>
 Act as a STRICT Incremental Structured Memory Editor for an ongoing tabletop-style fictional narrative.
 
@@ -16147,6 +16127,7 @@ Supported shapes:
 These are shape illustrations, not instructions to produce all three actions. Replace placeholders with actual input IDs. Never copy the example IDs into a real response unless they exist in that request.
 
 An update may include dataName, keywords, status, and/or values inside changes; omit unchanged fields. values keys are actual column IDs, not translated display names. keywords and status are row properties, not custom values.
+${STRUCTURED_JSON_INTEGRITY_GUARD}
 Do not use null as a deletion command. Delete an entire row with action "delete"; change a field using its declared type.
 </response_format>
 
@@ -16191,6 +16172,7 @@ The new exchange only repeats recorded information or ordinary greetings.
 Internally verify source support, entity identity, retained information, uncertainty, table scope, keywords, and schema compliance.
 Answer in Chinese for all generated natural-language content. Keep exact protocol keys, IDs, enum literals, and declared value types. Output only the final JSON object.
 </final_check>`;
+var PREVIOUS_DEFAULT_MAIN_PROMPT = DEFAULT_MAIN_PROMPT.replace(STRUCTURED_JSON_INTEGRITY_GUARD, "");
 var LEGACY_WRITE_PROMPT = "\u8BE5\u8868\u7528\u4E8E\u8BB0\u5F55\u5BF9\u540E\u7EED\u5267\u60C5\u6709\u6301\u7EED\u4EF7\u503C\u7684\u4E8B\u5B9E\u3002\u660E\u786E\u51FA\u73B0\u65B0\u7684\u957F\u671F\u4E8B\u5B9E\u65F6\u6DFB\u52A0\uFF1B\u5DF2\u6709\u4E8B\u5B9E\u53D1\u751F\u53D8\u5316\u65F6\u4FEE\u6539\uFF1B\u53EA\u6709\u539F\u4E8B\u5B9E\u88AB\u660E\u786E\u5426\u5B9A\u3001\u7ED3\u675F\u6216\u6C38\u4E45\u5931\u6548\u65F6\u5220\u9664\u3002\u4E0D\u8981\u8BB0\u5F55\u77ED\u6682\u63AA\u8F9E\u3001\u63A8\u6D4B\u6216\u65E0\u540E\u7EED\u4EF7\u503C\u7684\u7EC6\u8282\u3002";
 var DEFAULT_WRITE_PROMPT = `Maintain reusable information for this table according to its configured description and columns.
 Add newly revealed identities, concepts, rules, or other durable information. Extend or correct existing records when new information changes them. Preserve all unmentioned valid facts when replacing a field.
@@ -17142,14 +17124,14 @@ function saveSettings(settings) {
 function saveTypeTemplate(rawInput, current) {
   const input = memoryTypeTemplateInputSchema.parse(rawInput);
   const settings = getSettings();
-  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const now3 = (/* @__PURE__ */ new Date()).toISOString();
   const template = {
     ...input,
     id: current?.id ?? input.id ?? uniqueId("template"),
     builtIn: current?.builtIn ?? false,
     version: (current?.version ?? 0) + 1,
-    createdAt: current?.createdAt ?? now,
-    updatedAt: now
+    createdAt: current?.createdAt ?? now3,
+    updatedAt: now3
   };
   const index = settings.typeTemplates.findIndex((candidate) => candidate.id === template.id);
   if (index >= 0) settings.typeTemplates[index] = template;
@@ -17167,7 +17149,7 @@ function deleteTypeTemplate(templateId) {
   return true;
 }
 function instantiateType(template, name = template.name.replace(/模板$/, "")) {
-  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const now3 = (/* @__PURE__ */ new Date()).toISOString();
   return {
     id: uniqueId("type"),
     templateId: template.id,
@@ -17177,8 +17159,8 @@ function instantiateType(template, name = template.name.replace(/模板$/, "")) 
     writePrompt: template.writePrompt,
     enabled: true,
     version: 1,
-    createdAt: now,
-    updatedAt: now
+    createdAt: now3,
+    updatedAt: now3
   };
 }
 function instantiateCatalogBuiltInType(template, catalog) {
@@ -17217,7 +17199,7 @@ function isUntouchedLegacyGenericType(type) {
 function refreshBuiltInMemoryPrompts(catalog) {
   const refreshed = structuredClone(catalog);
   for (const item of refreshed.promptPreset.items) {
-    if (item.kind === "main" && item.content === LEGACY_MAIN_PROMPT) {
+    if (item.kind === "main" && (item.content === LEGACY_MAIN_PROMPT || item.content === PREVIOUS_DEFAULT_MAIN_PROMPT)) {
       item.content = DEFAULT_MAIN_PROMPT;
     }
   }
@@ -17259,7 +17241,7 @@ function refreshBuiltInMemoryPrompts(catalog) {
   return refreshed;
 }
 function createDefaultCatalog(chatId) {
-  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const now3 = (/* @__PURE__ */ new Date()).toISOString();
   const types = DEFAULT_CHAT_MEMORY_TYPE_TEMPLATES.map(
     (template) => instantiateType(template)
   );
@@ -17284,7 +17266,7 @@ function createDefaultCatalog(chatId) {
         typeId: type.id
       }))
     ],
-    updatedAt: now
+    updatedAt: now3
   };
   return {
     formatVersion: 1,
@@ -17293,23 +17275,14 @@ function createDefaultCatalog(chatId) {
     promptPreset,
     automation: { enabled: false },
     builtInTypeSetVersion: CURRENT_BUILT_IN_MEMORY_TYPE_SET_VERSION,
-    updatedAt: now
+    updatedAt: now3
   };
 }
 function newPromptItemId() {
   return uniqueId("prompt");
 }
-function newSummaryPromptItemId() {
-  return uniqueId("summary_prompt");
-}
-function newSummaryRuleId() {
-  return uniqueId("summary_rule");
-}
-function newRecallPromptItemId() {
-  return uniqueId("recall_prompt");
-}
 function instantiateStatusProfile(template = DEFAULT_STATUS_TEMPLATE) {
-  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const now3 = (/* @__PURE__ */ new Date()).toISOString();
   return {
     id: uniqueId("status_profile"),
     sourceTemplateId: template.id,
@@ -17321,16 +17294,1766 @@ function instantiateStatusProfile(template = DEFAULT_STATUS_TEMPLATE) {
     validation: structuredClone(template.validation),
     injection: structuredClone(template.injection),
     version: 1,
-    createdAt: now,
-    updatedAt: now
+    createdAt: now3,
+    updatedAt: now3
   };
 }
-function newStatusPromptItemId() {
-  return uniqueId("status_prompt");
+
+// src/extension/worldbook/worldbook-write-coordinator.ts
+var WorldbookWriteCoordinator = class {
+  chains = /* @__PURE__ */ new Map();
+  run(worldbookName, operation) {
+    const previous = this.chains.get(worldbookName) ?? Promise.resolve();
+    const result = previous.then(operation, operation);
+    const settled = result.then(() => void 0, () => void 0);
+    this.chains.set(worldbookName, settled);
+    void settled.then(() => {
+      if (this.chains.get(worldbookName) === settled) this.chains.delete(worldbookName);
+    });
+    return result;
+  }
+};
+var worldbookWriteCoordinator = new WorldbookWriteCoordinator();
+
+// src/extension/worldbook/summary-worldbook.ts
+function helper() {
+  if (!window.TavernHelper) throw new Error("Echoes requires TavernHelper for summary storage.");
+  return window.TavernHelper;
 }
-function newStatusRuleId() {
-  return uniqueId("status_rule");
+function uniqueId2(prefix) {
+  return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
 }
+function metadata(entry) {
+  const value = entry.extra?.echoes;
+  if (!value) return null;
+  if (value.kind === "summary_catalog") {
+    if (value.version !== 1 && value.version !== 2) return null;
+    return value;
+  }
+  if (value.kind === "summary_slice") {
+    if (value.version !== 2) {
+      throw new Error("Echoes summary slices must use metadata version 2 with a required timestamp.");
+    }
+    return value;
+  }
+  return null;
+}
+function createCatalog(chatId) {
+  return {
+    formatVersion: 2,
+    chatId,
+    namespaceId: uniqueId2("summary_namespace"),
+    autoRun: false,
+    recallEnabled: false,
+    recallSourceWeight: 1,
+    recallSourceOrder: 0,
+    attachedRecallSources: [],
+    compression: {
+      enabled: false,
+      keepRecentMessages: 30,
+      recentBatchCount: 2,
+      deletionPolicy: "confirm_restore"
+    },
+    nextBatchNumber: 1,
+    pendingRetrievalDeletes: [],
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function catalogEntry(catalog) {
+  return {
+    name: "Echoes Summary Catalog",
+    enabled: false,
+    strategy: { type: "constant", keys: [] },
+    content: "Echoes summary catalog. Managed by the Echoes extension.",
+    extra: { echoes: { kind: "summary_catalog", version: 2, catalog } }
+  };
+}
+function summaryId(namespaceId, batchNumber, sliceNumber) {
+  const namespace = namespaceId.replace(/^summary_namespace_/, "").slice(0, 32);
+  return `summary_${namespace}_${batchNumber}_${sliceNumber}`;
+}
+function nextUnusedBatchNumber(used, start) {
+  let candidate = Math.max(1, Math.floor(start));
+  while (used.has(candidate)) candidate += 1;
+  return candidate;
+}
+function sliceEntry(slice) {
+  return {
+    name: `\u603B\u7ED3 ${slice.batch.batchNumber}.${slice.sliceNumber} [${slice.timestamp}] - ${slice.title}`,
+    enabled: false,
+    strategy: { type: "selective", keys: slice.tags },
+    content: slice.content,
+    extra: {
+      echoes: {
+        kind: "summary_slice",
+        version: 2,
+        summaryId: slice.id,
+        timestamp: slice.timestamp,
+        title: slice.title,
+        tags: slice.tags,
+        batch: slice.batch,
+        sliceNumber: slice.sliceNumber
+      }
+    }
+  };
+}
+function readState(worldbookName, entries) {
+  const catalogWorldbookEntry = entries.find((entry) => metadata(entry)?.kind === "summary_catalog");
+  if (!catalogWorldbookEntry) return null;
+  const catalogMetadata2 = metadata(catalogWorldbookEntry);
+  const catalog = summaryCatalogSchema.parse(catalogMetadata2.catalog);
+  const slices = entries.flatMap((entry) => {
+    const item = metadata(entry);
+    if (!item || item.kind !== "summary_slice") return [];
+    return [summarySliceSchema.parse({
+      id: item.summaryId,
+      timestamp: item.timestamp,
+      title: item.title,
+      content: entry.content,
+      tags: item.tags,
+      batch: item.batch,
+      sliceNumber: item.sliceNumber,
+      worldbookUid: entry.uid
+    })];
+  }).sort((left, right) => left.batch.batchNumber - right.batch.batchNumber || left.sliceNumber - right.sliceNumber);
+  return { worldbookName, catalog, slices };
+}
+function structuredCatalogChatId(entries) {
+  for (const entry of entries) {
+    const echoes = entry.extra?.echoes;
+    if (echoes?.kind === "catalog" && typeof echoes.catalog?.chatId === "string") return echoes.catalog.chatId;
+  }
+  return null;
+}
+var SummaryWorldbookStore = class {
+  async load() {
+    const chatId = SillyTavern.getContext().chatId;
+    if (!chatId) throw new Error("Open a SillyTavern chat before using summaries.");
+    const api = helper();
+    const boundWorldbookName = api.getChatWorldbookName("current");
+    return worldbookWriteCoordinator.run(boundWorldbookName ?? `chat:${chatId}`, async () => {
+      if (SillyTavern.getContext().chatId !== chatId) {
+        throw new Error("The active chat changed before the summary operation started.");
+      }
+      const baseName = chatId.replace(/\.(json|jsonl)$/i, "");
+      let worldbookName = boundWorldbookName;
+      if (!worldbookName) {
+        worldbookName = await api.getOrCreateChatWorldbook("current", `Echoes-${baseName}`);
+        if (SillyTavern.getContext().chatId !== chatId) {
+          throw new Error("The active chat changed while the summary worldbook was being created.");
+        }
+      }
+      let entries = await api.getWorldbook(worldbookName);
+      let state = readState(worldbookName, entries);
+      if (state && state.catalog.chatId !== chatId || !state && structuredCatalogChatId(entries) && structuredCatalogChatId(entries) !== chatId) {
+        const names = new Set(api.getWorldbookNames());
+        let candidate = `Echoes-${baseName}`;
+        let suffix = 2;
+        while (names.has(candidate)) candidate = `Echoes-${baseName}-${suffix++}`;
+        await api.createWorldbook(candidate);
+        if (SillyTavern.getContext().chatId !== chatId) {
+          throw new Error("The active chat changed before the summary worldbook could be rebound.");
+        }
+        await api.rebindChatWorldbook("current", candidate);
+        if (SillyTavern.getContext().chatId !== chatId) {
+          throw new Error("The active chat changed while the summary worldbook was being rebound.");
+        }
+        worldbookName = candidate;
+        entries = [];
+        state = null;
+      }
+      if (!state) {
+        await api.createWorldbookEntries(worldbookName, [catalogEntry(createCatalog(chatId))]);
+        entries = await api.getWorldbook(worldbookName);
+        state = readState(worldbookName, entries);
+      }
+      if (!state) throw new Error("Failed to initialize the Echoes summary catalog.");
+      return state;
+    });
+  }
+  inspect(worldbookName) {
+    return helper().getWorldbook(worldbookName).then((entries) => {
+      const state = readState(worldbookName, entries);
+      if (!state) throw new Error("The worldbook has no Echoes summary catalog.");
+      return state;
+    });
+  }
+  async listAvailableSources() {
+    const inspected = await Promise.allSettled(
+      helper().getWorldbookNames().map((worldbookName) => this.inspect(worldbookName))
+    );
+    return inspected.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+  }
+  commitBatch(options) {
+    return this.serialize(options.worldbookName, async () => {
+      options.signal?.throwIfAborted();
+      const api = helper();
+      const now3 = (/* @__PURE__ */ new Date()).toISOString();
+      await api.updateWorldbookWith(options.worldbookName, (entries) => {
+        options.signal?.throwIfAborted();
+        const currentState = readState(options.worldbookName, entries);
+        if (!currentState || currentState.catalog.namespaceId !== options.catalog.namespaceId) {
+          throw new Error("The summary worldbook changed while the generation task was running.");
+        }
+        const writeMode = options.writeMode ?? "create";
+        const existing = currentState.slices.filter((slice) => slice.batch.id === options.batch.id);
+        const numberCollisions = currentState.slices.filter((slice) => slice.batch.batchNumber === options.batch.batchNumber && slice.batch.id !== options.batch.id);
+        if (writeMode === "rebuild" && existing.length === 0) {
+          throw new Error("The summary batch selected for rebuilding no longer exists.");
+        }
+        if (numberCollisions.length > 0) {
+          throw new Error("The summary batch ID and batch number refer to different existing batches.");
+        }
+        if (options.expectedCheckpoint !== void 0 && (currentState.catalog.lastCommittedMessageId ?? null) !== options.expectedCheckpoint) {
+          throw new Error("The summary checkpoint changed while the generation task was running.");
+        }
+        if (options.expectedNextBatchNumber !== void 0 && currentState.catalog.nextBatchNumber !== options.expectedNextBatchNumber) {
+          throw new Error("The summary batch sequence changed while the generation task was running.");
+        }
+        if (options.expectedBatchRevision !== void 0) {
+          const currentRevision = existing.length > 0 ? Math.max(...existing.map((slice) => slice.batch.revision)) : null;
+          if (currentRevision !== options.expectedBatchRevision) {
+            throw new Error("The summary batch revision changed while the generation task was running.");
+          }
+        }
+        if (writeMode === "create" && (existing.length > 0 || numberCollisions.length > 0)) {
+          throw new Error("The summary batch number was occupied before the new batch could be written.");
+        }
+        const revision = Math.max(0, ...existing.map((slice) => slice.batch.revision)) + 1;
+        const createdAt = existing[0]?.batch.createdAt ?? now3;
+        const slices = options.candidates.map((candidate, index) => ({
+          ...summarySliceCandidateSchema.parse(candidate),
+          id: summaryId(currentState.catalog.namespaceId, options.batch.batchNumber, index + 1),
+          sliceNumber: index + 1,
+          batch: {
+            ...options.batch,
+            source: { kind: "chat_messages" },
+            state: "pending",
+            revision,
+            createdAt,
+            updatedAt: now3
+          }
+        }));
+        const desiredIds = new Set(slices.map((slice) => slice.id));
+        const removedIds = existing.map((slice) => slice.id).filter((id2) => !desiredIds.has(id2));
+        const existingIds = new Set(existing.map((slice) => slice.id));
+        const usedBatchNumbers = new Set(currentState.slices.filter((slice) => slice.batch.id !== options.batch.id).map((slice) => slice.batch.batchNumber));
+        usedBatchNumbers.add(options.batch.batchNumber);
+        const nextCatalog = summaryCatalogSchema.parse({
+          ...currentState.catalog,
+          ...options.advanceCheckpoint !== false ? { lastCommittedMessageId: options.batch.endMessageId } : {},
+          nextBatchNumber: writeMode === "create" ? nextUnusedBatchNumber(usedBatchNumbers, options.batch.batchNumber + 1) : currentState.catalog.nextBatchNumber,
+          pendingRetrievalDeletes: [.../* @__PURE__ */ new Set([
+            ...currentState.catalog.pendingRetrievalDeletes,
+            ...removedIds
+          ])],
+          updatedAt: now3
+        });
+        const nextEntries = entries.flatMap((entry) => {
+          const item = metadata(entry);
+          if (item?.kind === "summary_catalog") {
+            return [{ ...entry, ...catalogEntry(nextCatalog) }];
+          }
+          if (item?.kind === "summary_slice" && item.batch.id === options.batch.id) {
+            const replacement2 = slices.find((slice) => slice.id === item.summaryId);
+            return replacement2 ? [{ ...entry, ...sliceEntry(replacement2) }] : [];
+          }
+          return [entry];
+        });
+        nextEntries.push(...slices.filter((slice) => !existingIds.has(slice.id)).map((slice) => sliceEntry(slice)));
+        return nextEntries;
+      });
+      return this.inspect(options.worldbookName);
+    });
+  }
+  setAutoRun(worldbookName, enabled) {
+    return this.updateState(worldbookName, (catalog) => ({ ...catalog, autoRun: enabled }));
+  }
+  saveCompressionConfiguration(worldbookName, compression2) {
+    return this.updateState(worldbookName, (catalog) => ({
+      ...catalog,
+      compression: structuredClone(compression2)
+    }));
+  }
+  saveRecallConfiguration(worldbookName, configuration) {
+    return this.updateState(worldbookName, (catalog) => ({
+      ...catalog,
+      recallEnabled: configuration.enabled,
+      recallSourceWeight: configuration.weight,
+      recallSourceOrder: configuration.order,
+      attachedRecallSources: structuredClone(configuration.attachedSources)
+    }));
+  }
+  setRetrievalBinding(worldbookName, collectionId, embeddingSpaceId) {
+    return this.updateState(worldbookName, (catalog) => ({
+      ...catalog,
+      retrievalCollectionId: collectionId,
+      retrievalEmbeddingSpaceId: embeddingSpaceId
+    }));
+  }
+  markBatchState(worldbookName, batchId, state, sliceIds) {
+    return this.serialize(worldbookName, async () => {
+      const api = helper();
+      const now3 = (/* @__PURE__ */ new Date()).toISOString();
+      const targets = sliceIds ? new Set(sliceIds) : null;
+      await api.updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => {
+        const item = metadata(entry);
+        if (item?.kind !== "summary_slice" || item.batch.id !== batchId) return entry;
+        if (targets && !targets.has(item.summaryId)) return entry;
+        return {
+          ...entry,
+          extra: {
+            ...entry.extra,
+            echoes: { ...item, batch: { ...item.batch, state, updatedAt: now3 } }
+          }
+        };
+      }));
+      return this.inspect(worldbookName);
+    });
+  }
+  markStaleFrom(worldbookName, batchNumber) {
+    return this.serialize(worldbookName, async () => {
+      const api = helper();
+      const now3 = (/* @__PURE__ */ new Date()).toISOString();
+      const state = await this.inspect(worldbookName);
+      const staleIds = state.slices.filter((slice) => slice.batch.source?.kind !== "imported" && slice.batch.batchNumber >= batchNumber).map((slice) => slice.id);
+      await api.updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => {
+        const item = metadata(entry);
+        if (item?.kind !== "summary_slice" || item.batch.source?.kind === "imported" || item.batch.batchNumber < batchNumber) return entry;
+        return {
+          ...entry,
+          extra: {
+            ...entry.extra,
+            echoes: { ...item, batch: { ...item.batch, state: "stale", updatedAt: now3 } }
+          }
+        };
+      }));
+      await this.updateCatalog(worldbookName, {
+        ...state.catalog,
+        pendingRetrievalDeletes: [.../* @__PURE__ */ new Set([
+          ...state.catalog.pendingRetrievalDeletes,
+          ...staleIds
+        ])],
+        updatedAt: now3
+      });
+      return this.inspect(worldbookName);
+    });
+  }
+  saveSlice(worldbookName, sliceId, candidate) {
+    return this.serialize(worldbookName, async () => {
+      const api = helper();
+      const parsed = summarySliceCandidateSchema.parse(candidate);
+      const now3 = (/* @__PURE__ */ new Date()).toISOString();
+      await api.updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => {
+        const item = metadata(entry);
+        if (item?.kind !== "summary_slice" || item.summaryId !== sliceId) return entry;
+        const updated = {
+          ...parsed,
+          id: item.summaryId,
+          sliceNumber: item.sliceNumber,
+          worldbookUid: entry.uid,
+          batch: {
+            ...item.batch,
+            state: "pending",
+            revision: item.batch.revision + 1,
+            updatedAt: now3
+          }
+        };
+        return { ...entry, ...sliceEntry(updated) };
+      }));
+      return this.inspect(worldbookName);
+    });
+  }
+  deleteSlice(worldbookName, sliceId) {
+    return this.deleteSlices(worldbookName, [sliceId]);
+  }
+  deleteSlices(worldbookName, sliceIds) {
+    return this.serialize(worldbookName, async () => {
+      const state = await this.inspect(worldbookName);
+      const removed = new Set(sliceIds);
+      const existingIds = state.slices.filter((slice) => removed.has(slice.id)).map((slice) => slice.id);
+      await helper().updateWorldbookWith(worldbookName, (entries) => entries.filter((entry) => {
+        const item = metadata(entry);
+        return item?.kind !== "summary_slice" || !removed.has(item.summaryId);
+      }));
+      await this.updateCatalog(worldbookName, {
+        ...state.catalog,
+        pendingRetrievalDeletes: [.../* @__PURE__ */ new Set([
+          ...state.catalog.pendingRetrievalDeletes,
+          ...existingIds
+        ])],
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+      return this.inspect(worldbookName);
+    });
+  }
+  setNextBatchNumber(worldbookName, batchNumber) {
+    if (!Number.isInteger(batchNumber) || batchNumber < 1) {
+      return Promise.reject(new Error("\u603B\u7ED3\u6279\u6B21\u7F16\u53F7\u5FC5\u987B\u662F\u5927\u4E8E 0 \u7684\u6574\u6570\u3002"));
+    }
+    return this.serialize(worldbookName, async () => {
+      const state = await this.inspect(worldbookName);
+      if (state.slices.some((slice) => slice.batch.batchNumber === batchNumber)) {
+        throw new Error("\u8BE5\u6279\u6B21\u7F16\u53F7\u5DF2\u7ECF\u5B58\u5728\uFF0C\u8BF7\u5148\u91CD\u5EFA\u3001\u91CD\u7F6E\u6216\u5220\u9664\u5BF9\u5E94\u6279\u6B21\u3002");
+      }
+      await this.updateCatalog(worldbookName, {
+        ...state.catalog,
+        nextBatchNumber: batchNumber,
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+      return this.inspect(worldbookName);
+    });
+  }
+  resetFrom(worldbookName, batchNumber) {
+    return this.serialize(worldbookName, async () => {
+      const state = await this.inspect(worldbookName);
+      const removed = state.slices.filter((slice) => slice.batch.source?.kind !== "imported" && slice.batch.batchNumber >= batchNumber);
+      const retained = state.slices.filter((slice) => slice.batch.source?.kind !== "imported" && slice.batch.batchNumber < batchNumber);
+      const previous = retained.at(-1)?.batch;
+      await helper().updateWorldbookWith(worldbookName, (entries) => entries.filter((entry) => {
+        const item = metadata(entry);
+        return item?.kind !== "summary_slice" || item.batch.source?.kind === "imported" || item.batch.batchNumber < batchNumber;
+      }));
+      const nextCatalog = {
+        ...state.catalog,
+        nextBatchNumber: batchNumber,
+        pendingRetrievalDeletes: [.../* @__PURE__ */ new Set([
+          ...state.catalog.pendingRetrievalDeletes,
+          ...removed.map((slice) => slice.id)
+        ])],
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      if (previous) nextCatalog.lastCommittedMessageId = previous.endMessageId;
+      else delete nextCatalog.lastCommittedMessageId;
+      await this.updateCatalog(worldbookName, nextCatalog);
+      return this.inspect(worldbookName);
+    });
+  }
+  clearPendingDeletes(worldbookName, deletedIds) {
+    const removed = new Set(deletedIds);
+    return this.updateState(worldbookName, (catalog) => ({
+      ...catalog,
+      pendingRetrievalDeletes: catalog.pendingRetrievalDeletes.filter((id2) => !removed.has(id2))
+    }));
+  }
+  updateState(worldbookName, updater) {
+    return this.serialize(worldbookName, async () => {
+      const state = await this.inspect(worldbookName);
+      const catalog = {
+        ...updater(structuredClone(state.catalog)),
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      await this.updateCatalog(worldbookName, catalog);
+      return this.inspect(worldbookName);
+    });
+  }
+  async updateCatalog(worldbookName, catalog) {
+    const parsed = summaryCatalogSchema.parse(catalog);
+    await helper().updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => {
+      const item = metadata(entry);
+      return item?.kind === "summary_catalog" ? { ...entry, ...catalogEntry(parsed) } : entry;
+    }));
+  }
+  serialize(worldbookName, operation) {
+    return worldbookWriteCoordinator.run(worldbookName, operation);
+  }
+};
+
+// src/shared/source-hash.ts
+async function sourceMessagesHash(messages2) {
+  const value = JSON.stringify(messages2.map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content })));
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+// src/extension/summary/preprocess-core.ts
+function expression(rule, forceGlobal = false) {
+  let flags = [...new Set(rule.flags)].join("");
+  if (forceGlobal && !flags.includes("g")) flags += "g";
+  return new RegExp(rule.pattern, flags);
+}
+function extract(text, rule) {
+  const matches = [...text.matchAll(expression(rule, true))];
+  const parts = matches.flatMap((match) => {
+    if (match.length <= 1) return match[0] ? [match[0].trim()] : [];
+    return match.slice(1).filter(Boolean).map((value) => value.trim());
+  });
+  return parts.filter(Boolean).join("\n");
+}
+function applySummaryPreprocess(messages2, rules) {
+  const ordered = [...rules].filter((rule) => rule.enabled).sort((left, right) => left.order - right.order || left.id.localeCompare(right.id));
+  return messages2.flatMap((message) => {
+    if (message.role !== "user" && message.role !== "assistant") return [message];
+    let content = message.content;
+    for (const rule of ordered) {
+      if (!rule.roles.includes(message.role)) continue;
+      if (rule.type === "extract") content = extract(content, rule);
+      else if (rule.type === "remove") content = content.replace(expression(rule), "");
+      else content = content.replace(expression(rule), rule.replacement);
+    }
+    content = content.trim();
+    return content ? [{ ...message, content }] : [];
+  });
+}
+
+// src/extension/summary/preprocess.ts
+function preprocessSummaryMessages(messages2, rules, timeoutMs = 2e3) {
+  if (rules.every((rule) => !rule.enabled)) return Promise.resolve(structuredClone(messages2));
+  if (typeof Worker === "undefined") return Promise.resolve(applySummaryPreprocess(messages2, rules));
+  const worker = new Worker(new URL("./summary-regex-worker.js", import.meta.url), { type: "module" });
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      worker.terminate();
+      reject(new Error("\u6D88\u606F\u6E05\u6D17\u89C4\u5219\u6267\u884C\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u6B63\u5219\u8868\u8FBE\u5F0F\u3002"));
+    }, timeoutMs);
+    worker.addEventListener("message", (event) => {
+      clearTimeout(timeout);
+      worker.terminate();
+      if (event.data.ok && event.data.messages) resolve(event.data.messages);
+      else reject(new Error(event.data.error ?? "\u6D88\u606F\u6E05\u6D17\u5931\u8D25\u3002"));
+    }, { once: true });
+    worker.addEventListener("error", (event) => {
+      clearTimeout(timeout);
+      worker.terminate();
+      reject(new Error(event.message || "\u6D88\u606F\u6E05\u6D17 Worker \u5931\u8D25\u3002"));
+    }, { once: true });
+    worker.postMessage({ messages: messages2, rules });
+  });
+}
+
+// src/extension/summary/summary-request.ts
+function currentChatMessages() {
+  const seen = /* @__PURE__ */ new Set();
+  return SillyTavern.getContext().chat.flatMap((message, index) => {
+    const content = String(message.mes ?? message.message ?? "").trim();
+    if (!content) return [];
+    const rawId = String(message.message_id ?? message.id ?? index);
+    const id2 = seen.has(rawId) ? `${rawId}:${index}` : rawId;
+    seen.add(id2);
+    return [{
+      id: id2,
+      role: message.is_user === true || message.role === "user" ? "user" : "assistant",
+      content
+    }];
+  });
+}
+async function summarySourceHash(messages2) {
+  return sourceMessagesHash(messages2);
+}
+async function automaticSummaryBatch(messages2, catalog, messageCount) {
+  const checkpointIndex = catalog.lastCommittedMessageId ? messages2.findIndex((message) => message.id === catalog.lastCommittedMessageId) : -1;
+  if (catalog.lastCommittedMessageId && checkpointIndex < 0) return null;
+  const start = checkpointIndex + 1;
+  const threshold = Math.max(2, Math.min(500, Math.floor(messageCount)));
+  if (messages2.length - start < threshold) return null;
+  const boundary = Math.min(messages2.length - 1, start + threshold - 1);
+  let end = -1;
+  for (let index = boundary; index >= start; index -= 1) {
+    if (messages2[index]?.role !== "assistant") continue;
+    if (!messages2.slice(index + 1).some((message) => message.role === "user")) continue;
+    end = index;
+    break;
+  }
+  if (end < start) return null;
+  const selected = messages2.slice(start, end + 1);
+  const batchNumber = catalog.nextBatchNumber;
+  return {
+    messages: selected,
+    batch: {
+      id: `summary_batch_${batchNumber}`,
+      batchNumber,
+      startMessageId: selected[0].id,
+      endMessageId: selected.at(-1).id,
+      messageIds: selected.map((message) => message.id),
+      sourceHash: await summarySourceHash(selected)
+    }
+  };
+}
+async function manualSummaryBatch(messages2, catalog, startIndex, endIndex, existingBatch) {
+  if (!Number.isInteger(startIndex) || !Number.isInteger(endIndex) || startIndex < 0 || endIndex < startIndex) {
+    throw new Error("\u624B\u52A8\u603B\u7ED3\u6D88\u606F\u8303\u56F4\u65E0\u6548\u3002");
+  }
+  const selected = messages2.slice(startIndex, endIndex + 1);
+  if (selected.length === 0 || selected.length > 500) throw new Error("\u624B\u52A8\u603B\u7ED3\u8303\u56F4\u5FC5\u987B\u5305\u542B 1 \u81F3 500 \u6761\u6D88\u606F\u3002");
+  const batchNumber = existingBatch?.batchNumber ?? catalog.nextBatchNumber;
+  return {
+    messages: selected,
+    batch: {
+      id: existingBatch?.id ?? `summary_batch_${batchNumber}`,
+      batchNumber,
+      startMessageId: selected[0].id,
+      endMessageId: selected.at(-1).id,
+      messageIds: selected.map((message) => message.id),
+      sourceHash: await summarySourceHash(selected)
+    }
+  };
+}
+function macro(value, charName, userName) {
+  return value.replaceAll("{{char}}", charName).replaceAll("{{user}}", userName);
+}
+function characterCardContent(character, charName) {
+  return [
+    ["Name", charName],
+    ["Description", character.description],
+    ["Personality", character.personality],
+    ["Scenario", character.scenario]
+  ].flatMap(([title, raw]) => {
+    const value = String(raw ?? "").trim();
+    return value ? [`${title}:
+${value}`] : [];
+  }).join("\n\n");
+}
+async function activatedWorldbookContent(messages2) {
+  const context = SillyTavern.getContext();
+  if (typeof context.getWorldInfoPrompt !== "function") {
+    throw new Error("SillyTavern does not expose the worldbook activation API required by this summary prompt.");
+  }
+  const result = await context.getWorldInfoPrompt(
+    messages2.map((message) => message.content),
+    Math.max(1, Math.floor(context.maxContext ?? 2e5)),
+    true
+  );
+  let content = String(result.worldInfoString ?? "").trim();
+  const helper6 = window.TavernHelper;
+  const worldbookName = helper6?.getChatWorldbookName("current");
+  if (content && helper6 && worldbookName) {
+    const entries = await helper6.getWorldbook(worldbookName);
+    for (const entry of entries) {
+      const kind = String(entry.extra?.echoes?.kind ?? "");
+      if ((kind === "status_injection" || kind === "retrieval_injection") && entry.content) {
+        content = content.replaceAll(entry.content, "");
+      }
+    }
+  }
+  return content.trim();
+}
+function renderPreviousSlice(slice) {
+  return `[${slice.timestamp}] [${slice.title}]
+${slice.content}`;
+}
+function previousSummaryContent(item, slices) {
+  if (item.count === 0) return "";
+  if ((item.unit ?? "slices") === "slices") {
+    return slices.slice(-item.count).map(renderPreviousSlice).join("\n\n");
+  }
+  const batchIds = [...new Map(slices.map((slice) => [slice.batch.id, slice.batch])).values()].sort((left, right) => left.batchNumber - right.batchNumber).slice(-item.count).map((batch) => batch.id);
+  const selected = new Set(batchIds);
+  const grouped = /* @__PURE__ */ new Map();
+  for (const slice of slices) {
+    if (!selected.has(slice.batch.id)) continue;
+    const batch = grouped.get(slice.batch.id) ?? [];
+    batch.push(slice);
+    grouped.set(slice.batch.id, batch);
+  }
+  return [...grouped.values()].map((batch) => {
+    const ordered = [...batch].sort((left, right) => left.sliceNumber - right.sliceNumber);
+    return `[Summary batch ${ordered[0].batch.batchNumber}]
+${ordered.map(renderPreviousSlice).join("\n\n")}`;
+  }).join("\n\n");
+}
+async function dynamicContent(item, cleanedMessages, previousSlices) {
+  const context = SillyTavern.getContext();
+  const character = context.characters?.[context.characterId ?? -1] ?? {};
+  const charName = String(character.name ?? "Character");
+  const userName = String(context.powerUserSettings?.persona_name ?? context.name1 ?? "User");
+  if (item.kind === "custom") return macro(item.content, charName, userName);
+  if (item.kind === "character") return characterCardContent(character, charName);
+  if (item.kind === "worldbook") return activatedWorldbookContent(cleanedMessages);
+  if (item.kind === "persona") {
+    const description = String(context.powerUserSettings?.persona_description ?? "").trim();
+    return description ? `${userName}:
+${description}` : "";
+  }
+  if (item.kind === "previous_summaries") return previousSummaryContent(item, previousSlices);
+  return cleanedMessages.map((message) => {
+    const name = message.role === "user" ? "Game Master / World" : charName;
+    return `[${message.id}] ${name}: ${message.content}`;
+  }).join("\n\n");
+}
+async function prepareSummaryRequest(options) {
+  const cleanedMessages = await preprocessSummaryMessages(options.messages, options.settings.summary.preprocessRules);
+  if (cleanedMessages.length === 0) throw new Error("\u6D88\u606F\u6E05\u6D17\u540E\u6CA1\u6709\u53EF\u603B\u7ED3\u5185\u5BB9\u3002");
+  if (!options.settings.summary.promptPreset.items.some((item) => item.enabled && item.kind === "messages")) {
+    throw new Error("\u603B\u7ED3\u9884\u8BBE\u81F3\u5C11\u9700\u8981\u4E00\u4E2A\u542F\u7528\u7684\u5F85\u603B\u7ED3\u6D88\u606F\u9879\u3002");
+  }
+  const previousSlices = options.state.slices.filter((slice) => slice.batch.batchNumber < options.batch.batchNumber && slice.batch.state !== "stale");
+  const promptBlocks = [];
+  for (const item of options.settings.summary.promptPreset.items) {
+    if (!item.enabled) continue;
+    const content = (await dynamicContent(item, cleanedMessages, previousSlices)).trim();
+    if (content) promptBlocks.push({ id: item.id, title: item.title, role: item.role, content });
+  }
+  return {
+    batch: options.batch,
+    originalMessages: structuredClone(options.messages),
+    cleanedMessages,
+    promptBlocks,
+    promptMessages: promptBlocks.map(({ role: role2, content }) => ({ role: role2, content }))
+  };
+}
+async function firstStaleBatchNumber(state, messages2) {
+  const byId = new Map(messages2.map((message) => [message.id, message]));
+  const batches = [...new Map(state.slices.map((slice) => [slice.batch.id, slice.batch])).values()].sort((left, right) => left.batchNumber - right.batchNumber);
+  for (const batch of batches) {
+    if (batch.source?.kind === "imported") continue;
+    if (batch.state === "stale") return batch.batchNumber;
+    const current = batch.messageIds.map((id2) => byId.get(id2));
+    if (current.some((message) => !message)) return batch.batchNumber;
+    if (await summarySourceHash(current) !== batch.sourceHash) return batch.batchNumber;
+  }
+  return null;
+}
+
+// src/extension/summary/compression-coordinator.ts
+init_client();
+
+// src/extension/summary/compression-core.ts
+function uniqueBatches(slices) {
+  const grouped = /* @__PURE__ */ new Map();
+  for (const slice of slices) {
+    const current = grouped.get(slice.batch.id) ?? [];
+    current.push(slice);
+    grouped.set(slice.batch.id, current);
+  }
+  return [...grouped.values()].map((items) => ({
+    batch: items[0].batch,
+    slices: [...items].sort((left, right) => left.sliceNumber - right.sliceNumber)
+  }));
+}
+function exactMessageRange(messages2, batch) {
+  const startIndex = messages2.findIndex((message) => message.id === batch.startMessageId);
+  if (startIndex < 0) return null;
+  const selected = messages2.slice(startIndex, startIndex + batch.messageIds.length);
+  if (selected.length !== batch.messageIds.length || selected.some((message, index) => message.id !== batch.messageIds[index])) {
+    return null;
+  }
+  const endIndex = startIndex + selected.length - 1;
+  return messages2[endIndex]?.id === batch.endMessageId ? { startIndex, endIndex } : null;
+}
+function continuousSummaryCoverage(messages2, slices, lastCommittedMessageId) {
+  if (messages2.length === 0 || !lastCommittedMessageId) return [];
+  const committedIndex = messages2.findIndex((message) => message.id === lastCommittedMessageId);
+  if (committedIndex < 0) return [];
+  const candidates = uniqueBatches(slices).filter(({ batch }) => batch.state !== "stale" && batch.source?.kind !== "imported").flatMap(({ batch, slices: batchSlices }) => {
+    const range = exactMessageRange(messages2, batch);
+    return range && range.endIndex <= committedIndex ? [{ batch, slices: batchSlices, ...range }] : [];
+  });
+  const chain = [];
+  let expectedStart = 0;
+  let previousBatchNumber = 0;
+  while (expectedStart <= committedIndex) {
+    const next = candidates.filter((candidate) => candidate.startIndex === expectedStart && candidate.batch.batchNumber > previousBatchNumber).sort((left, right) => left.batch.batchNumber - right.batch.batchNumber || right.endIndex - left.endIndex)[0];
+    if (!next) break;
+    chain.push(next);
+    expectedStart = next.endIndex + 1;
+    previousBatchNumber = next.batch.batchNumber;
+    if (next.endIndex === committedIndex) break;
+  }
+  return chain;
+}
+function compressionPlan(messages2, slices, lastCommittedMessageId, keepRecentMessages) {
+  const chain = continuousSummaryCoverage(messages2, slices, lastCommittedMessageId);
+  const latestEnd = chain.at(-1)?.endIndex ?? -1;
+  const hideThroughIndex = latestEnd - Math.max(0, keepRecentMessages);
+  const coveredMessageIds = /* @__PURE__ */ new Set();
+  const batchByMessageId = /* @__PURE__ */ new Map();
+  for (const coverage of chain) {
+    for (const messageId of coverage.batch.messageIds) {
+      coveredMessageIds.add(messageId);
+      batchByMessageId.set(messageId, coverage.batch.id);
+    }
+  }
+  return { chain, hideThroughIndex, coveredMessageIds, batchByMessageId };
+}
+function recentSummaryBatches(slices, count) {
+  if (count <= 0) return [];
+  return uniqueBatches(slices).filter(({ batch }) => batch.state !== "stale" && batch.source?.kind !== "imported").sort((left, right) => left.batch.batchNumber - right.batch.batchNumber).slice(-count).map(({ batch, slices: batchSlices }) => ({
+    batch,
+    slices: batchSlices,
+    startIndex: -1,
+    endIndex: -1
+  }));
+}
+
+// src/extension/summary/retrieval-document.ts
+async function hashIdentifier(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+async function summaryRetrievalDocumentId(collectionId, sliceId) {
+  return `summary_doc_${(await hashIdentifier(`${collectionId}\0${sliceId}`)).slice(0, 48)}`;
+}
+function summaryRetrievalText(slice) {
+  return `[${slice.timestamp}] ${slice.title}
+${slice.content}`;
+}
+async function summaryRetrievalContentHash(slice) {
+  return hashIdentifier(summaryRetrievalText(slice));
+}
+async function summaryRetrievalDocument(collectionId, slice, chatId) {
+  return {
+    documentId: await summaryRetrievalDocumentId(collectionId, slice.id),
+    collectionId,
+    sourceType: "chat_summary",
+    sourceId: slice.id,
+    text: summaryRetrievalText(slice),
+    tags: slice.tags,
+    metadata: {
+      chatId,
+      batchId: slice.batch.id,
+      batchNumber: slice.batch.batchNumber,
+      sliceNumber: slice.sliceNumber,
+      startMessageId: slice.batch.startMessageId,
+      endMessageId: slice.batch.endMessageId,
+      messageIds: slice.batch.messageIds,
+      sourceHash: slice.batch.sourceHash,
+      revision: slice.batch.revision
+    }
+  };
+}
+
+// src/extension/chat/message-write-coordinator.ts
+var MessageWriteCoordinator = class {
+  chain = Promise.resolve();
+  run(operation) {
+    const result = this.chain.then(operation, operation);
+    this.chain = result.then(() => void 0, () => void 0);
+    return result;
+  }
+};
+var messageWriteCoordinator = new MessageWriteCoordinator();
+
+// src/extension/summary/compression-coordinator.ts
+function requiredHelper() {
+  if (!window.TavernHelper || typeof window.TavernHelper.getChatMessages !== "function" || typeof window.TavernHelper.setChatMessages !== "function") {
+    throw new Error("Echoes requires TavernHelper chat message APIs for compression.");
+  }
+  return window.TavernHelper;
+}
+function chatMessages(raw) {
+  return raw.flatMap((message) => {
+    const content = String(message.message ?? "").trim();
+    if (!content || message.role !== "user" && message.role !== "assistant") return [];
+    return [{
+      id: String(message.message_id),
+      role: message.role,
+      content
+    }];
+  });
+}
+function marker(message) {
+  const parsed = messageCompressionMarkerSchema.safeParse(
+    message.extra?.echoes?.compression
+  );
+  return parsed.success ? parsed.data : null;
+}
+function withMarker(message, value) {
+  return {
+    ...message.extra ?? {},
+    echoes: {
+      ...message.extra?.echoes ?? {},
+      compression: value
+    }
+  };
+}
+function nextMarker(message, namespaceId, batchId, changes) {
+  const current = marker(message);
+  const now3 = (/* @__PURE__ */ new Date()).toISOString();
+  return {
+    version: 1,
+    stableId: current?.stableId ?? `echoes_message_${crypto.randomUUID().replaceAll("-", "")}`,
+    namespaceId,
+    batchId,
+    hiddenByEchoes: current?.hiddenByEchoes ?? false,
+    pinnedVisible: current?.pinnedVisible ?? false,
+    updatedAt: now3,
+    ...changes
+  };
+}
+function uniqueBatches2(slices) {
+  return [...new Map(slices.map((slice) => [slice.batch.id, slice.batch])).values()];
+}
+var CompressionCoordinator = class {
+  constructor(store2 = new SummaryWorldbookStore()) {
+    this.store = store2;
+  }
+  store;
+  writing = false;
+  get isWriting() {
+    return this.writing;
+  }
+  inspect(state) {
+    return this.serialize(async () => this.statusFromSnapshot(await this.snapshot(state)));
+  }
+  reconcile(state) {
+    return this.serialize(async () => {
+      let snapshot = await this.snapshot(state);
+      if (await this.reconcileExternalUnhides(snapshot)) {
+        snapshot = await this.snapshot(snapshot.state);
+      }
+      if (!snapshot.state.catalog.recallEnabled || !snapshot.state.catalog.compression.enabled) {
+        return this.statusFromSnapshot(snapshot);
+      }
+      const safeEnd = this.safeCoverageEnd(snapshot.plan.chain, snapshot.safeBatchIds);
+      const targetEnd = Math.min(snapshot.plan.hideThroughIndex, safeEnd);
+      const messageIndexById = new Map(snapshot.messages.map((message, index) => [message.id, index]));
+      const updates = [];
+      for (const message of snapshot.raw) {
+        const id2 = String(message.message_id);
+        const index = messageIndexById.get(id2);
+        if (index === void 0) continue;
+        const item = marker(message);
+        const currentOwned = item?.namespaceId === snapshot.state.catalog.namespaceId;
+        const targetBatchId = snapshot.plan.batchByMessageId.get(id2);
+        const shouldHide = index <= targetEnd && Boolean(targetBatchId) && snapshot.safeBatchIds.has(targetBatchId) && !(currentOwned && item.pinnedVisible);
+        const shouldRestoreForCutoff = index > targetEnd && index <= safeEnd;
+        if (shouldHide && !message.is_hidden) {
+          const compression2 = nextMarker(
+            message,
+            snapshot.state.catalog.namespaceId,
+            targetBatchId,
+            {
+              hiddenByEchoes: true,
+              pinnedVisible: false,
+              hiddenAt: (/* @__PURE__ */ new Date()).toISOString()
+            }
+          );
+          updates.push({
+            message_id: message.message_id,
+            is_hidden: true,
+            extra: withMarker(message, compression2)
+          });
+        } else if (shouldRestoreForCutoff && message.is_hidden && currentOwned && item.hiddenByEchoes && snapshot.plan.coveredMessageIds.has(id2) && snapshot.plan.chain.some((coverage) => coverage.batch.id === item.batchId)) {
+          const compression2 = nextMarker(
+            message,
+            snapshot.state.catalog.namespaceId,
+            item.batchId,
+            { hiddenByEchoes: false }
+          );
+          updates.push({
+            message_id: message.message_id,
+            is_hidden: false,
+            extra: withMarker(message, compression2)
+          });
+        }
+      }
+      await this.apply(snapshot.state, updates);
+      return this.statusFromSnapshot(await this.snapshot(snapshot.state));
+    });
+  }
+  restoreBatch(state, batchIds, pinVisible = true) {
+    return this.restore(state, (message, item, plan) => {
+      const batchId = item?.batchId ?? plan.batchByMessageId.get(String(message.message_id));
+      return Boolean(batchId && batchIds.includes(batchId));
+    }, pinVisible);
+  }
+  restoreRange(state, startMessageId, endMessageId, pinVisible = true) {
+    const start = Math.min(startMessageId, endMessageId);
+    const end = Math.max(startMessageId, endMessageId);
+    return this.restore(
+      state,
+      (message) => message.message_id >= start && message.message_id <= end,
+      pinVisible
+    );
+  }
+  restoreAll(state, pinVisible = true) {
+    return this.restore(state, (_message, item) => Boolean(item?.hiddenByEchoes), pinVisible, true);
+  }
+  recompressBatch(state, batchIds) {
+    return this.serialize(async () => {
+      const snapshot = await this.snapshot(state);
+      const updates = [];
+      for (const message of snapshot.raw) {
+        const item = marker(message);
+        const batchId = item?.batchId ?? snapshot.plan.batchByMessageId.get(String(message.message_id));
+        if (!batchId || !batchIds.includes(batchId) || !item?.pinnedVisible) continue;
+        const compression2 = nextMarker(
+          message,
+          state.catalog.namespaceId,
+          batchId,
+          { pinnedVisible: false }
+        );
+        updates.push({ message_id: message.message_id, extra: withMarker(message, compression2) });
+      }
+      await this.apply(state, updates);
+      return this.reconcileUnlocked(state);
+    });
+  }
+  hiddenCountForBatches(state, batchIds) {
+    return this.serialize(async () => {
+      const snapshot = await this.snapshot(state);
+      return snapshot.raw.filter((message) => {
+        const item = marker(message);
+        return message.is_hidden && item?.hiddenByEchoes && batchIds.includes(item.batchId);
+      }).length;
+    });
+  }
+  restore(state, matches, pinVisible, includeOtherNamespaces = false) {
+    return this.serialize(async () => {
+      const snapshot = await this.snapshot(state);
+      const updates = [];
+      for (const message of snapshot.raw) {
+        const item = marker(message);
+        const batchId = item?.batchId ?? snapshot.plan.batchByMessageId.get(String(message.message_id));
+        if (!batchId || !matches(message, item, snapshot.plan)) continue;
+        if (item && !includeOtherNamespaces && item.namespaceId !== state.catalog.namespaceId) continue;
+        const owned = Boolean(item?.hiddenByEchoes);
+        const covered = snapshot.plan.coveredMessageIds.has(String(message.message_id));
+        if (!owned && !covered) continue;
+        const compression2 = nextMarker(
+          message,
+          state.catalog.namespaceId,
+          batchId,
+          {
+            hiddenByEchoes: false,
+            pinnedVisible: pinVisible
+          }
+        );
+        updates.push({
+          message_id: message.message_id,
+          ...owned && message.is_hidden ? { is_hidden: false } : {},
+          extra: withMarker(message, compression2)
+        });
+      }
+      await this.apply(state, updates);
+      return this.statusFromSnapshot(await this.snapshot(state));
+    });
+  }
+  async reconcileExternalUnhides(snapshot) {
+    const updates = [];
+    for (const message of snapshot.raw) {
+      const item = marker(message);
+      if (!item || item.namespaceId !== snapshot.state.catalog.namespaceId || !item.hiddenByEchoes || message.is_hidden) continue;
+      const compression2 = nextMarker(
+        message,
+        item.namespaceId,
+        item.batchId,
+        { hiddenByEchoes: false, pinnedVisible: true }
+      );
+      updates.push({ message_id: message.message_id, extra: withMarker(message, compression2) });
+    }
+    await this.apply(snapshot.state, updates);
+    return updates.length > 0;
+  }
+  async reconcileUnlocked(state) {
+    const snapshot = await this.snapshot(state);
+    if (!state.catalog.recallEnabled || !state.catalog.compression.enabled) {
+      return this.statusFromSnapshot(snapshot);
+    }
+    const safeEnd = this.safeCoverageEnd(snapshot.plan.chain, snapshot.safeBatchIds);
+    const targetEnd = Math.min(snapshot.plan.hideThroughIndex, safeEnd);
+    const messageIndexById = new Map(snapshot.messages.map((message, index) => [message.id, index]));
+    const updates = [];
+    for (const message of snapshot.raw) {
+      const index = messageIndexById.get(String(message.message_id));
+      if (index === void 0) continue;
+      const item = marker(message);
+      const batchId = snapshot.plan.batchByMessageId.get(String(message.message_id));
+      if (index > targetEnd || !batchId || !snapshot.safeBatchIds.has(batchId) || item?.pinnedVisible || message.is_hidden) continue;
+      const compression2 = nextMarker(message, state.catalog.namespaceId, batchId, {
+        hiddenByEchoes: true,
+        pinnedVisible: false,
+        hiddenAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+      updates.push({
+        message_id: message.message_id,
+        is_hidden: true,
+        extra: withMarker(message, compression2)
+      });
+    }
+    await this.apply(state, updates);
+    return this.statusFromSnapshot(await this.snapshot(state));
+  }
+  async snapshot(state) {
+    const current = state ?? await this.store.load();
+    this.assertCurrent(current);
+    const raw = requiredHelper().getChatMessages("0-{{lastMessageId}}", {
+      include_swipes: false,
+      hide_state: "all"
+    });
+    const messages2 = chatMessages(raw);
+    const plan = compressionPlan(
+      messages2,
+      current.slices,
+      current.catalog.lastCommittedMessageId,
+      current.catalog.compression.keepRecentMessages
+    );
+    let safeBatchIds = /* @__PURE__ */ new Set();
+    let unsafeBatchIds = plan.chain.map((coverage) => coverage.batch.id);
+    try {
+      ({ safeBatchIds, unsafeBatchIds } = await this.indexSafety(current, plan.chain));
+    } catch {
+    }
+    return { raw, messages: messages2, state: current, plan, safeBatchIds, unsafeBatchIds };
+  }
+  async indexSafety(state, chain) {
+    const collectionId = state.catalog.retrievalCollectionId;
+    if (!collectionId) {
+      return {
+        safeBatchIds: /* @__PURE__ */ new Set(),
+        unsafeBatchIds: chain.map((coverage) => coverage.batch.id)
+      };
+    }
+    const expected = await Promise.all(chain.flatMap((coverage) => coverage.slices.map(async (slice) => ({
+      batchId: coverage.batch.id,
+      documentId: await summaryRetrievalDocumentId(collectionId, slice.id),
+      contentHash: await summaryRetrievalContentHash(slice)
+    }))));
+    const statuses = [];
+    for (let offset = 0; offset < expected.length; offset += 100) {
+      const page = expected.slice(offset, offset + 100);
+      const result = await echoesApi.retrievalDocumentStatus(page.map((item) => item.documentId));
+      statuses.push(...result.documents);
+    }
+    const byId = new Map(statuses.map((item) => [item.documentId, item]));
+    const safeBatchIds = /* @__PURE__ */ new Set();
+    const unsafeBatchIds = [];
+    for (const coverage of chain) {
+      const batchExpected = expected.filter((item) => item.batchId === coverage.batch.id);
+      const safe = batchExpected.length > 0 && batchExpected.every((item) => {
+        const status = byId.get(item.documentId);
+        return status?.collectionId === collectionId && status.contentHash === item.contentHash;
+      });
+      if (safe) safeBatchIds.add(coverage.batch.id);
+      else unsafeBatchIds.push(coverage.batch.id);
+    }
+    return { safeBatchIds, unsafeBatchIds };
+  }
+  safeCoverageEnd(chain, safeBatchIds) {
+    let end = -1;
+    for (const coverage of chain) {
+      if (!safeBatchIds.has(coverage.batch.id)) break;
+      end = coverage.endIndex;
+    }
+    return end;
+  }
+  statusFromSnapshot(snapshot) {
+    const active = snapshot.state.catalog.recallEnabled && snapshot.state.catalog.compression.enabled;
+    const batchStatus = snapshot.plan.chain.map((coverage) => {
+      const messageIds = new Set(coverage.batch.messageIds);
+      const messages2 = snapshot.raw.filter((message) => messageIds.has(String(message.message_id)));
+      return {
+        batchId: coverage.batch.id,
+        batchNumber: coverage.batch.batchNumber,
+        covered: messages2.length,
+        hidden: messages2.filter((message) => {
+          const item = marker(message);
+          return message.is_hidden && item?.hiddenByEchoes;
+        }).length,
+        pinned: messages2.filter((message) => marker(message)?.pinnedVisible).length,
+        indexSafe: snapshot.safeBatchIds.has(coverage.batch.id)
+      };
+    });
+    const safeEnd = this.safeCoverageEnd(snapshot.plan.chain, snapshot.safeBatchIds);
+    const targetEnd = Math.min(snapshot.plan.hideThroughIndex, safeEnd);
+    const messageIndexById = new Map(snapshot.messages.map((message, index) => [message.id, index]));
+    const hidden = snapshot.raw.filter((message) => {
+      const item = marker(message);
+      return message.is_hidden && item?.hiddenByEchoes;
+    }).length;
+    const pinned = snapshot.raw.filter((message) => marker(message)?.pinnedVisible).length;
+    const compressible = active ? snapshot.raw.filter((message) => {
+      const index = messageIndexById.get(String(message.message_id));
+      const item = marker(message);
+      const batchId = snapshot.plan.batchByMessageId.get(String(message.message_id));
+      return index !== void 0 && index <= targetEnd && Boolean(batchId) && !message.is_hidden && !item?.pinnedVisible;
+    }).length : 0;
+    return {
+      active,
+      hidden,
+      pinned,
+      compressible,
+      indexSafe: snapshot.unsafeBatchIds.length === 0,
+      unsafeBatchIds: snapshot.unsafeBatchIds,
+      staleBatchNumbers: uniqueBatches2(snapshot.state.slices).filter((batch) => batch.state === "stale").map((batch) => batch.batchNumber),
+      batches: batchStatus,
+      messageCount: snapshot.messages.length,
+      ...targetEnd >= 0 ? { hideThroughMessageId: snapshot.messages[targetEnd]?.id } : {}
+    };
+  }
+  async apply(state, updates) {
+    if (updates.length === 0) return;
+    this.assertCurrent(state);
+    this.writing = true;
+    try {
+      await requiredHelper().setChatMessages(updates, { refresh: "affected" });
+    } finally {
+      this.writing = false;
+    }
+    this.assertCurrent(state);
+  }
+  assertCurrent(state) {
+    if (SillyTavern.getContext().chatId !== state.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) {
+      throw new Error("The active chat changed while Echoes was updating compression.");
+    }
+  }
+  serialize(operation) {
+    return messageWriteCoordinator.run(operation);
+  }
+};
+var compressionCoordinator = new CompressionCoordinator();
+
+// src/extension/summary/summary-coordinator.ts
+var TERMINAL_STATES = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
+function abortable(promise2, signal) {
+  if (!signal) return promise2;
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new DOMException("Summary stopped.", "AbortError"));
+    signal.addEventListener("abort", abort, { once: true });
+    void promise2.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+    if (signal.aborted) abort();
+  });
+}
+async function hashIdentifier2(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+async function waitForJob(job, signal) {
+  const deadline = Date.now() + 2 * 60 * 6e4;
+  let current = job;
+  while (!TERMINAL_STATES.has(current.status) && Date.now() < deadline) {
+    await abortable(new Promise((resolve) => setTimeout(resolve, 1e3)), signal);
+    current = await abortable(echoesApi.getJob(current.id), signal);
+  }
+  if (!TERMINAL_STATES.has(current.status)) throw new Error("\u7B49\u5F85\u540E\u53F0\u4EFB\u52A1\u8D85\u65F6\u3002");
+  if (current.status !== "succeeded" || !current.result) {
+    throw new Error(current.error?.message ?? current.message);
+  }
+  return current;
+}
+function defaultDecision(decision) {
+  if (!decision.nextEndpointId) return Promise.resolve(false);
+  return Promise.resolve(window.confirm(
+    `${decision.message}
+
+\u7EE7\u7EED\u4F1A\u5411\u4E0B\u4E00\u4E2A\u7AEF\u70B9\u521B\u5EFA\u65B0\u8BF7\u6C42\uFF0C\u5E76\u53EF\u80FD\u4EA7\u751F\u91CD\u590D\u8BA1\u8D39\u3002\u662F\u5426\u7EE7\u7EED\uFF1F`
+  ));
+}
+var SummaryCoordinator = class {
+  store = new SummaryWorldbookStore();
+  compression = new CompressionCoordinator(this.store);
+  activeRuns = /* @__PURE__ */ new Map();
+  rerunAutomatic = /* @__PURE__ */ new Set();
+  controls = /* @__PURE__ */ new Map();
+  pausedAutomatic = /* @__PURE__ */ new Set();
+  isRunning(chatId = SillyTavern.getContext().chatId) {
+    return Boolean(chatId && this.activeRuns.has(chatId));
+  }
+  startRun(chatId, work, decide) {
+    const control = new AbortController();
+    this.controls.set(chatId, control);
+    const operation = work(control.signal).catch((error51) => {
+      this.rerunAutomatic.delete(chatId);
+      if (control.signal.aborted) return null;
+      this.pausedAutomatic.add(chatId);
+      throw error51;
+    }).finally(() => {
+      if (this.controls.get(chatId) === control) this.controls.delete(chatId);
+      this.finishRun(chatId, operation, decide);
+    });
+    this.activeRuns.set(chatId, operation);
+    return operation;
+  }
+  async trackedJob(chatId, start, signal) {
+    signal.throwIfAborted();
+    let job;
+    let cancellationSent = false;
+    const cancel = () => {
+      if (!job || cancellationSent || TERMINAL_STATES.has(job.status)) return;
+      cancellationSent = true;
+      void echoesApi.cancelJob(job.id).catch((error51) => {
+        console.error("[Echoes] Failed to cancel summary job.", error51);
+      });
+    };
+    signal.addEventListener("abort", cancel, { once: true });
+    try {
+      const accepted = start().then((value) => {
+        job = value;
+        if (signal.aborted) cancel();
+        return value;
+      });
+      return await waitForJob(await abortable(accepted, signal), signal);
+    } finally {
+      signal.removeEventListener("abort", cancel);
+    }
+  }
+  async stop() {
+    return this.setAutoRun(false);
+  }
+  load() {
+    return this.store.load();
+  }
+  async checkIntegrity(currentState) {
+    const state = currentState ?? await this.load();
+    if (SillyTavern.getContext().chatId !== state.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) {
+      return state;
+    }
+    const stale = await firstStaleBatchNumber(state, currentChatMessages());
+    if (SillyTavern.getContext().chatId !== state.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) {
+      return state;
+    }
+    if (stale === null || state.slices.every((slice) => slice.batch.batchNumber < stale || slice.batch.state === "stale")) return state;
+    const activeBatches = [...new Map(state.slices.filter((slice) => slice.batch.state !== "stale" && slice.batch.source?.kind !== "imported").map((slice) => [slice.batch.id, slice.batch])).values()];
+    const checkpointBatchNumbers = activeBatches.filter((batch) => batch.endMessageId === state.catalog.lastCommittedMessageId).map((batch) => batch.batchNumber);
+    const latestCommittedBatchNumber = checkpointBatchNumbers.length > 0 ? Math.min(...checkpointBatchNumbers) : Math.max(0, ...activeBatches.map((batch) => batch.batchNumber));
+    if (stale === latestCommittedBatchNumber) {
+      const batchIds = [...new Set(state.slices.filter((slice) => slice.batch.batchNumber === stale).map((slice) => slice.batch.id))];
+      await this.compression.restoreBatch(state, batchIds, false);
+      const reset = await this.store.resetFrom(state.worldbookName, stale);
+      try {
+        return await this.syncSlices(reset, [], reset.catalog.pendingRetrievalDeletes);
+      } catch {
+        return this.store.inspect(reset.worldbookName);
+      }
+    }
+    const marked = await this.store.markStaleFrom(state.worldbookName, stale);
+    try {
+      return await this.syncSlices(marked, [], marked.catalog.pendingRetrievalDeletes);
+    } catch {
+      return this.store.inspect(marked.worldbookName);
+    }
+  }
+  async setAutoRun(enabled) {
+    const chatId = SillyTavern.getContext().chatId;
+    if (!chatId) throw new Error("Open a SillyTavern chat before changing summary automation.");
+    if (!enabled) {
+      this.pausedAutomatic.add(chatId);
+      this.rerunAutomatic.delete(chatId);
+      this.controls.get(chatId)?.abort();
+    }
+    const state = await this.load();
+    if (state.catalog.chatId !== chatId) throw new Error("The active chat changed.");
+    const updated = await this.store.setAutoRun(state.worldbookName, enabled);
+    if (enabled) this.pausedAutomatic.delete(chatId);
+    return updated;
+  }
+  async setRecallEnabled(enabled) {
+    const state = await this.load();
+    return this.store.saveRecallConfiguration(state.worldbookName, {
+      enabled,
+      weight: state.catalog.recallSourceWeight,
+      order: state.catalog.recallSourceOrder,
+      attachedSources: state.catalog.attachedRecallSources
+    });
+  }
+  async saveCompression(compression2) {
+    const state = await this.load();
+    const updated = await this.store.saveCompressionConfiguration(
+      state.worldbookName,
+      compression2
+    );
+    const status = await this.compression.reconcile(updated);
+    return { state: updated, status };
+  }
+  runAutomatic(decide = defaultDecision) {
+    const lockedChatId = SillyTavern.getContext().chatId;
+    if (!lockedChatId || this.pausedAutomatic.has(lockedChatId)) return Promise.resolve(null);
+    const existing = this.activeRuns.get(lockedChatId);
+    if (existing) {
+      this.rerunAutomatic.add(lockedChatId);
+      return existing;
+    }
+    return this.startRun(
+      lockedChatId,
+      (signal) => this.performAutomatic(lockedChatId, decide, signal),
+      decide
+    );
+  }
+  async performAutomatic(lockedChatId, decide, signal) {
+    if (SillyTavern.getContext().chatId !== lockedChatId) return null;
+    let state = await this.checkIntegrity();
+    if (state.catalog.chatId !== lockedChatId) {
+      throw new Error("The summary catalog does not belong to the locked chat.");
+    }
+    if (state.slices.some((slice) => slice.batch.state === "stale" && slice.batch.source?.kind !== "imported")) return state;
+    if (!state.catalog.autoRun) {
+      await this.compression.reconcile(state);
+      return state;
+    }
+    while (SillyTavern.getContext().chatId === lockedChatId) {
+      signal.throwIfAborted();
+      state = await this.store.inspect(state.worldbookName);
+      if (!state.catalog.autoRun || this.pausedAutomatic.has(lockedChatId)) break;
+      const candidate = await automaticSummaryBatch(
+        currentChatMessages(),
+        state.catalog,
+        getSettings().summary.messageCount
+      );
+      if (!candidate) break;
+      const next = await this.generate(
+        state,
+        candidate.batch,
+        candidate.messages,
+        decide,
+        true,
+        "create",
+        signal
+      );
+      if (!next) {
+        this.pausedAutomatic.add(lockedChatId);
+        this.rerunAutomatic.delete(lockedChatId);
+        break;
+      }
+      state = next;
+    }
+    await this.compression.reconcile(state);
+    return state;
+  }
+  runManual(startIndex, endIndex, decide = defaultDecision) {
+    const lockedChatId = SillyTavern.getContext().chatId;
+    if (!lockedChatId) return Promise.resolve(null);
+    if (this.activeRuns.has(lockedChatId)) {
+      return Promise.reject(new Error("This chat already has a summary task running."));
+    }
+    return this.startRun(
+      lockedChatId,
+      (signal) => this.performManual(lockedChatId, startIndex, endIndex, decide, signal),
+      defaultDecision
+    );
+  }
+  async performManual(lockedChatId, startIndex, endIndex, decide, signal) {
+    if (SillyTavern.getContext().chatId !== lockedChatId) return null;
+    const state = await this.checkIntegrity();
+    if (state.catalog.chatId !== lockedChatId) {
+      throw new Error("The summary catalog does not belong to the locked chat.");
+    }
+    const messages2 = currentChatMessages();
+    const candidate = await manualSummaryBatch(
+      messages2,
+      state.catalog,
+      startIndex,
+      endIndex
+    );
+    const checkpointIndex = state.catalog.lastCommittedMessageId ? messages2.findIndex((message) => message.id === state.catalog.lastCommittedMessageId) : -1;
+    const advancesCheckpoint = startIndex === checkpointIndex + 1;
+    return this.generate(
+      state,
+      candidate.batch,
+      candidate.messages,
+      decide,
+      advancesCheckpoint,
+      "create",
+      signal
+    );
+  }
+  rebuildBatch(batchNumber, decide = defaultDecision) {
+    const lockedChatId = SillyTavern.getContext().chatId;
+    if (!lockedChatId) return Promise.resolve(null);
+    if (this.activeRuns.has(lockedChatId)) {
+      return Promise.reject(new Error("This chat already has a summary task running."));
+    }
+    return this.startRun(
+      lockedChatId,
+      (signal) => this.performRebuild(lockedChatId, batchNumber, decide, signal),
+      defaultDecision
+    );
+  }
+  async performRebuild(lockedChatId, batchNumber, decide, signal) {
+    if (SillyTavern.getContext().chatId !== lockedChatId) return null;
+    const state = await this.load();
+    if (state.catalog.chatId !== lockedChatId) {
+      throw new Error("The summary catalog does not belong to the locked chat.");
+    }
+    const existing = state.slices.find((slice) => slice.batch.batchNumber === batchNumber)?.batch;
+    if (!existing) throw new Error("\u603B\u7ED3\u6279\u6B21\u4E0D\u5B58\u5728\u3002");
+    const messages2 = currentChatMessages();
+    const start = messages2.findIndex((message) => message.id === existing.startMessageId);
+    const end = messages2.findIndex((message) => message.id === existing.endMessageId);
+    if (start < 0 || end < start) throw new Error("\u539F\u6D88\u606F\u8303\u56F4\u5DF2\u4E0D\u5B58\u5728\uFF0C\u8BF7\u4ECE\u8BE5\u6279\u6B21\u91CD\u7F6E\u540E\u91CD\u65B0\u603B\u7ED3\u3002");
+    const candidate = await manualSummaryBatch(messages2, state.catalog, start, end, existing);
+    return this.generate(state, candidate.batch, candidate.messages, decide, false, "rebuild", signal);
+  }
+  async previewManual(startIndex, endIndex) {
+    const state = await this.load();
+    const candidate = await manualSummaryBatch(
+      currentChatMessages(),
+      state.catalog,
+      startIndex,
+      endIndex
+    );
+    return prepareSummaryRequest({
+      batch: candidate.batch,
+      messages: candidate.messages,
+      state,
+      settings: getSettings()
+    });
+  }
+  async editSlice(sliceId, candidate) {
+    const state = await this.load();
+    const updated = await this.store.saveSlice(state.worldbookName, sliceId, candidate);
+    const slice = updated.slices.find((item) => item.id === sliceId);
+    if (!slice) throw new Error("\u603B\u7ED3\u5207\u7247\u4E0D\u5B58\u5728\u3002");
+    const synced = await this.syncSlices(updated, [slice], updated.catalog.pendingRetrievalDeletes);
+    await this.compression.reconcile(synced);
+    return synced;
+  }
+  async deleteSlice(sliceId) {
+    return this.deleteSlices([sliceId]);
+  }
+  async deleteSlices(sliceIds) {
+    const state = await this.load();
+    const updated = await this.store.deleteSlices(state.worldbookName, sliceIds);
+    return this.syncSlices(updated, [], updated.catalog.pendingRetrievalDeletes);
+  }
+  async setNextBatchNumber(batchNumber) {
+    const state = await this.load();
+    return this.store.setNextBatchNumber(state.worldbookName, batchNumber);
+  }
+  async resetFrom(batchNumber) {
+    const state = await this.load();
+    const updated = await this.store.resetFrom(state.worldbookName, batchNumber);
+    return this.syncSlices(updated, [], updated.catalog.pendingRetrievalDeletes);
+  }
+  async repairIndex(decide = defaultDecision) {
+    const chatId = SillyTavern.getContext().chatId;
+    let state = await this.load();
+    if (chatId && state.catalog.chatId === chatId) this.pausedAutomatic.delete(chatId);
+    const active = state.slices.filter((slice) => slice.batch.state !== "stale");
+    if (active.length === 0 && state.catalog.pendingRetrievalDeletes.length > 0) {
+      return this.syncSlices(state, [], state.catalog.pendingRetrievalDeletes, decide);
+    }
+    for (let offset = 0; offset < active.length; offset += 50) {
+      state = await this.syncSlices(
+        state,
+        active.slice(offset, offset + 50),
+        offset === 0 ? state.catalog.pendingRetrievalDeletes : [],
+        decide
+      );
+    }
+    await this.compression.reconcile(state);
+    return state;
+  }
+  async generate(state, batch, messages2, decide, advanceCheckpoint, writeMode, signal) {
+    const settings = getSettings();
+    const workflow = settings.generationWorkflows.summary;
+    const group = settings.generationGroups.find((candidate) => candidate.id === workflow.groupId);
+    if (!group) throw new Error("\u8BF7\u5148\u914D\u7F6E\u603B\u7ED3\u751F\u6210\u7AEF\u70B9\u7EC4\u3002");
+    const prepared = await prepareSummaryRequest({ batch, messages: messages2, state, settings });
+    let resumeAfterEndpointId;
+    let result;
+    while (true) {
+      signal.throwIfAborted();
+      const request = {
+        chatId: state.catalog.chatId,
+        batch,
+        messages: prepared.originalMessages,
+        promptMessages: prepared.promptMessages,
+        generationGroup: group,
+        failoverPolicy: workflow.failoverPolicy,
+        ...resumeAfterEndpointId ? { resumeAfterEndpointId } : {}
+      };
+      result = (await this.trackedJob(
+        state.catalog.chatId,
+        () => echoesApi.startSummary(request),
+        signal
+      )).result;
+      if (!result.decisionRequired) break;
+      if (!await abortable(decide(result.decisionRequired), signal)) return null;
+      resumeAfterEndpointId = result.decisionRequired.failedEndpointId;
+    }
+    if (result.outcome !== "completed" || result.slices.length === 0) return null;
+    await this.assertCurrentSourceUnchanged(state, batch);
+    signal.throwIfAborted();
+    const existingBatch = writeMode === "rebuild" ? state.slices.find((slice) => slice.batch.id === batch.id)?.batch : void 0;
+    const committed = await this.store.commitBatch({
+      worldbookName: state.worldbookName,
+      catalog: state.catalog,
+      batch,
+      candidates: result.slices,
+      writeMode,
+      advanceCheckpoint,
+      expectedCheckpoint: state.catalog.lastCommittedMessageId ?? null,
+      expectedNextBatchNumber: state.catalog.nextBatchNumber,
+      expectedBatchRevision: existingBatch?.revision ?? null,
+      signal
+    });
+    const slices = committed.slices.filter((slice) => slice.batch.id === batch.id);
+    const synced = await this.syncSlices(
+      committed,
+      slices,
+      committed.catalog.pendingRetrievalDeletes,
+      decide,
+      signal
+    );
+    signal.throwIfAborted();
+    await this.compression.reconcile(synced);
+    return synced;
+  }
+  async assertCurrentSourceUnchanged(state, batch) {
+    if (SillyTavern.getContext().chatId !== state.catalog.chatId) return;
+    const current = currentChatMessages();
+    const start = current.findIndex((message) => message.id === batch.startMessageId);
+    const end = current.findIndex((message) => message.id === batch.endMessageId);
+    const selected = start >= 0 && end >= start ? current.slice(start, end + 1) : [];
+    if (selected.length !== batch.messageIds.length || selected.some((message, index) => message.id !== batch.messageIds[index]) || await summarySourceHash(selected) !== batch.sourceHash) {
+      throw new Error("The summary source messages changed while the generation task was running.");
+    }
+  }
+  finishRun(chatId, operation, decide) {
+    if (this.activeRuns.get(chatId) === operation) this.activeRuns.delete(chatId);
+    if (!this.rerunAutomatic.delete(chatId) || this.pausedAutomatic.has(chatId) || SillyTavern.getContext().chatId !== chatId) return;
+    queueMicrotask(() => {
+      void this.runAutomatic(decide).catch((error51) => {
+        console.error("[Echoes] Deferred summary automation failed.", error51);
+      });
+    });
+  }
+  async syncSlices(initialState, slices, deletedSliceIds, decide = defaultDecision, signal) {
+    const settings = getSettings();
+    const embeddingGroup = settings.retrieval.embeddingGroups.find((group) => group.id === settings.summary.embeddingGroupId);
+    if (!embeddingGroup) {
+      let state2 = initialState;
+      if (state2.catalog.retrievalCollectionId) {
+        for (let offset = 0; offset < deletedSliceIds.length; offset += 1e3) {
+          const sliceIds = deletedSliceIds.slice(offset, offset + 1e3);
+          const deleteDocumentIds2 = await Promise.all(sliceIds.map((id2) => summaryRetrievalDocumentId(state2.catalog.retrievalCollectionId, id2)));
+          await (signal ? this.trackedJob(state2.catalog.chatId, () => echoesApi.syncRetrievalDocuments({
+            documents: [],
+            deleteDocumentIds: deleteDocumentIds2,
+            failoverPolicy: settings.retrieval.failoverPolicy
+          }), signal) : waitForJob(await echoesApi.syncRetrievalDocuments({
+            documents: [],
+            deleteDocumentIds: deleteDocumentIds2,
+            failoverPolicy: settings.retrieval.failoverPolicy
+          })));
+          state2 = await this.store.clearPendingDeletes(state2.worldbookName, sliceIds);
+        }
+      }
+      for (const slice of slices) {
+        state2 = await this.store.markBatchState(state2.worldbookName, slice.batch.id, "pending", [slice.id]);
+      }
+      return state2;
+    }
+    const previousCollectionId = initialState.catalog.retrievalCollectionId;
+    let state = await this.ensureCollection(initialState, embeddingGroup.id);
+    const collectionId = state.catalog.retrievalCollectionId;
+    const collectionChanged = collectionId !== previousCollectionId;
+    const targetSlices = collectionChanged ? state.slices.filter((slice) => slice.batch.state !== "stale") : slices;
+    if (targetSlices.length > 100 || deletedSliceIds.length > 1e3) {
+      const batches = Math.max(
+        Math.ceil(targetSlices.length / 100),
+        Math.ceil(deletedSliceIds.length / 1e3)
+      );
+      for (let index = 0; index < batches; index += 1) {
+        state = await this.syncSlices(
+          state,
+          targetSlices.slice(index * 100, (index + 1) * 100),
+          deletedSliceIds.slice(index * 1e3, (index + 1) * 1e3),
+          decide,
+          signal
+        );
+      }
+      return state;
+    }
+    const documents = await Promise.all(targetSlices.map((slice) => summaryRetrievalDocument(collectionId, slice, state.catalog.chatId)));
+    const deleteDocumentIds = await Promise.all(deletedSliceIds.map((id2) => summaryRetrievalDocumentId(collectionId, id2)));
+    let resumeAfterEndpointId;
+    let result;
+    try {
+      while (true) {
+        const start = () => echoesApi.syncRetrievalDocuments({
+          documents,
+          deleteDocumentIds,
+          embeddingGroup,
+          failoverPolicy: settings.retrieval.failoverPolicy,
+          embeddingBatchSize: settings.summary.embeddingBatchSize,
+          ...resumeAfterEndpointId ? { resumeAfterEndpointId } : {}
+        });
+        result = (await (signal ? this.trackedJob(state.catalog.chatId, start, signal) : waitForJob(await start()))).result;
+        if (!result.decisionRequired) break;
+        if (!await abortable(decide(result.decisionRequired), signal)) break;
+        resumeAfterEndpointId = result.decisionRequired.failedEndpointId;
+      }
+    } catch (error51) {
+      if (signal?.aborted) throw error51;
+      for (const slice of targetSlices) {
+        state = await this.store.markBatchState(state.worldbookName, slice.batch.id, "failed", [slice.id]);
+      }
+      throw error51;
+    }
+    if (documents.length > 0) {
+      const statuses = await echoesApi.retrievalDocumentStatus(documents.map((document2) => document2.documentId));
+      const stateByDocumentId = new Map(statuses.documents.map((document2) => [document2.documentId, document2.vectorState]));
+      const documentIdBySliceId = new Map(targetSlices.map((slice, index) => [slice.id, documents[index].documentId]));
+      for (const slice of targetSlices) {
+        const vectorState = stateByDocumentId.get(documentIdBySliceId.get(slice.id));
+        const syncState = vectorState ?? "pending";
+        state = await this.store.markBatchState(state.worldbookName, slice.batch.id, syncState, [slice.id]);
+      }
+    }
+    if (result.deleted >= 0 && deletedSliceIds.length > 0) {
+      state = await this.store.clearPendingDeletes(state.worldbookName, deletedSliceIds);
+    }
+    return state;
+  }
+  async ensureCollection(state, embeddingGroupId) {
+    const group = getSettings().retrieval.embeddingGroups.find((candidate) => candidate.id === embeddingGroupId);
+    if (state.catalog.retrievalCollectionId && state.catalog.retrievalEmbeddingSpaceId === group.embeddingSpaceId) {
+      return state;
+    }
+    const digest = await hashIdentifier2(`${state.catalog.namespaceId}\0${group.embeddingSpaceId}`);
+    const collectionId = `summary_${digest.slice(0, 48)}`;
+    const collections = await echoesApi.listRetrievalCollections();
+    if (!collections.some((item) => item.collection.id === collectionId)) {
+      try {
+        await echoesApi.createRetrievalCollection({
+          id: collectionId,
+          name: `\u804A\u5929\u603B\u7ED3 - ${state.catalog.chatId}`.slice(0, 120),
+          description: "Echoes \u6839\u636E\u804A\u5929\u4E16\u754C\u4E66\u91CD\u5EFA\u7684\u603B\u7ED3\u68C0\u7D22\u96C6\u5408\u3002",
+          embeddingSpaceId: group.embeddingSpaceId,
+          dimensions: group.dimensions
+        });
+      } catch (error51) {
+        const refreshed = await echoesApi.listRetrievalCollections();
+        if (!refreshed.some((item) => item.collection.id === collectionId)) throw error51;
+      }
+    }
+    return this.store.setRetrievalBinding(state.worldbookName, collectionId, group.embeddingSpaceId);
+  }
+};
+
+// src/shared/extraction-core.ts
+function canonical(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  const record3 = value;
+  return `{${Object.keys(record3).sort().map((key) => `${JSON.stringify(key)}:${canonical(record3[key])}`).join(",")}}`;
+}
+async function sha256(value) {
+  const bytes = new TextEncoder().encode(canonical(value));
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+function structuredExtractionMessageHash(messages2) {
+  return sha256(messages2.map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content })));
+}
+function structuredExtractionContextHash(types, rows) {
+  return sha256({
+    types: [...types].sort((left, right) => left.id.localeCompare(right.id)).map((type) => ({
+      id: type.id,
+      templateId: type.templateId,
+      name: type.name,
+      description: type.description,
+      columns: type.columns,
+      writePrompt: type.writePrompt,
+      enabled: type.enabled,
+      version: type.version
+    })),
+    rows: [...rows].sort((left, right) => left.id.localeCompare(right.id)).map((row) => ({
+      id: row.id,
+      typeId: row.typeId,
+      dataName: row.dataName,
+      keywords: row.keywords,
+      status: row.status,
+      values: row.values,
+      enabled: row.enabled,
+      revision: row.revision
+    }))
+  });
+}
+
+// src/extension/memory/extraction-coordinator.ts
+init_client();
 
 // node_modules/yaml/browser/dist/nodes/identity.js
 var ALIAS = /* @__PURE__ */ Symbol.for("yaml.alias");
@@ -20516,22 +22239,22 @@ function assertCollection(contents) {
 
 // node_modules/yaml/browser/dist/errors.js
 var YAMLError = class extends Error {
-  constructor(name, pos, code, message3) {
+  constructor(name, pos, code, message) {
     super();
     this.name = name;
     this.code = code;
-    this.message = message3;
+    this.message = message;
     this.pos = pos;
   }
 };
 var YAMLParseError = class extends YAMLError {
-  constructor(pos, code, message3) {
-    super("YAMLParseError", pos, code, message3);
+  constructor(pos, code, message) {
+    super("YAMLParseError", pos, code, message);
   }
 };
 var YAMLWarning = class extends YAMLError {
-  constructor(pos, code, message3) {
-    super("YAMLWarning", pos, code, message3);
+  constructor(pos, code, message) {
+    super("YAMLWarning", pos, code, message);
   }
 };
 var prettifyError2 = (src, lc) => (error51) => {
@@ -21128,8 +22851,8 @@ function composeCollection(CN2, ctx, token, props, onError) {
     const { anchor, newlineAfterProp: nl } = props;
     const lastProp = anchor && tagToken ? anchor.offset > tagToken.offset ? anchor : tagToken : anchor ?? tagToken;
     if (lastProp && (!nl || nl.offset < lastProp.offset)) {
-      const message3 = "Missing newline after block sequence props";
-      onError(lastProp, "MISSING_CHAR", message3);
+      const message = "Missing newline after block sequence props";
+      onError(lastProp, "MISSING_CHAR", message);
     }
   }
   const expType = token.type === "block-map" ? "map" : token.type === "block-seq" ? "seq" : token.start.source === "{" ? "map" : "seq";
@@ -21194,15 +22917,15 @@ function resolveBlockScalar(ctx, scalar, onError) {
         trimIndent = indent.length;
     } else {
       if (indent.length < trimIndent) {
-        const message3 = "Block scalars with more-indented leading empty lines must use an explicit indentation indicator";
-        onError(offset + indent.length, "MISSING_CHAR", message3);
+        const message = "Block scalars with more-indented leading empty lines must use an explicit indentation indicator";
+        onError(offset + indent.length, "MISSING_CHAR", message);
       }
       if (header.indent === 0)
         trimIndent = indent.length;
       contentStart = i;
       if (trimIndent === 0 && !ctx.atRoot) {
-        const message3 = "Block scalar values in collections must be indented";
-        onError(offset, "BAD_INDENT", message3);
+        const message = "Block scalar values in collections must be indented";
+        onError(offset, "BAD_INDENT", message);
       }
       break;
     }
@@ -21225,8 +22948,8 @@ function resolveBlockScalar(ctx, scalar, onError) {
       content = content.slice(0, -1);
     if (content && indent.length < trimIndent) {
       const src = header.indent ? "explicit indentation indicator" : "first line";
-      const message3 = `Block scalar lines must not be less indented than their ${src}`;
-      onError(offset - content.length - (crlf ? 2 : 1), "BAD_INDENT", message3);
+      const message = `Block scalar lines must not be less indented than their ${src}`;
+      onError(offset - content.length - (crlf ? 2 : 1), "BAD_INDENT", message);
       indent = "";
     }
     if (type === Scalar.BLOCK_LITERAL) {
@@ -21304,8 +23027,8 @@ function parseBlockScalarHeader({ offset, props }, strict, onError) {
         break;
       case "comment":
         if (strict && !hasSpace) {
-          const message3 = "Comments must be separated from other tokens by white space characters";
-          onError(token, "MISSING_CHAR", message3);
+          const message = "Comments must be separated from other tokens by white space characters";
+          onError(token, "MISSING_CHAR", message);
         }
         length += token.source.length;
         comment = token.source.substring(1);
@@ -21316,8 +23039,8 @@ function parseBlockScalarHeader({ offset, props }, strict, onError) {
         break;
       /* istanbul ignore next should not happen */
       default: {
-        const message3 = `Unexpected token in block scalar header: ${token.type}`;
-        onError(token, "UNEXPECTED_TOKEN", message3);
+        const message = `Unexpected token in block scalar header: ${token.type}`;
+        onError(token, "UNEXPECTED_TOKEN", message);
         const ts = token.source;
         if (ts && typeof ts === "string")
           length += ts.length;
@@ -21673,13 +23396,13 @@ function composeNode(ctx, token, props, onError) {
         if (anchor)
           node.anchor = anchor.source.substring(1);
       } catch (error51) {
-        const message3 = error51 instanceof Error ? error51.message : String(error51);
-        onError(token, "RESOURCE_EXHAUSTION", message3);
+        const message = error51 instanceof Error ? error51.message : String(error51);
+        onError(token, "RESOURCE_EXHAUSTION", message);
       }
       break;
     default: {
-      const message3 = token.type === "error" ? token.message : `Unsupported token (type: ${token.type})`;
-      onError(token, "UNEXPECTED_TOKEN", message3);
+      const message = token.type === "error" ? token.message : `Unsupported token (type: ${token.type})`;
+      onError(token, "UNEXPECTED_TOKEN", message);
       isSrcToken = false;
     }
   }
@@ -21811,12 +23534,12 @@ var Composer = class {
     this.prelude = [];
     this.errors = [];
     this.warnings = [];
-    this.onError = (source, code, message3, warning) => {
+    this.onError = (source, code, message, warning) => {
       const pos = getErrorPos(source);
       if (warning)
-        this.warnings.push(new YAMLWarning(pos, code, message3));
+        this.warnings.push(new YAMLWarning(pos, code, message));
       else
-        this.errors.push(new YAMLParseError(pos, code, message3));
+        this.errors.push(new YAMLParseError(pos, code, message));
     };
     this.directives = new Directives({ version: options.version || "1.2" });
     this.options = options;
@@ -21884,10 +23607,10 @@ ${cb}` : comment;
   *next(token) {
     switch (token.type) {
       case "directive":
-        this.directives.add(token.source, (offset, message3, warning) => {
+        this.directives.add(token.source, (offset, message, warning) => {
           const pos = getErrorPos(token);
           pos[0] += offset;
-          this.onError(pos, "BAD_DIRECTIVE", message3, warning);
+          this.onError(pos, "BAD_DIRECTIVE", message, warning);
         });
         this.prelude.push(token.source);
         this.atDirectives = true;
@@ -22828,8 +24551,8 @@ var Parser = class {
     }
     const type = tokenType(source);
     if (!type) {
-      const message3 = `Not a YAML token: ${source}`;
-      yield* this.pop({ type: "error", offset: this.offset, message: message3, source });
+      const message = `Not a YAML token: ${source}`;
+      yield* this.pop({ type: "error", offset: this.offset, message, source });
       this.offset += source.length;
     } else if (type === "scalar") {
       this.atNewLine = false;
@@ -22919,8 +24642,8 @@ var Parser = class {
   *pop(error51) {
     const token = error51 ?? this.stack.pop();
     if (!token) {
-      const message3 = "Tried to pop an empty stack";
-      yield { type: "error", offset: this.offset, source: "", message: message3 };
+      const message = "Tried to pop an empty stack";
+      yield { type: "error", offset: this.offset, source: "", message };
     } else if (this.stack.length === 0) {
       yield token;
     } else {
@@ -23664,29 +25387,13 @@ function decodeMemoryContent(type, content) {
   };
 }
 
-// src/extension/worldbook/worldbook-write-coordinator.ts
-var WorldbookWriteCoordinator = class {
-  chains = /* @__PURE__ */ new Map();
-  run(worldbookName, operation) {
-    const previous = this.chains.get(worldbookName) ?? Promise.resolve();
-    const result = previous.then(operation, operation);
-    const settled = result.then(() => void 0, () => void 0);
-    this.chains.set(worldbookName, settled);
-    void settled.then(() => {
-      if (this.chains.get(worldbookName) === settled) this.chains.delete(worldbookName);
-    });
-    return result;
-  }
-};
-var worldbookWriteCoordinator = new WorldbookWriteCoordinator();
-
 // src/extension/worldbook/worldbook-memory.ts
 var CATALOG_ENTRY_NAME = "[Echoes] \u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6\u914D\u7F6E";
 var CATALOG_CONTENT = "Echoes structured-memory metadata. This disabled entry is managed by the plugin.";
-function uniqueId2(prefix) {
+function uniqueId3(prefix) {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
 }
-function requiredHelper() {
+function requiredHelper2() {
   if (!window.TavernHelper) {
     throw new Error("Echoes requires TavernHelper to read and write SillyTavern worldbooks.");
   }
@@ -23698,8 +25405,8 @@ function echoesMetadata(entry) {
   if (metadata3.kind !== "catalog" && metadata3.kind !== "row") return null;
   return metadata3;
 }
-function catalogFromEntries(entries2) {
-  const entry = entries2.find((candidate) => echoesMetadata(candidate)?.kind === "catalog");
+function catalogFromEntries(entries) {
+  const entry = entries.find((candidate) => echoesMetadata(candidate)?.kind === "catalog");
   if (!entry) throw new Error("The current worldbook has no Echoes memory catalog.");
   const metadata3 = echoesMetadata(entry);
   return {
@@ -23755,7 +25462,7 @@ function updateCatalogEntry(entry, catalog) {
     }
   };
 }
-function catalogEntry(catalog) {
+function catalogEntry2(catalog) {
   return {
     name: CATALOG_ENTRY_NAME,
     enabled: false,
@@ -23819,12 +25526,12 @@ function uniqueDataName(rows, typeId, dataName, exceptRowId) {
     (row) => row.typeId === typeId && row.id !== exceptRowId && row.dataName.trim().toLocaleLowerCase() === normalized
   );
 }
-function applyOperationsToEntries(entries2, catalog, operations, sourceBase) {
+function applyOperationsToEntries(entries, catalog, operations, sourceBase) {
   const summary = { added: 0, updated: 0, deleted: 0 };
   const typeById = new Map(catalog.types.filter((type) => type.enabled).map((type) => [type.id, type]));
   const rows = [];
   const entryByRowId = /* @__PURE__ */ new Map();
-  for (const entry of entries2) {
+  for (const entry of entries) {
     const metadata3 = echoesMetadata(entry);
     if (metadata3?.kind !== "row") continue;
     const type = typeById.get(metadata3.typeId);
@@ -23836,14 +25543,14 @@ function applyOperationsToEntries(entries2, catalog, operations, sourceBase) {
   for (const operation of operations) {
     const type = typeById.get(operation.typeId);
     if (!type) throw new Error(`Operation references an inactive type: ${operation.typeId}`);
-    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const now3 = (/* @__PURE__ */ new Date()).toISOString();
     const source = structuredClone(sourceBase);
     if (operation.action === "add") {
       if (!uniqueDataName(rows, type.id, operation.dataName)) {
         throw new Error(`Duplicate data name in ${type.name}: ${operation.dataName}`);
       }
       const row = {
-        id: uniqueId2("row"),
+        id: uniqueId3("row"),
         typeId: type.id,
         dataName: operation.dataName,
         keywords: operation.keywords,
@@ -23852,11 +25559,11 @@ function applyOperationsToEntries(entries2, catalog, operations, sourceBase) {
         enabled: true,
         source,
         revision: 1,
-        createdAt: now,
-        updatedAt: now
+        createdAt: now3,
+        updatedAt: now3
       };
       rows.push(row);
-      entries2.push(rowEntry(type, row));
+      entries.push(rowEntry(type, row));
       summary.added += 1;
       continue;
     }
@@ -23867,8 +25574,8 @@ function applyOperationsToEntries(entries2, catalog, operations, sourceBase) {
       throw new Error(`Operation references an unavailable row: ${operation.rowId}`);
     }
     if (operation.action === "delete") {
-      const entryIndex = entries2.indexOf(entry);
-      if (entryIndex >= 0) entries2.splice(entryIndex, 1);
+      const entryIndex = entries.indexOf(entry);
+      if (entryIndex >= 0) entries.splice(entryIndex, 1);
       rows.splice(rowIndex, 1);
       entryByRowId.delete(operation.rowId);
       summary.deleted += 1;
@@ -23890,7 +25597,7 @@ function applyOperationsToEntries(entries2, catalog, operations, sourceBase) {
       enabled: true,
       source,
       revision: current.revision + 1,
-      updatedAt: now
+      updatedAt: now3
     };
     rows[rowIndex] = updated;
     applyRowToEntry(entry, type, updated);
@@ -23900,7 +25607,7 @@ function applyOperationsToEntries(entries2, catalog, operations, sourceBase) {
 }
 var WorldbookMemoryStore = class {
   listWorldbooks() {
-    return requiredHelper().getWorldbookNames();
+    return requiredHelper2().getWorldbookNames();
   }
   async load() {
     return this.enqueue(async (target) => {
@@ -23917,8 +25624,8 @@ var WorldbookMemoryStore = class {
       throw new Error("A new memory type must be based on an existing type template.");
     }
     let savedId = currentId ?? "";
-    await this.mutate((entries2, catalog) => {
-      const now = (/* @__PURE__ */ new Date()).toISOString();
+    await this.mutate((entries, catalog) => {
+      const now3 = (/* @__PURE__ */ new Date()).toISOString();
       const current = currentId ? catalog.types.find((type) => type.id === currentId) : void 0;
       if (currentId && !current) throw new Error("Memory type not found.");
       const nameChanged = !current || current.name.toLocaleLowerCase() !== input.name.toLocaleLowerCase();
@@ -23929,14 +25636,14 @@ var WorldbookMemoryStore = class {
       }
       const saved = {
         ...input,
-        id: current?.id ?? input.id ?? uniqueId2("type"),
+        id: current?.id ?? input.id ?? uniqueId3("type"),
         version: (current?.version ?? 0) + 1,
-        createdAt: current?.createdAt ?? now,
-        updatedAt: now
+        createdAt: current?.createdAt ?? now3,
+        updatedAt: now3
       };
       savedId = saved.id;
       if (current) {
-        for (const entry of entries2) {
+        for (const entry of entries) {
           const metadata3 = echoesMetadata(entry);
           if (metadata3?.kind !== "row" || metadata3.typeId !== current.id) continue;
           const oldRow = rowFromEntry(entry, current);
@@ -23950,7 +25657,7 @@ var WorldbookMemoryStore = class {
             values: validateMemoryValues(saved.columns, retainedValues),
             enabled: saved.enabled,
             revision: oldRow.revision + 1,
-            updatedAt: now
+            updatedAt: now3
           };
           applyRowToEntry(entry, saved, migratedRow);
         }
@@ -23967,34 +25674,34 @@ var WorldbookMemoryStore = class {
           typeId: saved.id
         });
       }
-      catalog.promptPreset.updatedAt = now;
+      catalog.promptPreset.updatedAt = now3;
     });
     const state = await this.load();
     return state.catalog.types.find((type) => type.id === savedId);
   }
   async deleteType(typeId) {
-    await this.mutate((entries2, catalog) => {
+    await this.mutate((entries, catalog) => {
       if (!catalog.types.some((type) => type.id === typeId)) throw new Error("Memory type not found.");
       catalog.types = catalog.types.filter((type) => type.id !== typeId);
       catalog.promptPreset.items = catalog.promptPreset.items.filter(
         (item) => item.kind !== "type_writer" || item.typeId !== typeId
       );
-      const now = (/* @__PURE__ */ new Date()).toISOString();
-      catalog.promptPreset.updatedAt = now;
-      for (let index = entries2.length - 1; index >= 0; index -= 1) {
-        const metadata3 = echoesMetadata(entries2[index]);
-        if (metadata3?.kind === "row" && metadata3.typeId === typeId) entries2.splice(index, 1);
+      const now3 = (/* @__PURE__ */ new Date()).toISOString();
+      catalog.promptPreset.updatedAt = now3;
+      for (let index = entries.length - 1; index >= 0; index -= 1) {
+        const metadata3 = echoesMetadata(entries[index]);
+        if (metadata3?.kind === "row" && metadata3.typeId === typeId) entries.splice(index, 1);
       }
     });
   }
   async setTypeEnabled(typeId, enabled) {
-    await this.mutate((entries2, catalog) => {
+    await this.mutate((entries, catalog) => {
       const type = catalog.types.find((candidate) => candidate.id === typeId);
       if (!type) throw new Error("Memory type not found.");
       type.enabled = enabled;
       type.version += 1;
       type.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-      for (const entry of entries2) {
+      for (const entry of entries) {
         const metadata3 = echoesMetadata(entry);
         if (metadata3?.kind === "row" && metadata3.typeId === typeId) entry.enabled = enabled;
       }
@@ -24011,10 +25718,10 @@ var WorldbookMemoryStore = class {
         throw new Error("Data names must be unique within a memory type.");
       }
       const values = validateMemoryValues(type.columns, input.values);
-      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const now3 = (/* @__PURE__ */ new Date()).toISOString();
       if (!rowId) {
         const row = {
-          id: uniqueId2("row"),
+          id: uniqueId3("row"),
           typeId,
           dataName: input.dataName,
           keywords: input.keywords,
@@ -24023,10 +25730,10 @@ var WorldbookMemoryStore = class {
           enabled: type.enabled,
           source: input.source,
           revision: 1,
-          createdAt: now,
-          updatedAt: now
+          createdAt: now3,
+          updatedAt: now3
         };
-        const result = await requiredHelper().createWorldbookEntries(
+        const result = await requiredHelper2().createWorldbookEntries(
           worldbookName,
           [rowEntry(type, row)],
           { render: "debounced" }
@@ -24035,8 +25742,8 @@ var WorldbookMemoryStore = class {
         return { ...row, ...created ? { worldbookUid: created.uid } : {} };
       }
       let saved = null;
-      await requiredHelper().updateWorldbookWith(worldbookName, (entries2) => {
-        const entry = entries2.find((candidate) => {
+      await requiredHelper2().updateWorldbookWith(worldbookName, (entries) => {
+        const entry = entries.find((candidate) => {
           const metadata3 = echoesMetadata(candidate);
           return metadata3?.kind === "row" && metadata3.rowId === rowId;
         });
@@ -24051,23 +25758,23 @@ var WorldbookMemoryStore = class {
           enabled: type.enabled,
           source: input.source,
           revision: current.revision + 1,
-          updatedAt: now
+          updatedAt: now3
         };
         applyRowToEntry(entry, type, saved);
-        return entries2;
+        return entries;
       }, { render: "debounced" });
       if (!saved) throw new Error("Memory row was not updated.");
       return saved;
     });
   }
   async deleteRow(rowId) {
-    await this.mutate((entries2) => {
-      const index = entries2.findIndex((entry) => {
+    await this.mutate((entries) => {
+      const index = entries.findIndex((entry) => {
         const metadata3 = echoesMetadata(entry);
         return metadata3?.kind === "row" && metadata3.rowId === rowId;
       });
       if (index < 0) throw new Error("Memory row not found.");
-      entries2.splice(index, 1);
+      entries.splice(index, 1);
     });
   }
   async savePromptPreset(preset) {
@@ -24095,22 +25802,22 @@ var WorldbookMemoryStore = class {
   async commitExtractionBatch(options) {
     return worldbookWriteCoordinator.run(options.worldbookName, async () => {
       let committed = null;
-      await requiredHelper().updateWorldbookWith(options.worldbookName, async (entries2) => {
-        const { entry: catalogEntryValue, catalog } = catalogFromEntries(entries2);
+      await requiredHelper2().updateWorldbookWith(options.worldbookName, async (entries) => {
+        const { entry: catalogEntryValue, catalog } = catalogFromEntries(entries);
         if (catalog.chatId !== options.chatId) {
           throw new Error("The locked worldbook no longer belongs to the extraction chat.");
         }
         if ((catalog.lastProcessedMessageId ?? null) !== options.expectedCheckpoint) {
           throw new Error("The structured-memory checkpoint changed while extraction was running.");
         }
-        const state = this.stateFromEntries(options.worldbookName, entries2);
+        const state = this.stateFromEntries(options.worldbookName, entries);
         const types = state.catalog.types.filter((type) => type.enabled);
         const typeIds = new Set(types.map((type) => type.id));
         const rows = state.rows.filter((row) => typeIds.has(row.typeId));
         if (await structuredExtractionContextHash(types, rows) !== options.batch.contextHash) {
           throw new Error("Structured-memory types or rows changed while extraction was running.");
         }
-        committed = applyOperationsToEntries(entries2, catalog, options.operations, {
+        committed = applyOperationsToEntries(entries, catalog, options.operations, {
           kind: "extraction",
           messageIds: [...options.batch.messageIds],
           jobId: options.jobId,
@@ -24121,7 +25828,7 @@ var WorldbookMemoryStore = class {
         catalog.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
         updateCatalogEntry(catalogEntryValue, catalog);
         structuredMemoryCatalogSchema.parse(catalog);
-        return entries2;
+        return entries;
       }, { render: "debounced" });
       if (!committed) throw new Error("The extraction batch was not committed.");
       return committed;
@@ -24131,14 +25838,14 @@ var WorldbookMemoryStore = class {
     return this.enqueue(async (target) => {
       const worldbookName = await this.ensureCurrentCatalog(target);
       let summary = { added: 0, updated: 0, deleted: 0 };
-      await requiredHelper().updateWorldbookWith(worldbookName, (entries2) => {
-        const { catalog } = catalogFromEntries(entries2);
-        summary = applyOperationsToEntries(entries2, catalog, operations, {
+      await requiredHelper2().updateWorldbookWith(worldbookName, (entries) => {
+        const { catalog } = catalogFromEntries(entries);
+        summary = applyOperationsToEntries(entries, catalog, operations, {
           kind: "extraction",
           messageIds: [],
           jobId
         });
-        return entries2;
+        return entries;
       }, { render: "debounced" });
       return summary;
     });
@@ -24152,9 +25859,9 @@ var WorldbookMemoryStore = class {
       }
       const additions = [];
       const summary = { added: 0, updated: 0, deleted: 0 };
-      await requiredHelper().updateWorldbookWith(targetWorldbookName, (entries2) => {
-        const { entry: catalogEntryValue, catalog } = catalogFromEntries(entries2);
-        const targetState = this.stateFromEntries(targetWorldbookName, entries2);
+      await requiredHelper2().updateWorldbookWith(targetWorldbookName, (entries) => {
+        const { entry: catalogEntryValue, catalog } = catalogFromEntries(entries);
+        const targetState = this.stateFromEntries(targetWorldbookName, entries);
         const selectedTypes = source.catalog.types.filter((type) => selectedTypeIds.includes(type.id));
         for (const sourceType of selectedTypes) {
           const existingType = catalog.types.find((type) => type.id === sourceType.id);
@@ -24163,7 +25870,7 @@ var WorldbookMemoryStore = class {
           let sourceTypeId = sourceType.id;
           if (policy === "copy") {
             sourceTypeId = importedType.id;
-            importedType.id = uniqueId2("type");
+            importedType.id = uniqueId3("type");
             importedType.name = this.availableTypeName(catalog.types, `${importedType.name}\uFF08\u8FC1\u79FB\uFF09`);
           } else if (existingType && policy === "overwrite") {
             importedType.name = this.availableTypeName(
@@ -24176,10 +25883,10 @@ var WorldbookMemoryStore = class {
           importedType.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
           if (existingType && policy === "overwrite") {
             let removedRows = 0;
-            for (let index2 = entries2.length - 1; index2 >= 0; index2 -= 1) {
-              const metadata3 = echoesMetadata(entries2[index2]);
+            for (let index2 = entries.length - 1; index2 >= 0; index2 -= 1) {
+              const metadata3 = echoesMetadata(entries[index2]);
               if (metadata3?.kind !== "row" || metadata3.typeId !== existingType.id) continue;
-              entries2.splice(index2, 1);
+              entries.splice(index2, 1);
               removedRows += 1;
             }
             targetState.rows = targetState.rows.filter((row) => row.typeId !== existingType.id);
@@ -24211,7 +25918,7 @@ var WorldbookMemoryStore = class {
               updatedAt: (/* @__PURE__ */ new Date()).toISOString()
             };
             delete importedRow.worldbookUid;
-            if (policy === "copy") importedRow.id = uniqueId2("row");
+            if (policy === "copy") importedRow.id = uniqueId3("row");
             const existingRow = targetState.rows.find(
               (row) => row.typeId === importedType.id && (row.id === importedRow.id || row.dataName.toLocaleLowerCase() === importedRow.dataName.toLocaleLowerCase())
             );
@@ -24226,7 +25933,7 @@ var WorldbookMemoryStore = class {
         catalog.promptPreset.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
         catalog.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
         updateCatalogEntry(catalogEntryValue, catalog);
-        return [...entries2, ...additions];
+        return [...entries, ...additions];
       }, { render: "debounced" });
       return summary;
     });
@@ -24246,7 +25953,7 @@ var WorldbookMemoryStore = class {
     }
   }
   async ensureCurrentCatalog(target) {
-    const helper6 = requiredHelper();
+    const helper6 = requiredHelper2();
     this.assertCurrentChat(target.chatId);
     const baseName = target.chatId.replace(/\.(json|jsonl)$/i, "");
     let worldbookName = target.worldbookName;
@@ -24255,8 +25962,8 @@ var WorldbookMemoryStore = class {
       worldbookName = await helper6.getOrCreateChatWorldbook("current", `Echoes-${baseName}`);
       this.assertCurrentChat(target.chatId);
     }
-    let entries2 = await helper6.getWorldbook(worldbookName);
-    const existingCatalogEntry = entries2.find(
+    let entries = await helper6.getWorldbook(worldbookName);
+    const existingCatalogEntry = entries.find(
       (entry) => echoesMetadata(entry)?.kind === "catalog"
     );
     if (existingCatalogEntry) {
@@ -24275,28 +25982,28 @@ var WorldbookMemoryStore = class {
         await helper6.rebindChatWorldbook("current", candidate);
         this.assertCurrentChat(target.chatId);
         worldbookName = candidate;
-        entries2 = [];
+        entries = [];
       }
     }
-    if (!entries2.some((entry) => echoesMetadata(entry)?.kind === "catalog")) {
+    if (!entries.some((entry) => echoesMetadata(entry)?.kind === "catalog")) {
       await helper6.createWorldbookEntries(
         worldbookName,
-        [catalogEntry(createDefaultCatalog(target.chatId))],
+        [catalogEntry2(createDefaultCatalog(target.chatId))],
         { render: "debounced" }
       );
     }
     return worldbookName;
   }
   async readWorldbook(worldbookName) {
-    const entries2 = await requiredHelper().getWorldbook(worldbookName);
-    return this.stateFromEntries(worldbookName, entries2);
+    const entries = await requiredHelper2().getWorldbook(worldbookName);
+    return this.stateFromEntries(worldbookName, entries);
   }
-  stateFromEntries(worldbookName, entries2) {
-    const { catalog } = catalogFromEntries(entries2);
+  stateFromEntries(worldbookName, entries) {
+    const { catalog } = catalogFromEntries(entries);
     const typeById = new Map(catalog.types.map((type) => [type.id, type]));
     const rows = [];
     const issues = [];
-    for (const entry of entries2) {
+    for (const entry of entries) {
       const metadata3 = echoesMetadata(entry);
       if (metadata3?.kind !== "row") continue;
       const type = typeById.get(metadata3.typeId);
@@ -24315,20 +26022,20 @@ var WorldbookMemoryStore = class {
   async mutate(mutator) {
     await this.enqueue(async (target) => {
       const worldbookName = await this.ensureCurrentCatalog(target);
-      await requiredHelper().updateWorldbookWith(worldbookName, (entries2) => {
-        const { entry, catalog } = catalogFromEntries(entries2);
-        mutator(entries2, catalog);
+      await requiredHelper2().updateWorldbookWith(worldbookName, (entries) => {
+        const { entry, catalog } = catalogFromEntries(entries);
+        mutator(entries, catalog);
         catalog.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
         updateCatalogEntry(entry, catalog);
         structuredMemoryCatalogSchema.parse(catalog);
-        return entries2;
+        return entries;
       }, { render: "debounced" });
     });
   }
   enqueue(operation) {
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) return Promise.reject(new Error("Open a SillyTavern chat before using structured memory."));
-    const worldbookName = requiredHelper().getChatWorldbookName("current");
+    const worldbookName = requiredHelper2().getChatWorldbookName("current");
     const lockKey = worldbookName ?? `chat:${chatId}`;
     return worldbookWriteCoordinator.run(lockKey, async () => {
       this.assertCurrentChat(chatId);
@@ -24348,8 +26055,8 @@ var ExtractionCheckpointMissingError = class extends Error {
   code = "EXTRACTION_CHECKPOINT_MISSING";
 };
 var ExtractionBatchUnavailableError = class extends Error {
-  constructor(mode, message3) {
-    super(message3);
+  constructor(mode, message) {
+    super(message);
     this.mode = mode;
     this.name = "ExtractionBatchUnavailableError";
   }
@@ -24358,15 +26065,15 @@ var ExtractionBatchUnavailableError = class extends Error {
 };
 function currentExtractionMessages() {
   const seen = /* @__PURE__ */ new Set();
-  return SillyTavern.getContext().chat.flatMap((message3, index) => {
-    const content = String(message3.mes ?? message3.message ?? "").trim();
+  return SillyTavern.getContext().chat.flatMap((message, index) => {
+    const content = String(message.mes ?? message.message ?? "").trim();
     if (!content) return [];
-    const rawId = String(message3.message_id ?? message3.id ?? index);
+    const rawId = String(message.message_id ?? message.id ?? index);
     const id2 = seen.has(rawId) ? `${rawId}:${index}` : rawId;
     seen.add(id2);
     return [{
       id: id2,
-      role: message3.is_user === true || message3.role === "user" ? "user" : "assistant",
+      role: message.is_user === true || message.role === "user" ? "user" : "assistant",
       content
     }];
   });
@@ -24374,12 +26081,9 @@ function currentExtractionMessages() {
 function checkpointStart(state, messages2) {
   const checkpoint = state.catalog.lastProcessedMessageId;
   if (!checkpoint) return 0;
-  const index = messages2.findIndex((message3) => message3.id === checkpoint);
+  const index = messages2.findIndex((message) => message.id === checkpoint);
   if (index < 0) throw new ExtractionCheckpointMissingError(checkpoint);
   return index + 1;
-}
-function extractionPendingMessageCount(state, messages2 = currentExtractionMessages()) {
-  return Math.max(0, messages2.length - checkpointStart(state, messages2));
 }
 function extractionContext(state) {
   const types = state.catalog.types.filter((type) => type.enabled);
@@ -24398,7 +26102,7 @@ async function buildSelection(state, mode, messages2) {
     mode,
     startMessageId: messages2[0].id,
     endMessageId: messages2.at(-1).id,
-    messageIds: messages2.map((message3) => message3.id),
+    messageIds: messages2.map((message) => message.id),
     sourceHash,
     contextHash
   };
@@ -24416,7 +26120,7 @@ async function automaticExtractionBatch(state, limit, messages2 = currentExtract
   let end = -1;
   for (let index = boundary; index >= start; index -= 1) {
     if (messages2[index]?.role !== "assistant") continue;
-    if (!messages2.slice(index + 1).some((message3) => message3.role === "user")) continue;
+    if (!messages2.slice(index + 1).some((message) => message.role === "user")) continue;
     end = index;
     break;
   }
@@ -24522,20 +26226,29 @@ async function prepareExtraction(state, settings, mode = "manual", resumeAfterEn
 }
 
 // src/extension/memory/extraction-coordinator.ts
-var TERMINAL_STATES = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
+var TERMINAL_STATES2 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
 function sleep(durationMs) {
   return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
-async function waitForJob(initial, onUpdate) {
+function abortable2(promise2, signal) {
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason ?? new DOMException("Extraction stopped.", "AbortError"));
+    signal.addEventListener("abort", abort, { once: true });
+    void promise2.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+    if (signal.aborted) abort();
+  });
+}
+async function waitForJob2(initial, onUpdate, signal) {
   const deadline = Date.now() + 2 * 60 * 6e4;
   let job = initial;
   onUpdate(job);
-  while (!TERMINAL_STATES.has(job.status) && Date.now() < deadline) {
-    await sleep(600);
-    job = await echoesApi.getJob(job.id);
+  while (!TERMINAL_STATES2.has(job.status) && Date.now() < deadline) {
+    signal.throwIfAborted();
+    await abortable2(sleep(600), signal);
+    job = await abortable2(echoesApi.getJob(job.id), signal);
     onUpdate(job);
   }
-  if (!TERMINAL_STATES.has(job.status)) throw new Error("\u7B49\u5F85\u7ED3\u6784\u5316\u8BB0\u5FC6\u4EFB\u52A1\u8D85\u65F6\u3002");
+  if (!TERMINAL_STATES2.has(job.status)) throw new Error("\u7B49\u5F85\u7ED3\u6784\u5316\u8BB0\u5FC6\u4EFB\u52A1\u8D85\u65F6\u3002");
   if (job.status !== "succeeded" || !job.result) {
     throw new Error(job.error?.message ?? job.message);
   }
@@ -24543,15 +26256,16 @@ async function waitForJob(initial, onUpdate) {
 }
 function currentBatchMessages(prepared) {
   if (SillyTavern.getContext().chatId !== prepared.request.chatId) return null;
-  const byId = new Map(currentExtractionMessages().map((message3) => [message3.id, message3]));
+  const byId = new Map(currentExtractionMessages().map((message) => [message.id, message]));
   const messages2 = prepared.batch.messageIds.map((id2) => byId.get(id2));
-  if (messages2.some((message3) => !message3)) return [];
+  if (messages2.some((message) => !message)) return [];
   return messages2;
 }
 var ExtractionCoordinator = class {
   store = new WorldbookMemoryStore();
   active = /* @__PURE__ */ new Map();
   activeJobIds = /* @__PURE__ */ new Map();
+  controls = /* @__PURE__ */ new Map();
   reviews = /* @__PURE__ */ new Map();
   pauses = /* @__PURE__ */ new Map();
   traces = /* @__PURE__ */ new Map();
@@ -24595,10 +26309,33 @@ var ExtractionCoordinator = class {
   async stopCurrent() {
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) return;
+    let reason = "\u7528\u6237\u505C\u6B62\u4E86\u7ED3\u6784\u5316\u8BB0\u5FC6\u4EFB\u52A1\uFF1B\u672C\u9875\u9762\u4F1A\u8BDD\u5185\u4E0D\u4F1A\u81EA\u52A8\u91CD\u8BD5\u3002";
+    const updateStoppedState = () => {
+      this.pauses.set(chatId, reason);
+      const trace = this.traces.get(chatId);
+      if (trace) {
+        this.traces.set(chatId, {
+          ...trace,
+          state: "paused",
+          completedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          message: reason
+        });
+      }
+      this.emit();
+    };
+    this.rerunAutomatic.delete(chatId);
     const jobId = this.activeJobIds.get(chatId);
-    if (jobId) await echoesApi.cancelJob(jobId).catch(() => ({ cancelled: false }));
-    this.pauses.set(chatId, "\u7528\u6237\u505C\u6B62\u4E86\u7ED3\u6784\u5316\u8BB0\u5FC6\u4EFB\u52A1\uFF1B\u672C\u9875\u9762\u4F1A\u8BDD\u5185\u4E0D\u4F1A\u81EA\u52A8\u91CD\u8BD5\u3002");
-    this.emit();
+    this.controls.get(chatId)?.abort(new DOMException("Extraction stopped.", "AbortError"));
+    updateStoppedState();
+    if (!jobId) return;
+    try {
+      const result = await echoesApi.cancelJob(jobId);
+      if (!result.cancelled) reason = "\u7528\u6237\u505C\u6B62\u4E86\u672C\u5730\u7ED3\u6784\u5316\u8BB0\u5FC6\u6D41\u7A0B\uFF0C\u4F46\u540E\u53F0\u4EFB\u52A1\u672A\u786E\u8BA4\u53D6\u6D88\uFF1B\u4E0D\u4F1A\u63D0\u4EA4\u8FDF\u5230\u7ED3\u679C\u6216\u81EA\u52A8\u91CD\u8BD5\u3002";
+    } catch (error51) {
+      reason = "\u7528\u6237\u505C\u6B62\u4E86\u672C\u5730\u7ED3\u6784\u5316\u8BB0\u5FC6\u6D41\u7A0B\uFF0C\u4F46\u540E\u53F0\u53D6\u6D88\u8BF7\u6C42\u5931\u8D25\uFF1B\u4E0D\u4F1A\u63D0\u4EA4\u8FDF\u5230\u7ED3\u679C\u6216\u81EA\u52A8\u91CD\u8BD5\u3002";
+      console.error("[Echoes] Failed to cancel structured-memory job.", error51);
+    }
+    updateStoppedState();
   }
   async submitReview(selectedIndexes) {
     const chatId = SillyTavern.getContext().chatId;
@@ -24667,10 +26404,13 @@ var ExtractionCoordinator = class {
     if (!userInitiated && (this.pauses.has(chatId) || this.reviews.has(chatId))) {
       return Promise.resolve();
     }
-    const operation = this.run(mode, userInitiated).finally(() => {
+    const control = new AbortController();
+    this.controls.set(chatId, control);
+    const operation = this.run(mode, userInitiated, control.signal).finally(() => {
       if (this.active.get(chatId) === operation) this.active.delete(chatId);
       const shouldRerun = this.rerunAutomatic.delete(chatId);
       this.activeJobIds.delete(chatId);
+      if (this.controls.get(chatId) === control) this.controls.delete(chatId);
       this.emit();
       if (shouldRerun && SillyTavern.getContext().chatId === chatId) {
         queueMicrotask(() => {
@@ -24682,17 +26422,18 @@ var ExtractionCoordinator = class {
     this.emit();
     return operation;
   }
-  async run(mode, userInitiated) {
+  async run(mode, userInitiated, signal) {
     const lockedChatId = SillyTavern.getContext().chatId;
     const continueAutomatically = mode === "auto";
     while (true) {
       let state = null;
       try {
+        signal.throwIfAborted();
         state = await this.store.load();
         if (state.catalog.chatId !== lockedChatId) throw new Error("\u7ED3\u6784\u5316\u8BB0\u5FC6\u4E16\u754C\u4E66\u4E0E\u5F53\u524D\u804A\u5929\u4E0D\u5339\u914D\u3002");
         if (mode === "auto" && !state.catalog.automation.enabled && !userInitiated) return;
         const prepared = await prepareExtraction(state, getSettings(), mode);
-        const outcome = await this.executePrepared(state, prepared);
+        const outcome = await this.executePrepared(state, prepared, signal);
         if (outcome !== "committed") return;
       } catch (error51) {
         if (error51 instanceof ExtractionBatchUnavailableError) {
@@ -24700,9 +26441,9 @@ var ExtractionCoordinator = class {
           return;
         }
         if (this.pauses.get(lockedChatId)?.startsWith("\u7528\u6237\u505C\u6B62\u4E86")) return;
-        const message3 = error51 instanceof Error ? error51.message : String(error51);
+        const message = error51 instanceof Error ? error51.message : String(error51);
         const blocked = error51 instanceof ExtractionCheckpointMissingError;
-        this.pauses.set(lockedChatId, message3);
+        this.pauses.set(lockedChatId, message);
         this.traces.set(lockedChatId, {
           chatId: lockedChatId,
           worldbookName: state?.worldbookName ?? window.TavernHelper?.getChatWorldbookName("current") ?? "",
@@ -24712,7 +26453,7 @@ var ExtractionCoordinator = class {
           applied: 0,
           rejected: 0,
           attempts: [],
-          message: message3
+          message
         });
         this.emit();
         if (userInitiated) throw error51;
@@ -24722,7 +26463,7 @@ var ExtractionCoordinator = class {
       mode = "auto";
     }
   }
-  async executePrepared(state, prepared) {
+  async executePrepared(state, prepared, signal) {
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
     let attempts = [];
     let request = structuredClone(prepared.request);
@@ -24739,9 +26480,17 @@ var ExtractionCoordinator = class {
     });
     this.emit();
     while (true) {
-      const initial = await echoesApi.startExtraction(request);
-      this.activeJobIds.set(prepared.request.chatId, initial.id);
-      const job = await waitForJob(initial, (current) => {
+      signal.throwIfAborted();
+      const accepted = echoesApi.startExtraction(request).then((initial2) => {
+        if (signal.aborted) {
+          void echoesApi.cancelJob(initial2.id).catch((error51) => console.error("[Echoes] Failed to cancel late structured-memory job.", error51));
+        } else {
+          this.activeJobIds.set(prepared.request.chatId, initial2.id);
+        }
+        return initial2;
+      });
+      const initial = await abortable2(accepted, signal);
+      const job = await waitForJob2(initial, (current) => {
         this.activeJobIds.set(prepared.request.chatId, current.id);
         this.traces.set(prepared.request.chatId, {
           chatId: prepared.request.chatId,
@@ -24755,11 +26504,13 @@ var ExtractionCoordinator = class {
           message: current.message
         });
         this.emit();
-      });
+      }, signal);
+      signal.throwIfAborted();
       const result = job.result;
       attempts = [...attempts, ...result.attempts];
       result.attempts = attempts;
       if (result.outcome === "decision_required" && result.decisionRequired) {
+        signal.throwIfAborted();
         const decision = result.decisionRequired;
         const proceed = Boolean(decision.nextEndpointId) && window.confirm(
           `${decision.message}
@@ -24790,6 +26541,7 @@ var ExtractionCoordinator = class {
         };
         continue;
       }
+      signal.throwIfAborted();
       const reviewItems = normalizeReviewItems(result);
       result.reviewItems = reviewItems;
       if (reviewItems.some((item) => item.state === "rejected")) {
@@ -24819,6 +26571,7 @@ var ExtractionCoordinator = class {
         this.emit();
         return "review";
       }
+      signal.throwIfAborted();
       await this.verifyCurrentMessages(prepared);
       const summary = await this.store.commitExtractionBatch({
         worldbookName: state.worldbookName,
@@ -24875,2205 +26628,1508 @@ function normalizeReviewItems(result) {
 }
 var extractionCoordinator = new ExtractionCoordinator();
 
-// src/extension/ui/dialogs.ts
-init_domain();
-function dialogShell(title, options = "") {
-  const { className = "", submitLabel = "\u4FDD\u5B58", showCancel = true, closeOnly = false } = typeof options === "string" ? { className: options } : options;
-  const dialog = document.createElement("dialog");
-  dialog.className = `echoes-dialog ${className}`.trim();
-  const footer = closeOnly ? '<button type="submit" class="menu_button echoes-primary">\u5173\u95ED</button>' : `${showCancel ? '<button type="button" class="menu_button" data-close>\u53D6\u6D88</button>' : ""}<button type="submit" class="menu_button echoes-primary">${submitLabel}</button>`;
-  dialog.innerHTML = `
-    <form class="echoes-dialog-frame" method="dialog">
-      <header class="echoes-dialog-header">
-        <h2></h2>
-        <button type="button" class="echoes-icon-button" data-close title="\u5173\u95ED" aria-label="\u5173\u95ED">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </header>
-      <div class="echoes-dialog-body"></div>
-      <footer class="echoes-dialog-footer">${footer}</footer>
-    </form>`;
-  dialog.querySelector("h2").textContent = title;
-  document.body.append(dialog);
-  dialog.querySelectorAll("[data-close]").forEach((button3) => {
-    button3.addEventListener("click", () => dialog.close("cancel"));
-  });
-  dialog.addEventListener("close", () => dialog.remove(), { once: true });
-  return dialog;
-}
-function submitDialog(dialog, submit, options = {}) {
-  const form = dialog.querySelector("form");
-  const body = dialog.querySelector(".echoes-dialog-body");
-  const errorHost = document.createElement("div");
-  errorHost.className = "echoes-dialog-error echoes-hidden";
-  errorHost.setAttribute("role", "alert");
-  body.append(errorHost);
-  return new Promise((resolve) => {
-    let settled = false;
-    let submitting = false;
-    const closeControls = [...dialog.querySelectorAll("[data-close]")];
-    const submitControl = form.querySelector('button[type="submit"]');
-    const setSubmitting = (value) => {
-      submitting = value;
-      if (submitControl) submitControl.disabled = value;
-      closeControls.forEach((control) => {
-        control.disabled = value;
-      });
-      form.setAttribute("aria-busy", String(value));
-    };
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      if (submitting) return;
-      errorHost.classList.add("echoes-hidden");
-      errorHost.textContent = "";
-      setSubmitting(true);
-      void Promise.resolve().then(submit).then((value) => {
-        settled = true;
-        resolve(value);
-        if (dialog.open) dialog.close("saved");
-      }).catch((error51) => {
-        const message3 = error51 instanceof Error ? error51.message : String(error51);
-        errorHost.textContent = options.errorTitle ? `${options.errorTitle}\uFF1A${message3}` : message3;
-        errorHost.classList.remove("echoes-hidden");
-        setSubmitting(false);
-      });
-    });
-    dialog.addEventListener("cancel", (event) => {
-      if (submitting) event.preventDefault();
-    });
-    dialog.addEventListener("close", () => {
-      if (!settled) resolve(null);
-    }, { once: true });
-    dialog.showModal();
-  });
-}
-function slugify2(value) {
-  const slug = value.normalize("NFKD").replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").toLowerCase();
-  return slug || "field";
-}
-function renderColumnRow(column) {
-  const row = document.createElement("div");
-  row.className = "echoes-column-editor-row";
-  row.innerHTML = `
-    <input data-field="name" type="text" placeholder="\u663E\u793A\u540D\u79F0" required>
-    <input data-field="id" type="text" placeholder="column_id" required>
-    <select data-field="type"></select>
-    <label class="echoes-check"><input data-field="required" type="checkbox">\u5FC5\u586B</label>
-    <input data-field="description" type="text" placeholder="\u5B57\u6BB5\u7528\u9014\u8BF4\u660E">
-    <input data-field="enumValues" type="text" placeholder="\u679A\u4E3E\u503C\uFF0C\u4EE5\u9017\u53F7\u5206\u9694">
-    <div class="echoes-column-actions">
-      <button type="button" class="echoes-icon-button" data-action="up" title="\u4E0A\u79FB\u8868\u5934" aria-label="\u4E0A\u79FB\u8868\u5934">
-        <i class="fa-solid fa-arrow-up"></i>
-      </button>
-      <button type="button" class="echoes-icon-button" data-action="down" title="\u4E0B\u79FB\u8868\u5934" aria-label="\u4E0B\u79FB\u8868\u5934">
-        <i class="fa-solid fa-arrow-down"></i>
-      </button>
-      <button type="button" class="echoes-icon-button" data-action="remove" title="\u5220\u9664\u5217" aria-label="\u5220\u9664\u5217">
-        <i class="fa-solid fa-trash"></i>
-      </button>
-    </div>`;
-  const typeSelect = row.querySelector("[data-field=type]");
-  const typeLabels = {
-    text: "\u77ED\u6587\u672C",
-    long_text: "\u957F\u6587\u672C",
-    number: "\u6570\u5B57",
-    boolean: "\u5E03\u5C14\u503C",
-    date: "\u65E5\u671F",
-    enum: "\u679A\u4E3E",
-    json: "JSON"
-  };
-  for (const type of MEMORY_COLUMN_TYPES) {
-    const option = document.createElement("option");
-    option.value = type;
-    option.textContent = typeLabels[type] ?? type;
-    typeSelect.append(option);
-  }
-  const nameInput = row.querySelector("[data-field=name]");
-  const idInput = row.querySelector("[data-field=id]");
-  nameInput.value = column?.name ?? "";
-  idInput.value = column?.id ?? "";
-  idInput.dataset.auto = column ? "false" : "true";
-  typeSelect.value = column?.type ?? "text";
-  row.querySelector("[data-field=required]").checked = column?.required ?? false;
-  row.querySelector("[data-field=description]").value = column?.description ?? "";
-  row.querySelector("[data-field=enumValues]").value = column?.enumValues?.join(", ") ?? "";
-  nameInput.addEventListener("input", () => {
-    if (idInput.dataset.auto === "true") idInput.value = slugify2(nameInput.value);
-  });
-  idInput.addEventListener("input", () => {
-    idInput.dataset.auto = "false";
-  });
-  row.querySelector("[data-action=up]").addEventListener("click", () => {
-    const previous = row.previousElementSibling;
-    if (previous) row.parentElement?.insertBefore(row, previous);
-  });
-  row.querySelector("[data-action=down]").addEventListener("click", () => {
-    const next = row.nextElementSibling;
-    if (next) row.parentElement?.insertBefore(next, row);
-  });
-  row.querySelector("[data-action=remove]").addEventListener("click", () => row.remove());
-  return row;
-}
-function readColumns(host) {
-  return [...host.querySelectorAll(".echoes-column-editor-row")].map((row) => {
-    const type = row.querySelector("[data-field=type]").value;
-    const enumValues = row.querySelector("[data-field=enumValues]").value.split(",").map((value) => value.trim()).filter(Boolean);
-    const description = row.querySelector("[data-field=description]").value.trim();
-    return {
-      id: row.querySelector("[data-field=id]").value.trim(),
-      name: row.querySelector("[data-field=name]").value.trim(),
-      type,
-      required: row.querySelector("[data-field=required]").checked,
-      ...description ? { description } : {},
-      ...type === "enum" ? { enumValues } : {}
-    };
-  });
-}
-function fillDefinition(body, value) {
-  body.querySelector("[name=name]").value = value.name;
-  body.querySelector("[name=description]").value = value.description;
-  body.querySelector("[name=writePrompt]").value = value.writePrompt;
-  const host = body.querySelector(".echoes-column-editor");
-  host.replaceChildren(...value.columns.map((column) => renderColumnRow(column)));
-}
-function definitionMarkup(includeTemplate) {
-  return `
-    <div class="echoes-form-grid">
-      ${includeTemplate ? '<label>\u57FA\u4E8E\u6A21\u677F<select name="templateId" required></select></label>' : ""}
-      <label>\u540D\u79F0<input name="name" type="text" required></label>
-      <label class="echoes-form-span">\u7528\u9014\u8BF4\u660E<textarea name="description" rows="2"></textarea></label>
-      <label class="echoes-form-span">\u5199\u8868\u63D0\u793A\u8BCD<textarea name="writePrompt" rows="6" required></textarea></label>
-    </div>
-    <div class="echoes-section-heading">
-      <h3>\u81EA\u5B9A\u4E49\u6570\u636E\u8868\u5934</h3>
-      <button type="button" class="echoes-icon-button" data-add-column title="\u6DFB\u52A0\u5217" aria-label="\u6DFB\u52A0\u5217"><i class="fa-solid fa-plus"></i></button>
-    </div>
-    <div class="echoes-column-editor"></div>`;
-}
-function openTypeDialog(templates, current) {
-  const dialog = dialogShell(current ? "\u7F16\u8F91\u8BB0\u5FC6\u7C7B\u578B" : "\u65B0\u5EFA\u8BB0\u5FC6\u7C7B\u578B");
-  const body = dialog.querySelector(".echoes-dialog-body");
-  body.innerHTML = definitionMarkup(true);
-  const templateSelect = body.querySelector("[name=templateId]");
-  for (const template of templates) {
-    const option = document.createElement("option");
-    option.value = template.id;
-    option.textContent = template.name;
-    templateSelect.append(option);
-  }
-  if (current && !templates.some((template) => template.id === current.templateId)) {
-    const option = document.createElement("option");
-    option.value = current.templateId;
-    option.textContent = "\u5DF2\u5220\u9664\u7684\u539F\u59CB\u6A21\u677F";
-    templateSelect.append(option);
-  }
-  const initialTemplate = templates.find((template) => template.id === current?.templateId) ?? templates[0];
-  if (current) {
-    templateSelect.value = current.templateId;
-    templateSelect.disabled = true;
-    fillDefinition(body, current);
-  } else if (initialTemplate) {
-    templateSelect.value = initialTemplate.id;
-    fillDefinition(body, { ...initialTemplate, name: initialTemplate.name.replace(/模板$/, "") });
-  }
-  templateSelect.addEventListener("change", () => {
-    const template = templates.find((candidate) => candidate.id === templateSelect.value);
-    if (template) fillDefinition(body, { ...template, name: template.name.replace(/模板$/, "") });
-  });
-  body.querySelector("[data-add-column]").addEventListener("click", () => {
-    body.querySelector(".echoes-column-editor").append(renderColumnRow());
-  });
-  return new Promise((resolve) => {
-    let settled = false;
-    dialog.querySelector("form").addEventListener("submit", (event) => {
-      event.preventDefault();
-      try {
-        const parsed = memoryTypeInputSchema.parse({
-          ...current ? { id: current.id } : {},
-          templateId: templateSelect.value,
-          name: body.querySelector("[name=name]").value,
-          description: body.querySelector("[name=description]").value,
-          writePrompt: body.querySelector("[name=writePrompt]").value,
-          columns: readColumns(body.querySelector(".echoes-column-editor")),
-          enabled: current?.enabled ?? true
-        });
-        settled = true;
-        resolve(parsed);
-        dialog.close("saved");
-      } catch (error51) {
-        toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u7C7B\u578B\u5B9A\u4E49\u65E0\u6548");
-      }
-    });
-    dialog.addEventListener("close", () => {
-      if (!settled) resolve(null);
-    }, { once: true });
-    dialog.showModal();
-  });
-}
-function openTemplateDialog(current) {
-  const dialog = dialogShell(current ? "\u7F16\u8F91\u7C7B\u578B\u6A21\u677F" : "\u65B0\u5EFA\u7C7B\u578B\u6A21\u677F");
-  const body = dialog.querySelector(".echoes-dialog-body");
-  body.innerHTML = definitionMarkup(false);
-  if (current) fillDefinition(body, current);
-  else body.querySelector(".echoes-column-editor").append(renderColumnRow());
-  body.querySelector("[data-add-column]").addEventListener("click", () => {
-    body.querySelector(".echoes-column-editor").append(renderColumnRow());
-  });
-  return new Promise((resolve) => {
-    let settled = false;
-    dialog.querySelector("form").addEventListener("submit", (event) => {
-      event.preventDefault();
-      try {
-        const parsed = memoryTypeTemplateInputSchema.parse({
-          ...current ? { id: current.id } : {},
-          name: body.querySelector("[name=name]").value,
-          description: body.querySelector("[name=description]").value,
-          writePrompt: body.querySelector("[name=writePrompt]").value,
-          columns: readColumns(body.querySelector(".echoes-column-editor"))
-        });
-        settled = true;
-        resolve(parsed);
-        dialog.close("saved");
-      } catch (error51) {
-        toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u6A21\u677F\u5B9A\u4E49\u65E0\u6548");
-      }
-    });
-    dialog.addEventListener("close", () => {
-      if (!settled) resolve(null);
-    }, { once: true });
-    dialog.showModal();
-  });
-}
-function valueInput(column, value) {
-  const label = document.createElement("label");
-  label.textContent = column.name;
-  let input;
-  if (column.type === "long_text" || column.type === "json") {
-    input = document.createElement("textarea");
-    input.rows = 4;
-  } else if (column.type === "enum") {
-    input = document.createElement("select");
-    if (!column.required) input.append(new Option("", ""));
-    for (const enumValue of column.enumValues ?? []) input.append(new Option(enumValue, enumValue));
-  } else {
-    input = document.createElement("input");
-    input.type = column.type === "number" ? "number" : column.type === "date" ? "date" : column.type === "boolean" ? "checkbox" : "text";
-  }
-  input.dataset.columnId = column.id;
-  input.dataset.columnType = column.type;
-  if (column.required && !(input instanceof HTMLInputElement && input.type === "checkbox")) {
-    input.required = true;
-  }
-  if (input instanceof HTMLInputElement && input.type === "checkbox") input.checked = Boolean(value);
-  else if (value !== void 0) input.value = column.type === "json" ? JSON.stringify(value, null, 2) : String(value);
-  label.append(input);
-  return label;
-}
-function openRowDialog(type, current) {
-  const dialog = dialogShell(current ? "\u7F16\u8F91\u957F\u671F\u8BB0\u5FC6" : "\u6DFB\u52A0\u957F\u671F\u8BB0\u5FC6");
-  const body = dialog.querySelector(".echoes-dialog-body");
-  body.innerHTML = `
-    <div class="echoes-form-grid echoes-fixed-fields">
-      <label>\u6570\u636E\u540D<input name="dataName" type="text" required></label>
-      <label>\u6761\u76EE\u72B6\u6001<select name="status">
-        <option value="permanent">\u6C38\u4E45</option>
-        <option value="keyword">\u5173\u952E\u8BCD</option>
-        <option value="vectorized">\u5411\u91CF\u5316</option>
-      </select></label>
-      <label class="echoes-form-span">\u5173\u952E\u8BCD<input name="keywords" type="text" placeholder="\u53EF\u4EE5\u4E3A\u7A7A\uFF1B\u591A\u4E2A\u5173\u952E\u8BCD\u4EE5\u9017\u53F7\u5206\u9694"></label>
-    </div>
-    <div class="echoes-section-heading"><h3>\u81EA\u5B9A\u4E49\u6570\u636E</h3></div>
-    <div class="echoes-form-grid" data-row-values></div>`;
-  body.querySelector("[name=dataName]").value = current?.dataName ?? "";
-  body.querySelector("[name=status]").value = current?.status ?? "keyword";
-  body.querySelector("[name=keywords]").value = current?.keywords.join(", ") ?? "";
-  const valuesHost = body.querySelector("[data-row-values]");
-  for (const column of type.columns) valuesHost.append(valueInput(column, current?.values[column.id]));
-  return new Promise((resolve) => {
-    let settled = false;
-    dialog.querySelector("form").addEventListener("submit", (event) => {
-      event.preventDefault();
-      try {
-        const values = {};
-        for (const input of valuesHost.querySelectorAll("[data-column-id]")) {
-          const id2 = input.dataset.columnId;
-          const columnType = input.dataset.columnType;
-          if (input instanceof HTMLInputElement && input.type === "checkbox") values[id2] = input.checked;
-          else if (!input.value.trim()) continue;
-          else if (columnType === "number") values[id2] = Number(input.value);
-          else if (columnType === "json") values[id2] = JSON.parse(input.value);
-          else values[id2] = input.value;
-        }
-        const keywords = body.querySelector("[name=keywords]").value.split(/[,\n]/).map((keyword) => keyword.trim()).filter((keyword, index, all) => Boolean(keyword) && all.indexOf(keyword) === index);
-        const parsed = memoryRowInputSchema.parse({
-          dataName: body.querySelector("[name=dataName]").value,
-          keywords,
-          status: body.querySelector("[name=status]").value,
-          values,
-          source: { kind: "manual", messageIds: [] }
-        });
-        settled = true;
-        resolve(parsed);
-        dialog.close("saved");
-      } catch (error51) {
-        toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u884C\u6570\u636E\u65E0\u6548");
-      }
-    });
-    dialog.addEventListener("close", () => {
-      if (!settled) resolve(null);
-    }, { once: true });
-    dialog.showModal();
-  });
-}
-function openPromptItemDialog(types, current) {
-  const dialog = dialogShell(current ? "\u7F16\u8F91\u63D0\u793A\u8BCD\u6761\u76EE" : "\u6DFB\u52A0\u63D0\u793A\u8BCD\u6761\u76EE");
-  const body = dialog.querySelector(".echoes-dialog-body");
-  body.innerHTML = `
-    <div class="echoes-form-grid">
-      <label>\u6761\u76EE\u7C7B\u578B<select name="kind">
-        <option value="main">\u4E3B\u63D0\u793A\u8BCD</option>
-        <option value="type_writer">\u7C7B\u578B\u5199\u8868\u63D0\u793A\u8BCD</option>
-        <option value="custom">\u81EA\u5B9A\u4E49\u63D0\u793A\u8BCD</option>
-      </select></label>
-      <label>\u89D2\u8272<select name="role"><option value="system">System</option><option value="user">User</option><option value="assistant">Assistant</option></select></label>
-      <label>\u6807\u9898<input name="title" type="text" required></label>
-      <label data-type-picker>\u8BB0\u5FC6\u7C7B\u578B<select name="typeId"></select></label>
-      <label class="echoes-form-span" data-content-field>\u5185\u5BB9<textarea name="content" rows="10"></textarea></label>
-      <label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528\u8BE5\u63D0\u793A\u8BCD</label>
-    </div>`;
-  const kind = body.querySelector("[name=kind]");
-  const role2 = body.querySelector("[name=role]");
-  const title = body.querySelector("[name=title]");
-  const typeSelect = body.querySelector("[name=typeId]");
-  const content = body.querySelector("[name=content]");
-  const enabled = body.querySelector("[name=enabled]");
-  for (const type of types) typeSelect.append(new Option(type.name, type.id));
-  kind.value = current?.kind ?? "custom";
-  role2.value = current?.role ?? "system";
-  title.value = current?.title ?? "\u65B0\u63D0\u793A\u8BCD";
-  enabled.checked = current?.enabled ?? true;
-  if (current?.kind === "type_writer") typeSelect.value = current.typeId;
-  else content.value = current?.content ?? "";
-  const refresh = () => {
-    const writer = kind.value === "type_writer";
-    body.querySelector("[data-type-picker]").classList.toggle("echoes-hidden", !writer);
-    body.querySelector("[data-content-field]").classList.toggle("echoes-hidden", writer);
-    if (writer) {
-      const type = types.find((candidate) => candidate.id === typeSelect.value) ?? types[0];
-      if (type && (!current || title.value === "\u65B0\u63D0\u793A\u8BCD")) title.value = `${type.name}\u5199\u8868\u63D0\u793A\u8BCD`;
-    }
-  };
-  kind.addEventListener("change", refresh);
-  typeSelect.addEventListener("change", refresh);
-  refresh();
-  return new Promise((resolve) => {
-    let settled = false;
-    dialog.querySelector("form").addEventListener("submit", (event) => {
-      event.preventDefault();
-      if (kind.value === "type_writer" && !typeSelect.value) {
-        toastr.error("\u6CA1\u6709\u53EF\u5F15\u7528\u7684\u8BB0\u5FC6\u7C7B\u578B\u3002", "\u63D0\u793A\u8BCD\u65E0\u6548");
-        return;
-      }
-      const base = {
-        id: current?.id ?? newPromptItemId(),
-        title: title.value.trim(),
-        role: role2.value,
-        enabled: enabled.checked
-      };
-      const item = kind.value === "type_writer" ? { ...base, kind: "type_writer", typeId: typeSelect.value } : {
-        ...base,
-        kind: kind.value,
-        content: content.value
-      };
-      settled = true;
-      resolve(item);
-      dialog.close("saved");
-    });
-    dialog.addEventListener("close", () => {
-      if (!settled) resolve(null);
-    }, { once: true });
-    dialog.showModal();
-  });
-}
-function openPreviewDialog(blocks, runtimeInput) {
-  const dialog = dialogShell("\u526F API \u8BF7\u6C42\u9884\u89C8", "echoes-preview-dialog");
-  const footer = dialog.querySelector(".echoes-dialog-footer");
-  footer.innerHTML = '<button type="button" class="menu_button echoes-primary" data-close>\u5173\u95ED</button>';
-  footer.querySelector("[data-close]").addEventListener("click", () => dialog.close());
-  const body = dialog.querySelector(".echoes-dialog-body");
-  for (const block of [...blocks, { title: "\u8FD0\u884C\u65F6\u8868\u683C\u4E0E\u589E\u91CF\u5BF9\u8BDD", role: "user", content: runtimeInput }]) {
-    const section = document.createElement("section");
-    section.className = "echoes-preview-block";
-    const heading = document.createElement("header");
-    heading.textContent = `${block.role.toUpperCase()} \xB7 ${block.title}`;
-    const pre = document.createElement("pre");
-    pre.textContent = block.content;
-    section.append(heading, pre);
-    body.append(section);
-  }
-  dialog.showModal();
-}
-function extractionOperationTarget(item, types, rows) {
-  const operation = item.operation;
-  const action = operation?.action ?? "INVALID";
-  const typeId = operation?.typeId ?? "";
-  const type = types.find((candidate) => candidate.id === typeId);
-  const typeName = type?.name ?? typeId ?? "\u672A\u77E5\u8868\u683C";
-  if (action === "add") return `${typeName} / ${operation?.dataName ?? "\u7F3A\u5C11\u6570\u636E\u540D"}`;
-  const rowId = operation?.rowId ?? "";
-  const row = rows.find((candidate) => candidate.id === rowId);
-  return `${typeName} / ${row?.dataName ?? rowId ?? "\u672A\u77E5\u76EE\u6807"}`;
-}
-function openExtractionReviewDialog(items, types, rows) {
-  const dialog = dialogShell("\u5BA1\u6838\u7ED3\u6784\u5316\u8BB0\u5FC6\u6279\u6B21", "echoes-extraction-review-dialog");
-  const body = dialog.querySelector(".echoes-dialog-body");
-  const notice = document.createElement("p");
-  notice.className = "echoes-extraction-review-notice";
-  notice.textContent = "\u6709\u6548\u64CD\u4F5C\u9ED8\u8BA4\u9009\u4E2D\uFF1B\u65E0\u6548\u64CD\u4F5C\u4E0D\u53EF\u63D0\u4EA4\u3002\u63D0\u4EA4\u540E\uFF0C\u672A\u9009\u9879\u4E0E\u65E0\u6548\u9879\u4F1A\u88AB\u660E\u786E\u8DF3\u8FC7\u5E76\u63A8\u8FDB\u68C0\u67E5\u70B9\u3002\u5BA1\u6838\u4EC5\u4FDD\u5B58\u5728\u5F53\u524D\u9875\u9762\u5185\u5B58\u4E2D\u3002";
-  const list = document.createElement("div");
-  list.className = "echoes-extraction-review-list";
-  const validInputs = [];
-  for (const item of items) {
-    const row = document.createElement("article");
-    row.className = `echoes-extraction-review-item ${item.state}`;
-    const select = document.createElement("input");
-    select.type = "checkbox";
-    select.value = String(item.index);
-    select.checked = item.state === "valid";
-    select.disabled = item.state === "rejected";
-    select.setAttribute("aria-label", `\u9009\u62E9\u64CD\u4F5C ${item.index + 1}`);
-    if (item.state === "valid") validInputs.push(select);
-    const summary = document.createElement("div");
-    summary.className = "echoes-extraction-review-summary";
-    const heading = document.createElement("strong");
-    const action = typeof item.operation === "object" && item.operation !== null ? String(item.operation.action ?? "INVALID").toUpperCase() : "INVALID";
-    heading.textContent = `${item.index + 1}. ${action} \xB7 ${extractionOperationTarget(item, types, rows)}`;
-    summary.append(heading);
-    if (item.reason) {
-      const reason = document.createElement("p");
-      reason.textContent = item.reason;
-      summary.append(reason);
-    }
-    const details = document.createElement("pre");
-    details.textContent = JSON.stringify(item.operation, null, 2);
-    row.append(select, summary, details);
-    list.append(row);
-  }
-  const toolbar = document.createElement("div");
-  toolbar.className = "echoes-extraction-review-toolbar";
-  const bulk = document.createElement("label");
-  bulk.className = "echoes-check echoes-extraction-review-select-all";
-  const bulkInput = document.createElement("input");
-  bulkInput.type = "checkbox";
-  bulkInput.checked = validInputs.length > 0;
-  bulkInput.disabled = validInputs.length === 0;
-  bulkInput.dataset.reviewSelectAll = "";
-  const bulkText = document.createElement("span");
-  bulkText.textContent = "\u9009\u62E9\u5168\u90E8\u6709\u6548\u9879";
-  bulk.append(bulkInput, bulkText);
-  const counts = document.createElement("small");
-  counts.textContent = `${validInputs.length} \u9879\u53EF\u63D0\u4EA4 \xB7 ${items.length - validInputs.length} \u9879\u9700\u8DF3\u8FC7`;
-  const bulkControls = document.createElement("div");
-  bulkControls.className = "echoes-extraction-review-bulk";
-  bulkControls.append(counts, bulk);
-  toolbar.append(notice, bulkControls);
-  const syncBulk = () => {
-    const selected = validInputs.filter((input) => input.checked).length;
-    bulkInput.checked = selected === validInputs.length && validInputs.length > 0;
-    bulkInput.indeterminate = selected > 0 && selected < validInputs.length;
-  };
-  bulkInput.addEventListener("change", () => {
-    validInputs.forEach((input) => {
-      input.checked = bulkInput.checked;
-    });
-    syncBulk();
-  });
-  validInputs.forEach((input) => input.addEventListener("change", syncBulk));
-  body.append(toolbar, list);
-  const footer = dialog.querySelector(".echoes-dialog-footer");
-  footer.innerHTML = `
-    <button type="button" class="menu_button" data-close>\u53D6\u6D88</button>
-    <button type="button" class="menu_button" data-review-rerun><i class="fa-solid fa-rotate"></i> \u91CD\u8DD1\u6279\u6B21</button>
-    <button type="submit" class="menu_button echoes-primary"><i class="fa-solid fa-check"></i> \u63D0\u4EA4\u9009\u4E2D\u9879</button>`;
-  footer.querySelector("[data-close]").addEventListener("click", () => dialog.close("cancel"));
-  return new Promise((resolve) => {
-    let settled = false;
-    footer.querySelector("[data-review-rerun]").addEventListener("click", () => {
-      settled = true;
-      resolve({ action: "rerun", selectedIndexes: [] });
-      dialog.close("rerun");
-    });
-    dialog.querySelector("form").addEventListener("submit", (event) => {
-      event.preventDefault();
-      const selectedIndexes = [...list.querySelectorAll('input[type="checkbox"]:checked')].map((input) => Number(input.value));
-      settled = true;
-      resolve({ action: "submit", selectedIndexes });
-      dialog.close("submit");
-    });
-    dialog.addEventListener("close", () => {
-      if (!settled) resolve(null);
-    }, { once: true });
-    dialog.showModal();
-  });
-}
-function openMigrationDialog(options) {
-  const dialog = dialogShell("\u8FC1\u79FB\u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6");
-  const body = dialog.querySelector(".echoes-dialog-body");
-  body.innerHTML = `
-    <div class="echoes-form-grid">
-      <label class="echoes-form-span">\u6765\u6E90\u4E16\u754C\u4E66<select name="source"></select></label>
-      <label>\u51B2\u7A81\u5904\u7406<select name="policy"><option value="skip">\u8DF3\u8FC7\u5DF2\u6709\u7C7B\u578B</option><option value="overwrite">\u66FF\u6362\u540C\u4E00\u7C7B\u578B\u53CA\u5176\u5168\u90E8\u6570\u636E</option><option value="copy">\u521B\u5EFA\u526F\u672C</option></select></label>
-    </div>
-    <div class="echoes-section-heading"><h3>\u8FC1\u79FB\u7C7B\u578B</h3></div>
-    <div class="echoes-migration-types"></div>`;
-  const source = body.querySelector("[name=source]");
-  const host = body.querySelector(".echoes-migration-types");
-  for (const name of options.worldbookNames.filter((name2) => name2 !== options.currentWorldbookName)) {
-    source.append(new Option(name, name));
-  }
-  const load = async () => {
-    host.textContent = "\u6B63\u5728\u8BFB\u53D6\u6765\u6E90\u4E16\u754C\u4E66...";
-    try {
-      const types = await options.loadTypes(source.value);
-      host.replaceChildren();
-      for (const type of types) {
-        const label = document.createElement("label");
-        label.className = "echoes-migration-option";
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.value = type.id;
-        checkbox.checked = true;
-        label.append(checkbox, document.createTextNode(type.name));
-        host.append(label);
-      }
-      if (types.length === 0) host.textContent = "\u8BE5\u4E16\u754C\u4E66\u6CA1\u6709 Echoes \u7ED3\u6784\u5316\u8BB0\u5FC6\u3002";
-    } catch (error51) {
-      host.textContent = error51 instanceof Error ? error51.message : String(error51);
-    }
-  };
-  source.addEventListener("change", () => void load());
-  if (source.value) void load();
-  else host.textContent = "\u6CA1\u6709\u5176\u4ED6\u53EF\u8FC1\u79FB\u7684\u4E16\u754C\u4E66\u3002";
-  return new Promise((resolve) => {
-    let settled = false;
-    dialog.querySelector("form").addEventListener("submit", (event) => {
-      event.preventDefault();
-      const typeIds = [...host.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value);
-      if (!source.value || typeIds.length === 0) {
-        toastr.warning("\u8BF7\u9009\u62E9\u6765\u6E90\u4E16\u754C\u4E66\u548C\u81F3\u5C11\u4E00\u4E2A\u7C7B\u578B\u3002", "\u65E0\u6CD5\u8FC1\u79FB");
-        return;
-      }
-      settled = true;
-      resolve({
-        sourceWorldbookName: source.value,
-        typeIds,
-        policy: body.querySelector("[name=policy]").value
-      });
-      dialog.close("saved");
-    });
-    dialog.addEventListener("close", () => {
-      if (!settled) resolve(null);
-    }, { once: true });
-    dialog.showModal();
-  });
-}
-
-// src/extension/ui/responsive-table.ts
-var WIDE_COLUMNS = /* @__PURE__ */ new Set([
-  "\u5185\u5BB9",
-  "\u6B63\u6587",
-  "\u6807\u7B7E",
-  "\u8BF4\u660E",
-  "\u5730\u5740",
-  "URL",
-  "\u53D8\u5316",
-  "\u72B6\u6001\u54C8\u5E0C",
-  "\u9519\u8BEF"
-]);
-function prepareResponsiveTable(table) {
-  const headings = [...table.tHead?.rows[0]?.cells ?? []].map((cell) => cell.textContent?.trim() ?? "");
-  const lastIndex = headings.length - 1;
-  const actionColumnIndex = ["\u64CD\u4F5C", "\u6D4B\u8BD5"].includes(headings[lastIndex] ?? "") ? lastIndex : -1;
-  if (actionColumnIndex >= 0) table.tHead?.rows[0]?.cells[actionColumnIndex]?.setAttribute("data-actions", "true");
-  table.classList.add("echoes-responsive-table");
-  for (const body of [...table.tBodies]) {
-    for (const row of [...body.rows]) {
-      [...row.cells].forEach((cell, index) => {
-        const label = headings[index] ?? "";
-        cell.dataset.label = label;
-        if (WIDE_COLUMNS.has(label)) cell.dataset.wide = "true";
-        if (index === actionColumnIndex || cell.classList.contains("echoes-row-actions")) cell.dataset.actions = "true";
-      });
-    }
-  }
-}
-
-// src/extension/ui/retrieval-panel.ts
+// src/extension/workbench/core.ts
 init_client();
-var TERMINAL_STATES2 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
-function uid(prefix) {
-  return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
+function el(tag, cls = "", ...children) {
+  const node = document.createElement(tag);
+  node.className = cls;
+  for (const child of children)
+    if (child !== null && child !== void 0 && child !== false)
+      node.append(child instanceof Node ? child : String(child));
+  return node;
 }
-function button(icon, label, action, primary = false) {
-  const element = document.createElement("button");
-  element.type = "button";
-  element.className = `menu_button${primary ? " echoes-primary" : ""}`;
-  element.dataset.retrievalAction = action;
-  element.innerHTML = `<i class="fa-solid fa-${icon}"></i> ${label}`;
-  return element;
+function icon(name) {
+  const node = el("i", "fa-solid fa-" + name);
+  node.setAttribute("aria-hidden", "true");
+  return node;
 }
-function iconButton(icon, title, action) {
-  const element = document.createElement("button");
-  element.type = "button";
-  element.className = "echoes-icon-button";
-  element.dataset.retrievalAction = action;
-  element.title = title;
-  element.setAttribute("aria-label", title);
-  element.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
-  return element;
-}
-function score(value) {
-  return value === void 0 ? "-" : value.toFixed(5);
-}
-function errorMessage(error51) {
-  return error51 instanceof Error ? error51.message : String(error51);
-}
-function selectedValue(root, selector) {
-  return root.querySelector(selector)?.value.trim() ?? "";
-}
-function emptyState(icon, title, description, compact = false) {
-  const element = document.createElement("div");
-  element.className = `echoes-empty-state${compact ? " echoes-empty-state-compact" : ""}`;
-  const symbol2 = document.createElement("i");
-  symbol2.className = `fa-solid fa-${icon}`;
-  symbol2.setAttribute("aria-hidden", "true");
-  const heading = document.createElement("strong");
-  heading.textContent = title;
-  const detail = document.createElement("span");
-  detail.textContent = description;
-  element.append(symbol2, heading, detail);
-  return element;
-}
-var RetrievalPanel = class {
-  constructor(root) {
-    this.root = root;
-    this.root.addEventListener("click", (event) => {
-      const target = event.target.closest("[data-retrieval-action]");
-      if (!target) return;
-      if (target instanceof HTMLButtonElement && target.disabled) return;
-      if (target instanceof HTMLButtonElement) {
-        target.disabled = true;
-        target.setAttribute("aria-busy", "true");
-      }
-      void this.handleAction(target.dataset.retrievalAction ?? "", target).finally(() => {
-        if (target instanceof HTMLButtonElement && target.isConnected) target.disabled = false;
-        target.removeAttribute("aria-busy");
-      });
-    });
-    this.root.addEventListener("submit", (event) => {
-      const form = event.target;
-      const isManual = form.matches("[data-retrieval-manual-form]");
-      const isQuery = form.matches("[data-retrieval-query-form]");
-      if (!isManual && !isQuery) return;
-      event.preventDefault();
-      const submit = form.querySelector('button[type="submit"]');
-      if (submit?.disabled) return;
-      if (submit) submit.disabled = true;
-      form.setAttribute("aria-busy", "true");
-      const operation = isManual ? this.importManual(form) : this.runQuery(form);
-      void operation.catch((error51) => toastr.error(errorMessage(error51), "Echoes \u68C0\u7D22")).finally(() => {
-        if (submit?.isConnected) submit.disabled = false;
-        if (form.isConnected) form.removeAttribute("aria-busy");
-      });
-    });
-  }
-  root;
-  collections = [];
-  activeJobId = null;
-  lastQueryRequest = null;
-  renderSequence = 0;
-  async render() {
-    if (!this.root.classList.contains("echoes-retrieval-view")) return;
-    const sequence2 = ++this.renderSequence;
-    this.setMessage("\u6B63\u5728\u8BFB\u53D6\u68C0\u7D22\u7D22\u5F15...");
+function button(label, glyph, action, variant = "") {
+  const b = el(
+    "button",
+    "ew-button " + variant,
+    icon(glyph),
+    label ? el("span", "", label) : null
+  );
+  b.type = "button";
+  b.addEventListener("click", () => {
+    if (b.disabled) return;
+    let result;
     try {
-      const collections = await echoesApi.listRetrievalCollections();
-      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-retrieval-view")) return;
-      this.collections = collections;
-      this.renderSidebar();
-      this.renderWorkspace();
+      result = action();
     } catch (error51) {
-      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-retrieval-view")) return;
-      this.setMessage(errorMessage(error51), true);
-    }
-  }
-  async handleAction(action, target) {
-    try {
-      if (action === "retrieval-refresh") await this.render();
-      else if (action === "add-collection") await this.createCollection();
-      else if (action === "delete-collection") await this.deleteCollection(target.dataset.id ?? "");
-      else if (action === "repair-collection") await this.rebuildCollection(target.dataset.id ?? "", true);
-      else if (action === "rebuild-collection") await this.rebuildCollection(target.dataset.id ?? "", false);
-      else if (action === "import-jsonl") await this.importJsonl();
-      else if (action === "cancel-job" && this.activeJobId) await echoesApi.cancelJob(this.activeJobId);
-    } catch (error51) {
-      toastr.error(errorMessage(error51), "Echoes \u68C0\u7D22");
-    }
-  }
-  renderSidebar() {
-    const heading = this.root.querySelector(".echoes-sidebar-heading > span");
-    const actions = this.root.querySelector(".echoes-sidebar-actions");
-    const list = this.root.querySelector(".echoes-table-list");
-    heading.textContent = "\u68C0\u7D22\u96C6\u5408";
-    actions.replaceChildren(iconButton("rotate", "\u5237\u65B0\u96C6\u5408", "retrieval-refresh"));
-    list.replaceChildren();
-    if (this.collections.length === 0) {
-      list.append(emptyState("database", "\u6682\u65E0\u96C6\u5408", "\u65B0\u5EFA\u96C6\u5408\u540E\u53EF\u5BFC\u5165\u548C\u68C0\u7D22\u6587\u6863\u3002", true));
+      notifyError(error51);
       return;
     }
-    for (const item of this.collections) {
-      const row = document.createElement("div");
-      row.className = "echoes-retrieval-collection-nav";
-      const name = document.createElement("strong");
-      name.textContent = item.collection.name;
-      const counts = document.createElement("small");
-      counts.textContent = `${item.documents} \u6587\u6863 \xB7 ${item.ready} \u5C31\u7EEA`;
-      row.append(name, counts);
-      list.append(row);
-    }
-  }
-  renderWorkspace() {
-    const host = this.root.querySelector(".echoes-grid-host");
-    const settings = getSettings();
-    host.innerHTML = `
-      <div class="echoes-retrieval-page">
-        <section class="echoes-retrieval-section echoes-api-binding-section">
-          <div class="echoes-section-heading"><div><h2>\u68C0\u7D22\u8FD0\u884C\u914D\u7F6E</h2><span>\u7AEF\u70B9\u3001\u6A21\u578B\u3001\u51ED\u636E\u548C\u6545\u969C\u7B56\u7565\u7EDF\u4E00\u5728 API\u914D\u7F6E\u4E2D\u7BA1\u7406</span></div><button type="button" class="menu_button" data-action="switch-view" data-view="api"><i class="fa-solid fa-plug"></i> \u524D\u5F80 API\u914D\u7F6E</button></div>
-          <div class="echoes-workflow-summary">
-            <span>\u603B\u7ED3 Embedding<strong data-retrieval-binding-embedding></strong></span><span>Rerank<strong data-retrieval-binding-rerank></strong></span><span>\u6545\u969C\u7B56\u7565<strong data-retrieval-binding-policy></strong></span>
-          </div>
-        </section>
-        <section class="echoes-retrieval-section" data-section="collections">
-          <div class="echoes-section-heading"><div><h2>\u96C6\u5408\u4E0E\u7D22\u5F15</h2><span>\u6587\u6863\u5148\u6301\u4E45\u5316\uFF0C\u5411\u91CF\u72B6\u6001\u72EC\u7ACB\u4FEE\u590D</span></div><div data-collection-actions></div></div>
-          <div class="echoes-table-scroll" data-collection-table></div>
-        </section>
-        <section class="echoes-retrieval-section echoes-retrieval-ingest" data-section="ingest">
-          <div class="echoes-section-heading"><div><h2>\u6570\u636E\u5BFC\u5165</h2><span>JSONL \u6309 100 \u6761\u5206\u6279\u63D0\u4EA4</span></div></div>
-          <form class="echoes-retrieval-form" data-retrieval-manual-form>
-            <label>\u96C6\u5408<select name="collectionId" required></select></label>
-            <label>\u6765\u6E90 ID<input name="sourceId" required maxlength="500"></label>
-            <label>\u6807\u7B7E<input name="tags" placeholder="\u9017\u53F7\u5206\u9694"></label>
-            <label class="echoes-form-span">\u6B63\u6587<textarea name="text" rows="5" required maxlength="100000"></textarea></label>
-            <div class="echoes-retrieval-form-actions"><button class="menu_button echoes-primary" type="submit"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0\u6587\u672C</button></div>
-          </form>
-          <div class="echoes-jsonl-row"><label>JSONL \u6587\u4EF6<input type="file" accept=".jsonl,.ndjson,application/x-ndjson" data-jsonl-file></label><button class="menu_button" type="button" data-retrieval-action="import-jsonl"><i class="fa-solid fa-file-import"></i> \u5BFC\u5165 JSONL</button></div>
-        </section>
-        <section class="echoes-retrieval-section" data-section="query">
-          <div class="echoes-section-heading"><div><h2>\u67E5\u8BE2\u5B9E\u9A8C\u53F0</h2><span>\u5411\u91CF\u4E0E BM25 \u5E76\u884C\uFF0CRRF k=60</span></div></div>
-          <form class="echoes-retrieval-query" data-retrieval-query-form>
-            <div class="echoes-query-collections" data-query-collections></div>
-            <div class="echoes-query-options">
-              <label><input type="checkbox" name="vectorEnabled"> \u5411\u91CF</label>
-              <label><input type="checkbox" name="bm25Enabled"> BM25</label>
-              <label><input type="checkbox" name="rerankEnabled"> rerank</label>
-              <label>\u7ED3\u679C\u6570<input type="number" name="finalTopK" min="1" max="100"></label>
-            </div>
-            <label class="echoes-query-text">\u67E5\u8BE2<textarea name="query" rows="3" required maxlength="20000"></textarea></label>
-            <div class="echoes-retrieval-form-actions"><button class="menu_button echoes-primary" type="submit"><i class="fa-solid fa-magnifying-glass"></i> \u67E5\u8BE2</button></div>
-          </form>
-          <div data-query-status></div>
-          <div class="echoes-table-scroll" data-query-results></div>
-        </section>
-      </div>`;
-    const embeddingGroup = settings.retrieval.embeddingGroups.find((group) => group.id === settings.summary.embeddingGroupId);
-    const rerankSet = settings.retrieval.rerankSets.find((set3) => set3.id === settings.retrieval.recall.rerankSetId);
-    host.querySelector("[data-retrieval-binding-embedding]").textContent = embeddingGroup?.name ?? "\u672A\u914D\u7F6E";
-    host.querySelector("[data-retrieval-binding-rerank]").textContent = rerankSet?.name ?? "\u672A\u914D\u7F6E";
-    host.querySelector("[data-retrieval-binding-policy]").textContent = {
-      confirm_ambiguous: "\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4",
-      always: "\u59CB\u7EC8\u81EA\u52A8\u5207\u6362",
-      definitive_only: "\u4EC5\u660E\u786E\u5931\u8D25\u5207\u6362"
-    }[settings.retrieval.failoverPolicy];
-    host.querySelector("[data-collection-actions]").append(button("plus", "\u65B0\u5EFA\u96C6\u5408", "add-collection", true));
-    this.renderCollectionTable(host.querySelector("[data-collection-table]"));
-    this.populateCollectionControls(host);
-  }
-  renderCollectionTable(host) {
-    if (this.collections.length === 0) {
-      host.replaceChildren(emptyState("database", "\u6682\u65E0\u68C0\u7D22\u96C6\u5408", "\u4F7F\u7528\u53F3\u4E0A\u89D2\u201C\u65B0\u5EFA\u96C6\u5408\u201D\u521B\u5EFA\u7B2C\u4E00\u4E2A\u672C\u5730\u68C0\u7D22\u96C6\u5408\u3002"));
-      return;
-    }
-    const table = document.createElement("table");
-    table.className = "echoes-data-table echoes-collection-table";
-    table.innerHTML = "<thead><tr><th>\u96C6\u5408</th><th>\u6587\u6863</th><th>\u5C31\u7EEA</th><th>\u5F85\u5904\u7406</th><th>\u5931\u8D25</th><th>\u4E0D\u786E\u5B9A</th><th>\u7EF4\u5EA6</th><th>\u7D22\u5F15</th><th>\u64CD\u4F5C</th></tr></thead>";
-    const body = document.createElement("tbody");
-    for (const item of this.collections) {
-      const row = document.createElement("tr");
-      for (const value of [
-        item.collection.name,
-        item.documents,
-        item.ready,
-        item.pending,
-        item.failed,
-        item.ambiguous,
-        item.dimensions,
-        item.vectorIndex === "hnsw_sq" ? "HNSW-SQ" : "Flat"
-      ]) {
-        const cell = document.createElement("td");
-        cell.textContent = String(value);
-        row.append(cell);
-      }
-      const actions = document.createElement("td");
-      actions.className = "echoes-row-actions echoes-retrieval-row-actions";
-      for (const [icon, title, action] of [
-        ["screwdriver-wrench", "\u4FEE\u590D\u672A\u5C31\u7EEA\u5411\u91CF", "repair-collection"],
-        ["rotate", "\u91CD\u5EFA\u5168\u90E8\u5411\u91CF", "rebuild-collection"],
-        ["trash", "\u5220\u9664\u96C6\u5408", "delete-collection"]
-      ]) {
-        const control = iconButton(icon, title, action);
-        control.dataset.id = item.collection.id;
-        actions.append(control);
-      }
-      row.append(actions);
-      body.append(row);
-    }
-    table.append(body);
-    prepareResponsiveTable(table);
-    host.replaceChildren(table);
-  }
-  populateCollectionControls(host) {
-    const select = host.querySelector("[name=collectionId]");
-    const queryCollections = host.querySelector("[data-query-collections]");
-    const query = getSettings().retrieval.query;
-    host.querySelector("[name=vectorEnabled]").checked = query.vectorEnabled;
-    host.querySelector("[name=bm25Enabled]").checked = query.bm25Enabled;
-    host.querySelector("[name=rerankEnabled]").checked = query.rerankEnabled;
-    host.querySelector("[name=finalTopK]").value = String(query.finalTopK);
-    if (this.collections.length === 0) {
-      select.add(new Option("\u8BF7\u5148\u65B0\u5EFA\u96C6\u5408", ""));
-      select.disabled = true;
-      queryCollections.classList.add("is-empty");
-      queryCollections.replaceChildren(emptyState("magnifying-glass", "\u6682\u65E0\u53EF\u67E5\u8BE2\u96C6\u5408", "\u65B0\u5EFA\u96C6\u5408\u5E76\u5BFC\u5165\u6587\u6863\u540E\uFF0C\u67E5\u8BE2\u5B9E\u9A8C\u53F0\u5C06\u81EA\u52A8\u542F\u7528\u3002"));
-      const unavailableControls = host.querySelectorAll(
-        '[data-retrieval-manual-form] :is(input, select, textarea, button), [data-jsonl-file], [data-retrieval-action="import-jsonl"], [data-retrieval-query-form] :is(input, select, textarea, button)'
-      );
-      unavailableControls.forEach((control) => {
-        control.disabled = true;
+    if (result instanceof Promise) {
+      b.disabled = true;
+      b.setAttribute("aria-busy", "true");
+      void result.catch(notifyError).finally(() => {
+        b.disabled = false;
+        b.removeAttribute("aria-busy");
       });
-      host.querySelector("[data-retrieval-manual-form]").setAttribute("aria-disabled", "true");
-      host.querySelector("[data-retrieval-query-form]").setAttribute("aria-disabled", "true");
-      return;
     }
-    for (const item of this.collections) {
-      const option = document.createElement("option");
-      option.value = item.collection.id;
-      option.textContent = item.collection.name;
-      select.append(option);
-      const label = document.createElement("label");
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.name = "collectionIds";
-      input.value = item.collection.id;
-      input.checked = true;
-      label.append(input, document.createTextNode(` ${item.collection.name}`));
-      queryCollections.append(label);
-    }
-  }
-  async createCollection() {
-    const groups = getSettings().retrieval.embeddingGroups;
-    if (groups.length === 0) throw new Error("\u8BF7\u5148\u914D\u7F6E Embedding \u7AEF\u70B9\u7EC4\u548C\u5D4C\u5165\u7A7A\u95F4\u3002");
-    const dialog = document.createElement("dialog");
-    dialog.className = "echoes-dialog echoes-compact-dialog";
-    dialog.innerHTML = `
-      <form method="dialog" class="echoes-dialog-frame">
-        <header class="echoes-dialog-header"><h2>\u65B0\u5EFA\u68C0\u7D22\u96C6\u5408</h2></header>
-        <div class="echoes-dialog-body"><div class="echoes-form-grid">
-          <label>\u540D\u79F0<input name="name" required maxlength="120"></label>
-          <label>\u96C6\u5408 ID<input name="id" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label>
-          <label>\u5D4C\u5165\u7A7A\u95F4<select name="groupId"></select></label>
-          <label class="echoes-form-span">\u8BF4\u660E<textarea name="description" rows="3" maxlength="1000"></textarea></label>
-        </div></div>
-        <footer class="echoes-dialog-footer"><button type="button" class="menu_button" data-close>\u53D6\u6D88</button><button type="submit" class="menu_button echoes-primary">\u521B\u5EFA</button></footer>
-      </form>`;
-    document.body.append(dialog);
-    const form = dialog.querySelector("form");
-    form.elements.namedItem("id").value = uid("collection");
-    const select = form.elements.namedItem("groupId");
-    groups.forEach((group) => select.add(new Option(`${group.name} \xB7 ${group.dimensions} \u7EF4`, group.id)));
-    const close = dialog.querySelector("[data-close]");
-    close.addEventListener("click", () => dialog.close("cancel"));
-    dialog.addEventListener("cancel", (event) => {
-      if (form.querySelector('button[type="submit"]').disabled) event.preventDefault();
+  });
+  return b;
+}
+function tool(label, glyph, action, variant = "") {
+  const b = button("", glyph, action, "ew-icon " + variant);
+  b.title = label;
+  b.setAttribute("aria-label", label);
+  return b;
+}
+function badge(text, tone = "") {
+  return el("span", "ew-badge " + tone, text);
+}
+function actions(...items) {
+  return el("div", "ew-actions", ...items);
+}
+function section(title, ...children) {
+  return el("section", "ew-section", el("h2", "", title), ...children);
+}
+function empty(title, action) {
+  return el("div", "ew-empty", icon("inbox"), el("p", "", title), action);
+}
+function detail(title, value) {
+  const node = el("details", "ew-detail", el("summary", "", title));
+  node.append(
+    el(
+      "pre",
+      "ew-code",
+      typeof value === "string" ? value : JSON.stringify(value, null, 2)
+    )
+  );
+  return node;
+}
+function metric(label, value) {
+  return el("div", "ew-metric", el("span", "", label), el("strong", "", value));
+}
+function notify(message, error51 = false) {
+  const root = document.querySelector("#echoes-workbench") ?? document.body;
+  const note = el("div", "ew-toast " + (error51 ? "is-error" : ""), message);
+  note.setAttribute("role", error51 ? "alert" : "status");
+  root.append(note);
+  setTimeout(() => note.remove(), error51 ? 12e3 : 3500);
+}
+function notifyError(error51) {
+  const message = error51 instanceof Error ? error51.message : String(error51);
+  console.error("[Echoes] Workbench operation failed.", error51);
+  notify(message, true);
+}
+function download(name, content) {
+  const url2 = URL.createObjectURL(
+    new Blob([content], { type: "application/json;charset=utf-8" })
+  );
+  const link = el("a");
+  link.href = url2;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url2), 1e3);
+}
+function readFile(accept = ".json") {
+  return new Promise((resolve) => {
+    const input = el("input");
+    input.type = "file";
+    input.accept = accept;
+    input.addEventListener("change", () => resolve(input.files?.[0] ?? null), {
+      once: true
     });
-    await new Promise((resolve) => {
-      form.addEventListener("submit", (event) => {
-        event.preventDefault();
-        const submit = form.querySelector('button[type="submit"]');
-        if (submit.disabled) return;
-        submit.disabled = true;
-        close.disabled = true;
-        const group = groups.find((item) => item.id === select.value);
-        void echoesApi.createRetrievalCollection({
-          id: selectedValue(form, "[name=id]"),
-          name: selectedValue(form, "[name=name]"),
-          description: selectedValue(form, "[name=description]"),
-          embeddingSpaceId: group.embeddingSpaceId,
-          dimensions: group.dimensions
-        }).then(() => {
-          if (dialog.open) dialog.close("saved");
-        }).catch((error51) => {
-          close.disabled = false;
-          toastr.error(errorMessage(error51), "\u96C6\u5408\u521B\u5EFA\u5931\u8D25");
-          if (submit.isConnected) submit.disabled = false;
-        });
-      });
-      dialog.addEventListener("close", () => {
-        dialog.remove();
-        resolve();
-      }, { once: true });
-      dialog.showModal();
-    });
-    await this.render();
-  }
-  async deleteCollection(collectionId) {
-    if (!collectionId || !confirm("\u5220\u9664\u96C6\u5408\u53CA\u5176\u6743\u5A01\u6587\u6863\u548C\u5411\u91CF\uFF1F")) return;
-    const completed = await this.waitForJob(await echoesApi.deleteRetrievalCollection(collectionId));
-    if (completed.status !== "succeeded") throw new Error(completed.error?.message ?? completed.message);
-    await this.render();
-  }
-  embeddingGroupForCollection(collectionId) {
-    const collection = this.collections.find((item) => item.collection.id === collectionId)?.collection;
-    if (!collection) return void 0;
-    return getSettings().retrieval.embeddingGroups.find((group) => group.embeddingSpaceId === collection.embeddingSpaceId && group.dimensions === collection.dimensions);
-  }
-  async rebuildCollection(collectionId, repair) {
-    const group = this.embeddingGroupForCollection(collectionId);
-    if (!group) throw new Error("\u6CA1\u6709\u4E0E\u8BE5\u96C6\u5408\u5D4C\u5165\u7A7A\u95F4\u548C\u7EF4\u5EA6\u5339\u914D\u7684\u7AEF\u70B9\u7EC4\u3002");
-    if (!repair && !confirm("\u91CD\u5EFA\u4F1A\u91CD\u65B0\u751F\u6210\u8BE5\u96C6\u5408\u7684\u5168\u90E8\u5411\u91CF\u3002\u7EE7\u7EED\uFF1F")) return;
-    const settings = getSettings();
-    const completed = await this.waitForJob(await echoesApi.rebuildRetrievalIndex({
-      collectionIds: [collectionId],
-      embeddingGroup: group,
-      failoverPolicy: settings.retrieval.failoverPolicy
-    }, repair));
-    if (completed.status !== "succeeded" || !completed.result) throw new Error(completed.error?.message ?? completed.message);
-    if (completed.result.decisionRequired) {
-      const proceed = await this.confirmAmbiguous(completed.result.decisionRequired);
-      if (proceed) {
-        await this.waitForJob(await echoesApi.rebuildRetrievalIndex({
-          collectionIds: [collectionId],
-          embeddingGroup: group,
-          failoverPolicy: settings.retrieval.failoverPolicy,
-          resumeAfterEndpointId: completed.result.decisionRequired.failedEndpointId
-        }, true));
-      }
-    }
-    await this.render();
-  }
-  async importManual(form) {
-    const collectionId = selectedValue(form, "[name=collectionId]");
-    const document2 = retrievalDocumentInputSchema.parse({
-      collectionId,
-      sourceType: "manual",
-      sourceId: selectedValue(form, "[name=sourceId]"),
-      text: selectedValue(form, "[name=text]"),
-      tags: selectedValue(form, "[name=tags]").split(",").map((item) => item.trim()).filter(Boolean),
-      metadata: {}
-    });
-    await this.submitDocuments([document2]);
-    form.reset();
-    await this.render();
-  }
-  async importJsonl() {
-    const input = this.root.querySelector("[data-jsonl-file]");
-    const fallbackCollectionId = this.root.querySelector("[name=collectionId]").value;
-    const file2 = input.files?.[0];
-    if (!file2) throw new Error("\u8BF7\u9009\u62E9 JSONL \u6587\u4EF6\u3002");
-    const lines = (await file2.text()).split(/\r?\n/).filter((line) => line.trim());
-    let imported = 0;
-    for (let offset = 0; offset < lines.length; offset += 100) {
-      const documents = lines.slice(offset, offset + 100).map((line, index) => {
-        let raw;
-        try {
-          raw = JSON.parse(line);
-        } catch {
-          throw new Error(`JSONL \u7B2C ${offset + index + 1} \u884C\u4E0D\u662F\u6709\u6548 JSON\u3002`);
-        }
-        return retrievalDocumentInputSchema.parse({
-          ...raw,
-          collectionId: raw.collectionId ?? fallbackCollectionId,
-          sourceType: raw.sourceType ?? "jsonl",
-          sourceId: raw.sourceId ?? `line_${offset + index + 1}`,
-          tags: raw.tags ?? [],
-          metadata: raw.metadata ?? {}
-        });
-      });
-      await this.submitDocuments(documents);
-      imported += documents.length;
-    }
-    toastr.success(`\u5DF2\u5BFC\u5165 ${imported} \u6761\u6587\u6863\u3002`, "JSONL \u5BFC\u5165\u5B8C\u6210");
-    input.value = "";
-    await this.render();
-  }
-  async submitDocuments(documents) {
-    const collectionIds = [...new Set(documents.map((document2) => document2.collectionId))];
-    const groups = collectionIds.map((id2) => this.embeddingGroupForCollection(id2)).filter(Boolean);
-    const embeddingGroup = groups.length === collectionIds.length && groups.every((group) => group.id === groups[0].id) ? groups[0] : void 0;
-    const settings = getSettings();
-    let request = {
-      documents,
-      failoverPolicy: settings.retrieval.failoverPolicy,
-      ...embeddingGroup ? { embeddingGroup } : {}
-    };
-    while (true) {
-      const completed = await this.waitForJob(await echoesApi.upsertRetrievalDocuments(request));
-      if (completed.status !== "succeeded" || !completed.result) throw new Error(completed.error?.message ?? completed.message);
-      if (!completed.result.decisionRequired) return completed.result;
-      const proceed = await this.confirmAmbiguous(completed.result.decisionRequired);
-      if (!proceed || !completed.result.decisionRequired.nextEndpointId) return completed.result;
-      request = { ...request, resumeAfterEndpointId: completed.result.decisionRequired.failedEndpointId };
-    }
-  }
-  async runQuery(form) {
-    const settings = getSettings();
-    const collectionIds = [...form.querySelectorAll("[name=collectionIds]:checked")].map((input) => input.value);
-    if (collectionIds.length === 0) throw new Error("\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u96C6\u5408\u3002");
-    const vectorEnabled = form.querySelector("[name=vectorEnabled]").checked;
-    const bm25Enabled = form.querySelector("[name=bm25Enabled]").checked;
-    const rerankEnabled = form.querySelector("[name=rerankEnabled]").checked;
-    const embeddingGroups = collectionIds.map((id2) => this.embeddingGroupForCollection(id2));
-    const embeddingGroup = embeddingGroups[0];
-    if (vectorEnabled && (!embeddingGroup || embeddingGroups.some((group) => group?.id !== embeddingGroup.id))) {
-      throw new Error("\u5411\u91CF\u67E5\u8BE2\u8981\u6C42\u6240\u9009\u96C6\u5408\u4F7F\u7528\u540C\u4E00\u4E2A\u5DF2\u914D\u7F6E\u7684\u5D4C\u5165\u7A7A\u95F4\u3002");
-    }
-    const rerankSet = settings.retrieval.rerankSets.find((set3) => set3.id === settings.retrieval.recall.rerankSetId);
-    if (rerankEnabled && !rerankSet) throw new Error("\u8BF7\u5148\u5728 API\u914D\u7F6E\u4E2D\u7ED1\u5B9A Rerank \u7AEF\u70B9\u7EC4\u3002");
-    const request = {
-      collectionIds,
-      query: selectedValue(form, "[name=query]"),
-      vectorEnabled,
-      bm25Enabled,
-      rerankEnabled,
-      vectorTopK: 30,
-      bm25TopK: 30,
-      finalTopK: (() => {
-        const value = Number(selectedValue(form, "[name=finalTopK]"));
-        if (!Number.isInteger(value) || value < 1 || value > 100) throw new Error("\u7ED3\u679C\u6570\u5FC5\u987B\u662F 1 \u5230 100 \u4E4B\u95F4\u7684\u6574\u6570\u3002");
-        return value;
-      })(),
-      rerankTopK: 30,
-      failoverPolicy: settings.retrieval.failoverPolicy,
-      ...vectorEnabled && embeddingGroup ? { embeddingGroup } : {},
-      ...rerankEnabled && rerankSet ? { rerankSet } : {}
-    };
-    settings.retrieval.query = { vectorEnabled, bm25Enabled, rerankEnabled, finalTopK: request.finalTopK };
-    saveSettings(settings);
-    this.lastQueryRequest = request;
-    await this.executeQuery(request);
-  }
-  async executeQuery(request) {
-    const completed = await this.waitForJob(await echoesApi.queryRetrieval(request));
-    await this.handleQueryResult(request, completed);
-  }
-  async handleQueryResult(request, completed) {
-    if (completed.status !== "succeeded" || !completed.result) throw new Error(completed.error?.message ?? completed.message);
-    this.renderQueryResult(completed.result);
-    if (!completed.result.decisionRequired) return;
-    const proceed = await this.confirmAmbiguous(completed.result.decisionRequired);
-    if (!proceed || !completed.result.continuation) return;
-    const continued = await this.waitForJob(await echoesApi.continueRetrievalQuery({
-      token: completed.result.continuation.token,
-      failoverPolicy: request.failoverPolicy,
-      ...request.embeddingGroup ? { embeddingGroup: request.embeddingGroup } : {},
-      ...request.rerankSet ? { rerankSet: request.rerankSet } : {}
-    }));
-    await this.handleQueryResult(request, continued);
-  }
-  renderQueryResult(result) {
-    const status = this.root.querySelector("[data-query-status]");
-    status.className = "echoes-query-branch-status";
-    status.replaceChildren();
-    for (const [name, branch] of Object.entries(result.branches)) {
-      const item = document.createElement("span");
-      item.className = branch.state;
-      item.textContent = `${name}: ${branch.state} \xB7 ${branch.durationMs} ms${branch.message ? ` \xB7 ${branch.message}` : ""}`;
-      status.append(item);
-    }
-    const host = this.root.querySelector("[data-query-results]");
-    const table = document.createElement("table");
-    table.className = "echoes-data-table echoes-query-result-table";
-    table.innerHTML = "<thead><tr><th>\u6765\u6E90</th><th>\u6B63\u6587</th><th>\u5411\u91CF</th><th>BM25</th><th>RRF</th><th>Rerank</th></tr></thead>";
-    const body = document.createElement("tbody");
-    for (const hit of result.hits) {
-      const row = document.createElement("tr");
-      for (const value of [
-        `${hit.document.sourceType}:${hit.document.sourceId}`,
-        hit.document.text,
-        score(hit.vectorScore),
-        score(hit.bm25Score),
-        score(hit.rrfScore),
-        score(hit.rerankScore)
-      ]) {
-        const cell = document.createElement("td");
-        cell.textContent = value;
-        cell.title = value;
-        row.append(cell);
-      }
-      body.append(row);
-    }
-    table.append(body);
-    prepareResponsiveTable(table);
-    host.replaceChildren(table);
-  }
-  confirmAmbiguous(decision) {
-    const dialog = document.createElement("dialog");
-    dialog.className = "echoes-dialog echoes-confirm-dialog";
-    dialog.innerHTML = `
-      <div class="echoes-dialog-frame">
-        <header class="echoes-dialog-header"><h2>\u63D0\u4F9B\u5546\u7ED3\u679C\u4E0D\u786E\u5B9A</h2></header>
-        <div class="echoes-dialog-body"><p></p></div>
-        <footer class="echoes-dialog-footer"><button type="button" class="menu_button" data-stop>\u505C\u6B62\u5E76\u4F7F\u7528\u964D\u7EA7\u7ED3\u679C</button><button type="button" class="menu_button echoes-primary" data-next ${decision.nextEndpointId ? "" : "disabled"}>\u5207\u6362\u4E0B\u4E00\u7AEF\u70B9</button></footer>
-      </div>`;
-    dialog.querySelector("p").textContent = decision.message;
-    document.body.append(dialog);
-    return new Promise((resolve) => {
-      dialog.querySelector("[data-stop]").addEventListener("click", () => {
-        resolve(false);
-        dialog.close();
-      });
-      dialog.querySelector("[data-next]").addEventListener("click", () => {
-        resolve(true);
-        dialog.close();
-      });
-      dialog.addEventListener("close", () => dialog.remove(), { once: true });
-      dialog.showModal();
-    });
-  }
-  async waitForJob(initial) {
-    let job = initial;
-    this.activeJobId = job.id;
-    for (let attempt = 0; attempt < 2e3; attempt += 1) {
-      this.showJob(job);
-      if (TERMINAL_STATES2.has(job.status)) {
-        this.activeJobId = null;
-        setTimeout(() => this.hideJob(), 2500);
-        return job;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      job = await echoesApi.getJob(job.id);
-    }
-    this.activeJobId = null;
-    await echoesApi.cancelJob(job.id).catch(() => void 0);
-    throw new Error("\u7B49\u5F85\u68C0\u7D22\u4EFB\u52A1\u8D85\u65F6\u3002");
-  }
-  showJob(job) {
-    const host = this.root.querySelector(".echoes-job-status");
-    host.classList.remove("echoes-hidden");
-    host.querySelector(".echoes-progress span").style.width = `${Math.round(job.progress * 100)}%`;
-    host.querySelector("[data-job-message]").textContent = job.message;
-    let cancel = host.querySelector("[data-retrieval-action=cancel-job]");
-    if (!cancel) {
-      cancel = iconButton("stop", "\u53D6\u6D88\u4EFB\u52A1", "cancel-job");
-      host.append(cancel);
-    }
-    cancel.classList.toggle("echoes-hidden", TERMINAL_STATES2.has(job.status));
-  }
-  hideJob() {
-    this.root.querySelector(".echoes-job-status")?.classList.add("echoes-hidden");
-  }
-  setMessage(message3, error51 = false) {
-    const host = this.root.querySelector(".echoes-grid-host");
-    const note = document.createElement("div");
-    note.className = `echoes-grid-message${error51 ? " error" : ""}`;
-    note.textContent = message3;
-    host.replaceChildren(note);
-  }
+    input.addEventListener("cancel", () => resolve(null), { once: true });
+    input.click();
+  });
+}
+var id = (prefix) => prefix + "_" + crypto.randomUUID().replaceAll("-", "");
+var now = () => (/* @__PURE__ */ new Date()).toISOString();
+var stateNames = {
+  ready: "\u5411\u91CF\u5C31\u7EEA",
+  pending: "\u5F85\u540C\u6B65",
+  failed: "\u5931\u8D25",
+  ambiguous: "\u7ED3\u679C\u5F85\u786E\u8BA4",
+  stale: "\u6E90\u6D88\u606F\u5DF2\u53D8\u5316",
+  running: "\u8FD0\u884C\u4E2D",
+  queued: "\u6392\u961F\u4E2D",
+  succeeded: "\u5DF2\u5B8C\u6210",
+  cancelled: "\u5DF2\u53D6\u6D88",
+  permanent: "\u5E38\u9A7B",
+  keyword: "\u5173\u952E\u8BCD",
+  vectorized: "\u5411\u91CF",
+  pass: "\u6B63\u5E38",
+  warning: "\u9700\u5173\u6CE8",
+  fail: "\u5F02\u5E38",
+  unavailable: "\u4E0D\u53EF\u7528"
 };
-
-// src/extension/ui/api-config-panel.ts
-init_client();
-var TERMINAL_STATES3 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
-function uid2(prefix) {
-  return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
+function stateBadge(state) {
+  return badge(
+    stateNames[state] ?? state,
+    ["failed", "fail"].includes(state) ? "danger" : ["ready", "succeeded", "pass"].includes(state) ? "success" : ["ambiguous", "stale", "warning"].includes(state) ? "warning" : ""
+  );
 }
-function message(error51) {
-  return error51 instanceof Error ? error51.message : String(error51);
-}
-function iconButton2(icon, title, action) {
-  const button3 = document.createElement("button");
-  button3.type = "button";
-  button3.className = "echoes-icon-button";
-  button3.dataset.apiAction = action;
-  button3.title = title;
-  button3.setAttribute("aria-label", title);
-  button3.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
-  return button3;
-}
-function commandButton(icon, label, action, primary = false) {
-  const button3 = document.createElement("button");
-  button3.type = "button";
-  button3.className = `menu_button${primary ? " echoes-primary" : ""}`;
-  button3.dataset.apiAction = action;
-  button3.innerHTML = `<i class="fa-solid fa-${icon}"></i> ${label}`;
-  return button3;
-}
-async function waitJob(job, maxWaitMs = 10 * 6e4) {
-  let current = job;
-  const deadline = Date.now() + maxWaitMs;
-  while (!TERMINAL_STATES3.has(current.status) && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    current = await echoesApi.getJob(job.id);
-  }
-  if (!TERMINAL_STATES3.has(current.status)) {
-    await echoesApi.cancelJob(job.id).catch(() => void 0);
-    throw new Error("\u7AEF\u70B9\u6D4B\u8BD5\u7B49\u5F85\u8D85\u65F6\uFF0C\u4EFB\u52A1\u5DF2\u53D6\u6D88\u3002");
-  }
-  if (current.status !== "succeeded") throw new Error(current.error?.message ?? current.message);
-  return current;
-}
-function fieldValue(root, selector) {
-  return root.querySelector(selector)?.value.trim() ?? "";
-}
-function bindSecretVisibility(root) {
-  root.querySelectorAll("[data-secret-toggle]").forEach((button3) => {
-    button3.addEventListener("click", () => {
-      const input = button3.closest(".echoes-secret-control")?.querySelector("input");
-      if (!input) return;
-      const reveal = input.type === "password";
-      input.type = reveal ? "text" : "password";
-      const label = reveal ? "\u9690\u85CF\u5BC6\u94A5" : "\u663E\u793A\u5BC6\u94A5";
-      button3.title = label;
-      button3.setAttribute("aria-label", label);
-      button3.setAttribute("aria-pressed", String(reveal));
-      button3.querySelector("i").className = "fa-solid fa-" + (reveal ? "eye-slash" : "eye");
-    });
-  });
-}
-var ApiConfigPanel = class {
-  constructor(root) {
-    this.root = root;
-    this.bindEvents();
-  }
-  root;
-  tab = "workflows";
-  credentials = [];
-  renderSequence = 0;
-  credentialLoadError = null;
-  credentialsLoaded = false;
-  credentialsLoading = false;
-  credentialLoadPromise = null;
-  async render(tab = this.tab, refreshCredentials = false) {
-    if (!this.root.classList.contains("echoes-api-view")) return;
-    this.tab = tab;
-    const sequence2 = ++this.renderSequence;
-    const shouldLoadCredentials = refreshCredentials || !this.credentialsLoaded;
-    if (shouldLoadCredentials) {
-      this.credentialsLoading = true;
-      this.credentialLoadError = null;
-    }
-    this.renderPage();
-    if (!shouldLoadCredentials) return;
-    this.credentialLoadPromise ??= this.loadCredentials();
-    await this.credentialLoadPromise;
-    if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-api-view")) return;
-    this.renderPage();
-  }
-  async loadCredentials() {
-    try {
-      this.credentials = await echoesApi.listCredentials();
-      this.credentialLoadError = null;
-    } catch (error51) {
-      this.credentials = [];
-      this.credentialLoadError = message(error51);
-    } finally {
-      this.credentialsLoaded = true;
-      this.credentialsLoading = false;
-      this.credentialLoadPromise = null;
-    }
-  }
-  renderPage() {
-    if (!this.root.classList.contains("echoes-api-view")) return;
-    const host = this.root.querySelector(".echoes-grid-host");
-    host.innerHTML = `
-      <div class="echoes-api-page">
-        <nav class="echoes-section-tabs" aria-label="API \u914D\u7F6E\u5206\u7C7B">
-          <button type="button" data-api-action="tab" data-api-tab="workflows">\u5DE5\u4F5C\u6D41\u5206\u914D</button>
-          <button type="button" data-api-action="tab" data-api-tab="generation">\u751F\u6210\u6A21\u578B</button>
-          <button type="button" data-api-action="tab" data-api-tab="embedding">Embedding</button>
-          <button type="button" data-api-action="tab" data-api-tab="rerank">Rerank</button>
-          <button type="button" data-api-action="tab" data-api-tab="credentials">\u51ED\u636E</button>
-        </nav>
-        <div class="echoes-api-content" data-api-content></div>
-        ${this.credentialLoadError ? '<div class="echoes-warning-band" data-api-credential-warning><i class="fa-solid fa-triangle-exclamation"></i><span></span></div>' : ""}
-      </div>`;
-    host.querySelectorAll("[data-api-tab]").forEach((button3) => {
-      button3.classList.toggle("active", button3.dataset.apiTab === this.tab);
-    });
-    const credentialWarning = host.querySelector("[data-api-credential-warning] span");
-    if (credentialWarning) {
-      credentialWarning.textContent = `\u65E0\u6CD5\u8BFB\u53D6\u670D\u52A1\u7AEF\u51ED\u636E\uFF1A${this.credentialLoadError}\u3002\u7AEF\u70B9\u53EF\u7528\u6027\u6682\u65E0\u6CD5\u786E\u8BA4\u3002`;
-    }
-    this.renderTab();
-  }
-  bindEvents() {
-    this.root.addEventListener("click", (event) => {
-      const target = event.target.closest("[data-api-action]");
-      if (!target) return;
-      if (target instanceof HTMLButtonElement && target.disabled) return;
-      const action = target.dataset.apiAction ?? "";
-      const lock = target instanceof HTMLButtonElement && (action === "refresh" || action === "migrate-credentials" || action.startsWith("test-"));
-      if (lock) {
-        target.disabled = true;
-        target.setAttribute("aria-busy", "true");
+function fields(spec, trackChanges = true) {
+  const node = el("form", "ew-form");
+  node.addEventListener("submit", (event) => event.preventDefault());
+  const controls = /* @__PURE__ */ new Map();
+  let changed = false;
+  for (const field of spec) {
+    const type = field.type ?? "text";
+    const control = type === "select" ? el("select") : type === "textarea" || type === "json" ? el("textarea") : el("input");
+    const inputId = id("field");
+    control.id = inputId;
+    control.name = field.key;
+    control.setAttribute("aria-label", field.label);
+    if (control instanceof HTMLInputElement) {
+      control.type = type === "checkbox" || type === "number" || type === "password" ? type : "text";
+      if (type === "checkbox") control.checked = Boolean(field.value);
+      if (type === "number") {
+        if (field.min !== void 0) control.min = String(field.min);
+        if (field.max !== void 0) control.max = String(field.max);
+        control.step = String(field.step ?? 1);
       }
-      void this.handleAction(action, target).catch((error51) => toastr.error(message(error51), "Echoes API\u914D\u7F6E")).finally(() => {
-        if (lock && target.isConnected) {
-          target.disabled = false;
-          target.removeAttribute("aria-busy");
-        }
-      });
-    });
-    this.root.addEventListener("change", (event) => {
-      const target = event.target;
-      try {
-        if (target.matches("[data-api-workflow]")) this.saveWorkflowBindings();
-        else if (target.matches("[data-api-generation-toggle]")) this.toggleGenerationEndpoint(target);
-        else if (target.matches("[data-api-retrieval-toggle]")) this.toggleRetrievalEndpoint(target);
-      } catch (error51) {
-        toastr.error(message(error51), "Echoes API\u914D\u7F6E");
-      }
-    });
-    this.root.addEventListener("submit", (event) => {
-      const form = event.target;
-      if (!form.matches("[data-api-credential-form]")) return;
-      event.preventDefault();
-      const submit = form.querySelector('button[type="submit"]');
-      if (submit?.disabled) return;
-      if (submit) {
-        submit.disabled = true;
-        form.setAttribute("aria-busy", "true");
-      }
-      void this.addCredential(form).catch((error51) => toastr.error(message(error51), "Echoes \u51ED\u636E")).finally(() => {
-        if (submit?.isConnected) submit.disabled = false;
-        if (form.isConnected) form.removeAttribute("aria-busy");
-      });
-    });
-  }
-  async handleAction(action, target) {
-    if (action === "tab") await this.render(target.dataset.apiTab);
-    else if (action === "refresh") await this.render(this.tab, true);
-    else if (action === "add-generation-group") await this.addGenerationGroup();
-    else if (action === "delete-generation-group") this.deleteGenerationGroup(target.dataset.groupId ?? "");
-    else if (action === "add-generation-endpoint") await this.editGenerationEndpoint(target.dataset.groupId ?? "");
-    else if (action === "edit-generation-endpoint") await this.editGenerationEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId);
-    else if (action === "delete-generation-endpoint") this.deleteGenerationEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId ?? "");
-    else if (action === "generation-up") this.moveGenerationEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId ?? "", -1);
-    else if (action === "generation-down") this.moveGenerationEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId ?? "", 1);
-    else if (action === "test-generation") await this.testGenerationEndpoint(target.dataset.groupId ?? "", target.dataset.endpointId ?? "");
-    else if (action === "add-retrieval-group") await this.editRetrievalGroup(target.dataset.kind);
-    else if (action === "edit-retrieval-group") await this.editRetrievalGroup(target.dataset.kind, target.dataset.groupId);
-    else if (action === "delete-retrieval-group") this.deleteRetrievalGroup(target.dataset.kind, target.dataset.groupId ?? "");
-    else if (action === "test-retrieval") await this.testRetrievalEndpoint(target);
-    else if (action === "delete-credential") await this.deleteCredential(target.dataset.id ?? "");
-    else if (action === "edit-credential") await this.editCredential(target.dataset.id ?? "");
-    else if (action === "migrate-credentials") await this.migrateCredentials();
-  }
-  renderTab() {
-    if (this.tab === "workflows") this.renderWorkflows();
-    else if (this.tab === "generation") this.renderGenerationGroups();
-    else if (this.tab === "embedding") this.renderRetrievalGroups("embedding");
-    else if (this.tab === "rerank") this.renderRetrievalGroups("rerank");
-    else this.renderCredentials();
-  }
-  content() {
-    return this.root.querySelector("[data-api-content]");
-  }
-  renderWorkflows() {
-    const settings = getSettings();
-    const host = this.content();
-    host.innerHTML = `
-      <section class="echoes-settings-section">
-        <div class="echoes-section-heading"><div><h2>\u5DE5\u4F5C\u6D41\u5206\u914D</h2><span>\u6240\u6709\u6A21\u578B\u3001\u7AEF\u70B9\u7EC4\u548C\u6545\u969C\u7B56\u7565\u7EDF\u4E00\u5728\u6B64\u7ED1\u5B9A</span></div></div>
-        <div class="echoes-workflow-grid">
-          <div class="echoes-workflow-row"><strong>\u7ED3\u6784\u5316\u8BB0\u5FC6\u63D0\u53D6</strong><label>\u751F\u6210\u7AEF\u70B9\u7EC4<select data-api-workflow="extractionGroup"></select></label><label>\u6545\u969C\u7B56\u7565<select data-api-workflow="extractionPolicy"></select></label></div>
-          <div class="echoes-workflow-row"><strong>\u603B\u7ED3\u8BB0\u5FC6\u751F\u6210</strong><label>\u751F\u6210\u7AEF\u70B9\u7EC4<select data-api-workflow="summaryGroup"></select></label><label>\u6545\u969C\u7B56\u7565<select data-api-workflow="summaryPolicy"></select></label></div>
-          <div class="echoes-workflow-row"><strong>\u603B\u7ED3\u5411\u91CF\u5316</strong><label>Embedding \u7EC4<select data-api-workflow="summaryEmbedding"><option value="">\u6682\u4E0D\u540C\u6B65\u5411\u91CF</option></select></label><span></span></div>
-          <div class="echoes-workflow-row"><strong>\u603B\u7ED3\u53EC\u56DE\u91CD\u6392\u5E8F</strong><label>Rerank \u7EC4<select data-api-workflow="recallRerank"><option value="">\u4E0D\u4F7F\u7528 Rerank</option></select></label><span></span></div>
-          <div class="echoes-workflow-row"><strong>\u72B6\u6001\u8BB0\u5FC6\u66F4\u65B0</strong><label>\u751F\u6210\u7AEF\u70B9\u7EC4<select data-api-workflow="statusGroup"></select></label><label>\u6545\u969C\u7B56\u7565<select data-api-workflow="statusPolicy"></select></label></div>
-          <div class="echoes-workflow-row"><strong>\u901A\u7528\u68C0\u7D22\u8C03\u7528</strong><label>\u6545\u969C\u7B56\u7565<select data-api-workflow="retrievalPolicy"></select></label><span></span></div>
-        </div>
-        <div class="echoes-api-binding-status" data-api-binding-status></div>
-      </section>`;
-    const groupOptions = (select, current) => {
-      select.add(new Option("\u672A\u9009\u62E9", ""));
-      settings.generationGroups.forEach((group) => select.add(new Option(group.name, group.id)));
-      select.value = current;
-    };
-    groupOptions(host.querySelector("[data-api-workflow=extractionGroup]"), settings.generationWorkflows.extraction.groupId);
-    groupOptions(host.querySelector("[data-api-workflow=summaryGroup]"), settings.generationWorkflows.summary.groupId);
-    groupOptions(host.querySelector("[data-api-workflow=statusGroup]"), settings.generationWorkflows.status.groupId);
-    const policyOptions = (select, current) => {
-      select.add(new Option("\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4", "confirm_ambiguous"));
-      select.add(new Option("\u59CB\u7EC8\u81EA\u52A8\u5207\u6362", "always"));
-      select.add(new Option("\u4EC5\u660E\u786E\u5931\u8D25\u5207\u6362", "definitive_only"));
-      select.value = current;
-    };
-    policyOptions(host.querySelector("[data-api-workflow=extractionPolicy]"), settings.generationWorkflows.extraction.failoverPolicy);
-    policyOptions(host.querySelector("[data-api-workflow=summaryPolicy]"), settings.generationWorkflows.summary.failoverPolicy);
-    policyOptions(host.querySelector("[data-api-workflow=statusPolicy]"), settings.generationWorkflows.status.failoverPolicy);
-    policyOptions(host.querySelector("[data-api-workflow=retrievalPolicy]"), settings.retrieval.failoverPolicy);
-    const embedding = host.querySelector("[data-api-workflow=summaryEmbedding]");
-    settings.retrieval.embeddingGroups.forEach((group) => embedding.add(new Option(group.name, group.id)));
-    embedding.value = settings.summary.embeddingGroupId;
-    const rerank = host.querySelector("[data-api-workflow=recallRerank]");
-    settings.retrieval.rerankSets.forEach((group) => rerank.add(new Option(group.name, group.id)));
-    rerank.value = settings.retrieval.recall.rerankSetId;
-    this.renderBindingStatus();
-  }
-  renderBindingStatus() {
-    const host = this.root.querySelector("[data-api-binding-status]");
-    if (!host) return;
-    const settings = getSettings();
-    const credentialIds = new Set(this.credentials.map((credential) => credential.id));
-    const endpointReady = (endpoint) => endpoint.enabled && (!endpoint.credentialId || credentialIds.has(endpoint.credentialId));
-    const generationReady = (groupId) => {
-      const group = settings.generationGroups.find((item) => item.id === groupId);
-      return Boolean(group?.endpoints.some(endpointReady));
-    };
-    const retrievalReady = (kind, groupId) => {
-      const groups = kind === "embedding" ? settings.retrieval.embeddingGroups : settings.retrieval.rerankSets;
-      const group = groups.find((item) => item.id === groupId);
-      return Boolean(group?.endpoints.some(endpointReady));
-    };
-    const states = [
-      ["\u7ED3\u6784\u5316\u8BB0\u5FC6", generationReady(settings.generationWorkflows.extraction.groupId) ? "ready" : "missing"],
-      ["\u603B\u7ED3\u751F\u6210", generationReady(settings.generationWorkflows.summary.groupId) ? "ready" : "missing"],
-      ["\u603B\u7ED3\u5411\u91CF", !settings.summary.embeddingGroupId ? "disabled" : retrievalReady("embedding", settings.summary.embeddingGroupId) ? "ready" : "missing"],
-      ["\u603B\u7ED3\u91CD\u6392\u5E8F", !settings.retrieval.recall.rerankSetId ? "disabled" : retrievalReady("rerank", settings.retrieval.recall.rerankSetId) ? "ready" : "missing"],
-      ["\u72B6\u6001\u66F4\u65B0", generationReady(settings.generationWorkflows.status.groupId) ? "ready" : "missing"]
-    ];
-    host.replaceChildren(...states.map(([label, state]) => {
-      const item = document.createElement("span");
-      const icon = state === "ready" ? "circle-check" : state === "disabled" ? "circle-minus" : "triangle-exclamation";
-      const text = state === "ready" ? "\u53EF\u7528" : state === "disabled" ? "\u672A\u542F\u7528" : "\u4E0D\u53EF\u7528";
-      item.dataset.state = state;
-      item.innerHTML = `<i class="fa-solid fa-${icon}"></i> ${label}\uFF1A${text}`;
-      return item;
-    }));
-  }
-  saveWorkflowBindings() {
-    const settings = getSettings();
-    const value = (key) => this.root.querySelector(`[data-api-workflow=${key}]`)?.value ?? "";
-    settings.generationWorkflows.extraction = { groupId: value("extractionGroup"), failoverPolicy: value("extractionPolicy") };
-    settings.generationWorkflows.summary = { groupId: value("summaryGroup"), failoverPolicy: value("summaryPolicy") };
-    settings.generationWorkflows.status = { groupId: value("statusGroup"), failoverPolicy: value("statusPolicy") };
-    settings.summary.embeddingGroupId = value("summaryEmbedding");
-    settings.retrieval.recall.rerankSetId = value("recallRerank");
-    settings.retrieval.failoverPolicy = value("retrievalPolicy");
-    saveSettings(settings);
-    this.renderBindingStatus();
-  }
-  renderGenerationGroups() {
-    const host = this.content();
-    host.innerHTML = '<section class="echoes-settings-section"><div class="echoes-section-heading"><div><h2>\u751F\u6210\u6A21\u578B\u7AEF\u70B9\u7EC4</h2><span>\u4F9B\u7ED3\u6784\u5316\u63D0\u53D6\u3001\u603B\u7ED3\u751F\u6210\u548C\u72B6\u6001\u66F4\u65B0\u590D\u7528</span></div><div data-api-section-actions></div></div><div data-generation-groups></div></section>';
-    host.querySelector("[data-api-section-actions]").append(commandButton("plus", "\u65B0\u589E\u7AEF\u70B9\u7EC4", "add-generation-group", true));
-    const list = host.querySelector("[data-generation-groups]");
-    const groups = getSettings().generationGroups;
-    if (groups.length === 0) list.innerHTML = '<p class="echoes-empty-note">\u5C1A\u672A\u914D\u7F6E\u751F\u6210\u7AEF\u70B9\u7EC4\u3002</p>';
-    groups.forEach((group) => list.append(this.generationGroup(group)));
-  }
-  generationGroup(group) {
-    const section = document.createElement("article");
-    section.className = "echoes-api-group";
-    const header = document.createElement("header");
-    header.innerHTML = `<div><strong></strong><small>${group.endpoints.length} \u4E2A\u7AEF\u70B9</small></div><div data-actions></div>`;
-    header.querySelector("strong").textContent = group.name;
-    const add = commandButton("plus", "\u6DFB\u52A0\u7AEF\u70B9", "add-generation-endpoint");
-    add.dataset.groupId = group.id;
-    const remove = iconButton2("trash", "\u5220\u9664\u7AEF\u70B9\u7EC4", "delete-generation-group");
-    remove.dataset.groupId = group.id;
-    header.querySelector("[data-actions]").append(add, remove);
-    section.append(header);
-    const table = document.createElement("table");
-    table.className = "echoes-data-table echoes-endpoint-table";
-    table.innerHTML = "<thead><tr><th>\u542F\u7528</th><th>\u987A\u5E8F</th><th>\u540D\u79F0</th><th>\u6A21\u578B</th><th>\u5730\u5740</th><th>\u64CD\u4F5C</th></tr></thead>";
-    const body = document.createElement("tbody");
-    const endpoints = [...group.endpoints].sort((a, b) => a.order - b.order);
-    endpoints.forEach((endpoint, index) => {
-      const row = document.createElement("tr");
-      const enabledCell = document.createElement("td");
-      const enabled = document.createElement("input");
-      enabled.type = "checkbox";
-      enabled.checked = endpoint.enabled;
-      enabled.dataset.apiGenerationToggle = endpoint.id;
-      enabled.dataset.groupId = group.id;
-      enabled.setAttribute("aria-label", `\u542F\u7528${endpoint.name}`);
-      enabledCell.append(enabled);
-      row.append(enabledCell);
-      [String(index + 1), endpoint.name, endpoint.model, endpoint.baseUrl].forEach((value) => {
-        const cell = document.createElement("td");
-        cell.textContent = value;
-        cell.title = value;
-        row.append(cell);
-      });
-      const actions = document.createElement("td");
-      actions.className = "echoes-row-actions";
-      for (const [icon, title, action] of [
-        ["arrow-up", "\u4E0A\u79FB", "generation-up"],
-        ["arrow-down", "\u4E0B\u79FB", "generation-down"],
-        ["vial", "\u6D4B\u8BD5", "test-generation"],
-        ["pen", "\u7F16\u8F91", "edit-generation-endpoint"],
-        ["trash", "\u5220\u9664", "delete-generation-endpoint"]
-      ]) {
-        const control = iconButton2(icon, title, action);
-        control.dataset.groupId = group.id;
-        control.dataset.endpointId = endpoint.id;
-        if (action === "generation-up") control.disabled = index === 0;
-        if (action === "generation-down") control.disabled = index === endpoints.length - 1;
-        actions.append(control);
-      }
-      row.append(actions);
-      body.append(row);
-    });
-    table.append(body);
-    prepareResponsiveTable(table);
-    const wrapper = document.createElement("div");
-    wrapper.className = "echoes-table-scroll";
-    wrapper.append(table);
-    section.append(wrapper);
-    return section;
-  }
-  async addGenerationGroup() {
-    const dialog = dialogShell("\u65B0\u589E\u751F\u6210\u7AEF\u70B9\u7EC4");
-    const body = dialog.querySelector(".echoes-dialog-body");
-    body.innerHTML = `<div class="echoes-form-grid">
-      <label class="echoes-form-span">\u7AEF\u70B9\u7EC4\u540D\u79F0<input name="groupName" required maxlength="120"></label>
-      ${this.generationEndpointFields()}
-    </div>`;
-    this.populateGenerationEndpointForm(body);
-    const saved = await submitDialog(dialog, () => {
-      const name = fieldValue(body, "[name=groupName]");
-      if (!name) throw new Error("\u7AEF\u70B9\u7EC4\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002");
-      return generationEndpointGroupSchema.parse({
-        id: uid2("generation_group"),
-        name,
-        endpoints: [this.readGenerationEndpointForm(body, void 0, 0)]
-      });
-    }, { errorTitle: "\u751F\u6210\u7AEF\u70B9\u7EC4\u65E0\u6548" });
-    if (!saved) return;
-    const settings = getSettings();
-    settings.generationGroups.push(saved);
-    saveSettings(settings);
-    await this.render("generation");
-  }
-  async editGenerationEndpoint(groupId, endpointId) {
-    const settings = getSettings();
-    const group = settings.generationGroups.find((item) => item.id === groupId);
-    const current = group?.endpoints.find((item) => item.id === endpointId);
-    if (!group) throw new Error("\u751F\u6210\u7AEF\u70B9\u7EC4\u4E0D\u5B58\u5728\u3002");
-    const dialog = dialogShell(current ? "\u7F16\u8F91\u751F\u6210\u7AEF\u70B9" : "\u6DFB\u52A0\u751F\u6210\u7AEF\u70B9");
-    const body = dialog.querySelector(".echoes-dialog-body");
-    body.innerHTML = `<div class="echoes-form-grid">${this.generationEndpointFields()}</div>`;
-    this.populateGenerationEndpointForm(body, current);
-    const endpoint = await submitDialog(dialog, () => this.readGenerationEndpointForm(body, current, current?.order ?? group.endpoints.length), { errorTitle: "\u751F\u6210\u7AEF\u70B9\u65E0\u6548" });
-    if (!endpoint) return;
-    const parsed = generationEndpointGroupSchema.parse({
-      ...group,
-      endpoints: current ? group.endpoints.map((item) => item.id === current.id ? endpoint : item) : [...group.endpoints, endpoint]
-    });
-    settings.generationGroups[settings.generationGroups.findIndex((item) => item.id === group.id)] = parsed;
-    saveSettings(settings);
-    await this.render("generation");
-  }
-  generationEndpointFields() {
-    return `<label>\u7AEF\u70B9\u540D\u79F0<input name="endpointName" required maxlength="120"></label><label class="echoes-form-span">API \u5730\u5740<input name="baseUrl" type="url" required></label><label class="echoes-model-field">\u6A21\u578B<span class="echoes-model-control"><input name="model" required><select class="echoes-model-select" data-model-select hidden aria-label="\u4ECE\u5DF2\u62C9\u53D6\u7684\u6A21\u578B\u4E2D\u9009\u62E9"><option value="">\u62C9\u53D6\u540E\u9009\u62E9</option></select><button type="button" class="menu_button echoes-model-fetch" data-model-fetch title="\u4ECE API \u62C9\u53D6\u6A21\u578B\u5217\u8868"><i class="fa-solid fa-cloud-arrow-down"></i> \u62C9\u53D6\u6A21\u578B</button></span><small data-model-status></small></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select name="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input name="timeout" type="number" min="10" max="1800"></label><label>\u6E29\u5EA6<input name="temperature" type="number" min="0" max="2" step="0.1"></label><label class="echoes-check" title="\u4EC5\u5728\u4F60\u4FE1\u4EFB\u8BE5 API \u4E3B\u673A\u65F6\u542F\u7528\uFF1B\u5141\u8BB8\u8BF7\u6C42\u8BBF\u95EE\u672C\u673A\u3001\u5C40\u57DF\u7F51\u6216\u89E3\u6790\u5230\u4FDD\u7559\u5730\u5740\u7684\u4E3B\u673A\u3002"><input name="allowPrivateNetwork" type="checkbox">\u5141\u8BB8\u672C\u5730/\u79C1\u7F51\u5730\u5740</label><label class="echoes-check"><input name="streaming" type="checkbox">\u6D41\u5F0F</label><label class="echoes-check"><input name="jsonMode" type="checkbox">JSON \u6A21\u5F0F</label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label>`;
-  }
-  populateGenerationEndpointForm(body, current) {
-    const credential = body.querySelector("[name=credentialId]");
-    this.credentials.forEach((item) => credential.add(new Option(item.name, item.id)));
-    if (current?.credentialId && !this.credentials.some((item) => item.id === current.credentialId)) {
-      credential.add(new Option(`\u7F3A\u5931\uFF1A${current.credentialId}`, current.credentialId));
     }
-    const set3 = (name, value) => {
-      body.querySelector(`[name=${name}]`).value = value;
-    };
-    set3("endpointName", current?.name ?? "\u65B0\u7AEF\u70B9");
-    set3("baseUrl", current?.baseUrl ?? "");
-    set3("model", current?.model ?? "");
-    set3("timeout", String((current?.timeoutMs ?? 3e5) / 1e3));
-    set3("temperature", String(current?.temperature ?? 0.1));
-    credential.value = current?.credentialId ?? "";
-    body.querySelector("[name=allowPrivateNetwork]").checked = current?.allowPrivateNetwork ?? false;
-    body.querySelector("[name=streaming]").checked = current?.streaming ?? true;
-    body.querySelector("[name=jsonMode]").checked = current?.jsonMode ?? true;
-    body.querySelector("[name=enabled]").checked = current?.enabled ?? true;
-    this.bindModelDiscovery(body, "[name=baseUrl]", "[name=credentialId]", "[name=model]", "[name=timeout]", "[name=allowPrivateNetwork]");
-  }
-  bindModelDiscovery(root, baseUrlSelector, credentialSelector, modelSelector, timeoutSelector, privateNetworkSelector) {
-    const button3 = root.querySelector("[data-model-fetch]");
-    const baseUrl = root.querySelector(baseUrlSelector);
-    const credential = root.querySelector(credentialSelector);
-    const model = root.querySelector(modelSelector);
-    const timeout = root.querySelector(timeoutSelector);
-    const allowPrivateNetwork = root.querySelector(privateNetworkSelector);
-    const modelSelect = root.querySelector("[data-model-select]");
-    const status = root.querySelector("[data-model-status]");
-    if (!button3 || !baseUrl || !credential || !model || !modelSelect || !timeout || !allowPrivateNetwork || !status) return;
-    let catalogVersion = 0;
-    const syncTitles = () => {
-      model.title = model.value.trim();
-      modelSelect.title = modelSelect.selectedOptions[0]?.textContent ?? "";
-    };
-    const invalidateCatalog = () => {
-      catalogVersion += 1;
-      modelSelect.replaceChildren(new Option("\u62C9\u53D6\u540E\u9009\u62E9", ""));
-      modelSelect.hidden = true;
-      modelSelect.title = "";
-      modelSelect.closest(".echoes-model-control")?.classList.remove("echoes-model-control-with-select");
-      status.textContent = "";
-    };
-    status.setAttribute("aria-live", "polite");
-    modelSelect.addEventListener("change", () => {
-      if (modelSelect.value) model.value = modelSelect.value;
-      syncTitles();
-    });
-    model.addEventListener("input", syncTitles);
-    syncTitles();
-    baseUrl.addEventListener("input", invalidateCatalog);
-    credential.addEventListener("change", invalidateCatalog);
-    allowPrivateNetwork.addEventListener("change", invalidateCatalog);
-    button3.addEventListener("click", () => {
-      if (!baseUrl.reportValidity() || !timeout.reportValidity()) return;
-      const timeoutMs = Number(timeout.value) * 1e3;
-      if (!Number.isFinite(timeoutMs) || timeoutMs < 1e3) {
-        toastr.error("\u8BF7\u5148\u586B\u5199\u6709\u6548\u7684\u8D85\u65F6\u65F6\u95F4\u3002", "\u65E0\u6CD5\u62C9\u53D6\u6A21\u578B");
-        return;
-      }
-      button3.disabled = true;
-      button3.setAttribute("aria-busy", "true");
-      status.textContent = "\u6B63\u5728\u4ECE API \u62C9\u53D6\u6A21\u578B...";
-      const credentialId = credential.value.trim();
-      const requestVersion = catalogVersion;
-      void echoesApi.listEndpointModels({
-        baseUrl: baseUrl.value.trim(),
-        allowPrivateNetwork: allowPrivateNetwork.checked,
-        ...credentialId ? { credentialId } : {},
-        timeoutMs
-      }).then((job) => waitJob(job, timeoutMs + 3e4)).then((completed) => {
-        if (requestVersion !== catalogVersion) return;
-        const models = completed.result?.models ?? [];
-        if (models.length === 0) throw new Error("API \u6CA1\u6709\u8FD4\u56DE\u53EF\u7528\u6A21\u578B\u3002");
-        const currentModel = model.value.trim();
-        const options = models.map((name) => {
-          const option = new Option(name, name);
-          option.title = name;
-          return option;
-        });
-        modelSelect.replaceChildren(new Option("\u9009\u62E9\u6A21\u578B", ""), ...options);
-        modelSelect.hidden = false;
-        modelSelect.closest(".echoes-model-control")?.classList.add("echoes-model-control-with-select");
-        modelSelect.value = currentModel && models.includes(currentModel) ? currentModel : "";
-        syncTitles();
-        status.textContent = `\u5DF2\u62C9\u53D6 ${models.length} \u4E2A\u6A21\u578B\uFF0C\u53EF\u4ECE\u4E0B\u62C9\u5217\u8868\u9009\u62E9\u6216\u624B\u52A8\u8F93\u5165\u3002`;
-        toastr.success(`\u5DF2\u52A0\u8F7D ${models.length} \u4E2A\u6A21\u578B\u3002`, "\u6A21\u578B\u5217\u8868");
-        modelSelect.focus();
-        try {
-          modelSelect.showPicker();
-        } catch {
-        }
-      }).catch((error51) => {
-        if (requestVersion !== catalogVersion) return;
-        status.textContent = `\u62C9\u53D6\u5931\u8D25\uFF1A${message(error51)}`;
-        toastr.error(message(error51), "\u65E0\u6CD5\u62C9\u53D6\u6A21\u578B");
-      }).finally(() => {
-        if (button3.isConnected) {
-          button3.disabled = false;
-          button3.removeAttribute("aria-busy");
-        }
-      });
-    });
-  }
-  readGenerationEndpointForm(body, current, order) {
-    const credentialId = fieldValue(body, "[name=credentialId]");
-    return {
-      id: current?.id ?? uid2("generation_endpoint"),
-      name: fieldValue(body, "[name=endpointName]"),
-      baseUrl: fieldValue(body, "[name=baseUrl]"),
-      allowPrivateNetwork: body.querySelector("[name=allowPrivateNetwork]").checked,
-      model: fieldValue(body, "[name=model]"),
-      ...credentialId ? { credentialId } : {},
-      timeoutMs: Number(fieldValue(body, "[name=timeout]")) * 1e3,
-      temperature: Number(fieldValue(body, "[name=temperature]")),
-      streaming: body.querySelector("[name=streaming]").checked,
-      jsonMode: body.querySelector("[name=jsonMode]").checked,
-      enabled: body.querySelector("[name=enabled]").checked,
-      order
-    };
-  }
-  deleteGenerationGroup(groupId) {
-    if (!confirm("\u5220\u9664\u8BE5\u751F\u6210\u7AEF\u70B9\u7EC4\uFF1F\u6240\u6709\u5F15\u7528\u5B83\u7684\u5DE5\u4F5C\u6D41\u4F1A\u53D8\u4E3A\u672A\u914D\u7F6E\u3002")) return;
-    const settings = getSettings();
-    settings.generationGroups = settings.generationGroups.filter((group) => group.id !== groupId);
-    for (const workflow of Object.values(settings.generationWorkflows)) if (workflow.groupId === groupId) workflow.groupId = "";
-    saveSettings(settings);
-    void this.render("generation");
-  }
-  deleteGenerationEndpoint(groupId, endpointId) {
-    const settings = getSettings();
-    const group = settings.generationGroups.find((item) => item.id === groupId);
-    if (!group) return;
-    if (group.endpoints.length === 1) {
-      if (!confirm("\u8FD9\u662F\u8BE5\u7EC4\u6700\u540E\u4E00\u4E2A\u7AEF\u70B9\u3002\u7EE7\u7EED\u5C06\u5220\u9664\u6574\u4E2A\u7AEF\u70B9\u7EC4\uFF0C\u5E76\u6E05\u9664\u5F15\u7528\u5B83\u7684\u5DE5\u4F5C\u6D41\u7ED1\u5B9A\u3002")) return;
-      settings.generationGroups = settings.generationGroups.filter((item) => item.id !== groupId);
-      for (const workflow of Object.values(settings.generationWorkflows)) {
-        if (workflow.groupId === groupId) workflow.groupId = "";
-      }
-      saveSettings(settings);
-      void this.render("generation");
-      return;
+    if (control instanceof HTMLSelectElement)
+      for (const [value, label2] of field.options ?? [])
+        control.add(new Option(label2, value));
+    if (control instanceof HTMLTextAreaElement) {
+      control.rows = field.rows ?? 6;
+      control.spellcheck = false;
     }
-    if (!confirm("\u5220\u9664\u8BE5\u751F\u6210\u7AEF\u70B9\uFF1F")) return;
-    group.endpoints = group.endpoints.filter((item) => item.id !== endpointId);
-    group.endpoints.forEach((item, index) => {
-      item.order = index;
-    });
-    saveSettings(settings);
-    void this.render("generation");
-  }
-  moveGenerationEndpoint(groupId, endpointId, offset) {
-    const settings = getSettings();
-    const group = settings.generationGroups.find((item) => item.id === groupId);
-    if (!group) return;
-    group.endpoints.sort((a, b) => a.order - b.order);
-    const index = group.endpoints.findIndex((item) => item.id === endpointId);
-    const target = index + offset;
-    if (index < 0 || target < 0 || target >= group.endpoints.length) return;
-    const [endpoint] = group.endpoints.splice(index, 1);
-    group.endpoints.splice(target, 0, endpoint);
-    group.endpoints.forEach((item, position) => {
-      item.order = position;
-    });
-    saveSettings(settings);
-    void this.render("generation");
-  }
-  toggleGenerationEndpoint(input) {
-    const settings = getSettings();
-    const endpoint = settings.generationGroups.find((group) => group.id === input.dataset.groupId)?.endpoints.find((item) => item.id === input.dataset.apiGenerationToggle);
-    if (!endpoint) return;
-    endpoint.enabled = input.checked;
-    saveSettings(settings);
-  }
-  async testGenerationEndpoint(groupId, endpointId) {
-    const endpoint = getSettings().generationGroups.find((group) => group.id === groupId)?.endpoints.find((item) => item.id === endpointId);
-    if (!endpoint) throw new Error("\u751F\u6210\u7AEF\u70B9\u4E0D\u5B58\u5728\u3002");
-    const completed = await waitJob(await echoesApi.testGenerationEndpoint(endpoint), endpoint.timeoutMs + 3e4);
-    toastr.success(`\u8FDE\u63A5\u6210\u529F\uFF1A${completed.result?.latencyMs ?? 0} ms`, "\u751F\u6210\u7AEF\u70B9");
-  }
-  renderRetrievalGroups(kind) {
-    const settings = getSettings();
-    const groups = kind === "embedding" ? settings.retrieval.embeddingGroups : settings.retrieval.rerankSets;
-    const title = kind === "embedding" ? "Embedding \u7AEF\u70B9\u7EC4" : "Rerank \u7AEF\u70B9\u7EC4";
-    const host = this.content();
-    host.innerHTML = `<section class="echoes-settings-section"><div class="echoes-section-heading"><div><h2>${title}</h2><span>${kind === "embedding" ? "\u5D4C\u5165\u7A7A\u95F4\u548C\u7EF4\u5EA6\u5FC5\u987B\u4E0E\u6A21\u578B\u4FDD\u6301\u4E00\u81F4" : "\u7528\u4E8E\u603B\u7ED3\u53EC\u56DE\u7ED3\u679C\u91CD\u6392\u5E8F"}</span></div><div data-api-section-actions></div></div><div data-retrieval-groups></div></section>`;
-    const add = commandButton("plus", `\u65B0\u589E${kind === "embedding" ? "\u5D4C\u5165" : "\u91CD\u6392\u5E8F"}\u7EC4`, "add-retrieval-group", true);
-    add.dataset.kind = kind;
-    host.querySelector("[data-api-section-actions]").append(add);
-    const list = host.querySelector("[data-retrieval-groups]");
-    if (groups.length === 0) list.innerHTML = `<p class="echoes-empty-note">\u5C1A\u672A\u914D\u7F6E${title}\u3002</p>`;
-    groups.forEach((group) => list.append(this.retrievalGroup(kind, group)));
-  }
-  retrievalGroup(kind, group) {
-    const section = document.createElement("article");
-    section.className = "echoes-api-group";
-    const header = document.createElement("header");
-    const embedding = group;
-    const detail = kind === "embedding" ? `${embedding.embeddingSpaceId} \xB7 ${embedding.dimensions} \u7EF4${embedding.requestDimensions === false ? "\uFF08\u4EC5\u6821\u9A8C\uFF09" : "\uFF08\u8BF7\u6C42\u8F93\u51FA\uFF09"}` : `${group.endpoints.length} \u4E2A\u7AEF\u70B9`;
-    header.innerHTML = "<div><strong></strong><small></small></div><div data-actions></div>";
-    header.querySelector("small").textContent = detail;
-    header.querySelector("strong").textContent = group.name;
-    const edit = iconButton2("pen", "\u7F16\u8F91\u7AEF\u70B9\u7EC4", "edit-retrieval-group");
-    const remove = iconButton2("trash", "\u5220\u9664\u7AEF\u70B9\u7EC4", "delete-retrieval-group");
-    for (const control of [edit, remove]) {
-      control.dataset.kind = kind;
-      control.dataset.groupId = group.id;
+    control.value = type === "json" ? JSON.stringify(field.value ?? null, null, 2) : String(field.value ?? "");
+    if (field.readonly) {
+      if (control instanceof HTMLSelectElement) control.disabled = true;
+      else control.readOnly = true;
     }
-    header.querySelector("[data-actions]").append(edit, remove);
-    section.append(header);
-    const table = document.createElement("table");
-    table.className = "echoes-data-table echoes-endpoint-table";
-    table.innerHTML = "<thead><tr><th>\u542F\u7528</th><th>\u987A\u5E8F</th><th>\u540D\u79F0</th><th>\u6A21\u578B</th><th>\u5730\u5740</th><th>\u6D4B\u8BD5</th></tr></thead>";
-    const body = document.createElement("tbody");
-    [...group.endpoints].sort((a, b) => a.order - b.order).forEach((endpoint, index) => {
-      const row = document.createElement("tr");
-      const enabledCell = document.createElement("td");
-      const enabled = document.createElement("input");
-      enabled.type = "checkbox";
-      enabled.checked = endpoint.enabled;
-      enabled.dataset.apiRetrievalToggle = endpoint.id;
-      enabled.dataset.kind = kind;
-      enabled.dataset.groupId = group.id;
-      enabled.setAttribute("aria-label", `\u542F\u7528${endpoint.name}`);
-      enabledCell.append(enabled);
-      row.append(enabledCell);
-      [String(index + 1), endpoint.name, endpoint.model, endpoint.baseUrl].forEach((value) => {
-        const cell = document.createElement("td");
-        cell.textContent = value;
-        cell.title = value;
-        row.append(cell);
-      });
-      const testCell = document.createElement("td");
-      const test = iconButton2("vial", "\u6D4B\u8BD5\u7AEF\u70B9", "test-retrieval");
-      test.dataset.kind = kind;
-      test.dataset.groupId = group.id;
-      test.dataset.endpointId = endpoint.id;
-      testCell.append(test);
-      row.append(testCell);
-      body.append(row);
-    });
-    table.append(body);
-    prepareResponsiveTable(table);
-    const wrapper = document.createElement("div");
-    wrapper.className = "echoes-table-scroll";
-    wrapper.append(table);
-    section.append(wrapper);
-    return section;
-  }
-  async editRetrievalGroup(kind, groupId) {
-    const settings = getSettings();
-    const current = (kind === "embedding" ? settings.retrieval.embeddingGroups : settings.retrieval.rerankSets).find((group) => group.id === groupId);
-    const saved = await this.retrievalGroupDialog(kind, current);
-    if (!saved) return;
-    if (kind === "embedding") {
-      const parsed = embeddingEndpointGroupSchema.parse(saved);
-      const index = settings.retrieval.embeddingGroups.findIndex((group) => group.id === parsed.id);
-      if (index >= 0) settings.retrieval.embeddingGroups[index] = parsed;
-      else settings.retrieval.embeddingGroups.push(parsed);
-    } else {
-      const parsed = rerankEndpointSetSchema.parse(saved);
-      const index = settings.retrieval.rerankSets.findIndex((group) => group.id === parsed.id);
-      if (index >= 0) settings.retrieval.rerankSets[index] = parsed;
-      else settings.retrieval.rerankSets.push(parsed);
-    }
-    saveSettings(settings);
-    await this.render(kind);
-  }
-  async retrievalGroupDialog(kind, current) {
-    const dialog = dialogShell(kind === "embedding" ? "Embedding \u7AEF\u70B9\u7EC4" : "Rerank \u7AEF\u70B9\u7EC4", { className: "echoes-endpoint-dialog" });
-    const body = dialog.querySelector(".echoes-dialog-body");
-    body.innerHTML = `<div class="echoes-form-grid"><label>\u7EC4\u540D<input name="name" required maxlength="120"></label><label>\u7EC4 ID<input name="id" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label>${kind === "embedding" ? '<label>\u5D4C\u5165\u7A7A\u95F4 ID<input name="embeddingSpaceId" required pattern="[a-zA-Z][a-zA-Z0-9_-]*"></label><label>\u7EF4\u5EA6<input name="dimensions" type="number" min="1" max="65536" required></label><label class="echoes-check echoes-form-span" title="\u5173\u95ED\u540E\u4EC5\u6821\u9A8C\u8FD4\u56DE\u5411\u91CF\u7EF4\u5EA6\uFF0C\u9002\u7528\u4E8E\u4E0D\u63A5\u53D7 dimensions \u53C2\u6570\u7684\u56FA\u5B9A\u7EF4\u5EA6 API\u3002"><input name="requestDimensions" type="checkbox">\u5411 API \u8BF7\u6C42\u6B64\u7EF4\u5EA6</label>' : ""}</div><div class="echoes-section-heading"><h3>\u7AEF\u70B9</h3><button type="button" class="menu_button" data-add-retrieval-endpoint><i class="fa-solid fa-plus"></i> \u6DFB\u52A0\u7AEF\u70B9</button></div><div class="echoes-endpoint-editor" data-endpoint-editor></div>`;
-    body.querySelector("[name=name]").value = current?.name ?? "";
-    body.querySelector("[name=id]").value = current?.id ?? uid2(kind);
-    body.querySelector("[name=id]").disabled = Boolean(current);
-    if (kind === "embedding") {
-      const embedding = current;
-      body.querySelector("[name=embeddingSpaceId]").value = embedding?.embeddingSpaceId ?? uid2("space");
-      body.querySelector("[name=dimensions]").value = String(embedding?.dimensions ?? 1536);
-      body.querySelector("[name=requestDimensions]").checked = embedding?.requestDimensions !== false;
-    }
-    const rows = structuredClone(current?.endpoints ?? []);
-    const editor = body.querySelector("[data-endpoint-editor]");
-    const redraw = () => this.renderRetrievalEndpointEditor(editor, rows, redraw);
-    redraw();
-    body.querySelector("[data-add-retrieval-endpoint]").addEventListener("click", () => {
-      this.syncRetrievalEndpointEditor(editor, rows);
-      rows.push({ id: uid2("endpoint"), name: `\u7AEF\u70B9 ${rows.length + 1}`, baseUrl: "https://", allowPrivateNetwork: false, model: "", timeoutMs: 3e4, enabled: true, order: rows.length });
-      redraw();
-    });
-    return submitDialog(dialog, () => {
-      this.syncRetrievalEndpointEditor(editor, rows);
-      if (rows.length === 0) throw new Error("\u81F3\u5C11\u9700\u8981\u4E00\u4E2A\u7AEF\u70B9\u3002");
-      const base = { id: current?.id ?? fieldValue(body, "[name=id]"), name: fieldValue(body, "[name=name]"), endpoints: rows.map((endpoint, index) => ({ ...endpoint, order: index })) };
-      return kind === "embedding" ? {
-        ...base,
-        embeddingSpaceId: fieldValue(body, "[name=embeddingSpaceId]"),
-        dimensions: Number(fieldValue(body, "[name=dimensions]")),
-        requestDimensions: body.querySelector("[name=requestDimensions]").checked
-      } : base;
-    }, { errorTitle: `${kind === "embedding" ? "Embedding" : "Rerank"} \u7AEF\u70B9\u7EC4\u65E0\u6548` });
-  }
-  renderRetrievalEndpointEditor(host, rows, redraw) {
-    host.replaceChildren();
-    rows.forEach((endpoint, index) => {
-      const row = document.createElement("div");
-      row.className = "echoes-endpoint-editor-row";
-      row.dataset.index = String(index);
-      row.innerHTML = '<label>\u540D\u79F0<input data-field="name" required></label><label>\u5730\u5740<input data-field="baseUrl" type="url" required></label><label class="echoes-model-field">\u6A21\u578B<span class="echoes-model-control"><input data-field="model" required><select class="echoes-model-select" data-model-select hidden aria-label="\u4ECE\u5DF2\u62C9\u53D6\u7684\u6A21\u578B\u4E2D\u9009\u62E9"><option value="">\u62C9\u53D6\u540E\u9009\u62E9</option></select><button type="button" class="echoes-icon-button echoes-model-fetch" data-model-fetch title="\u4ECE API \u62C9\u53D6\u6A21\u578B\u5217\u8868" aria-label="\u62C9\u53D6\u6A21\u578B\u5217\u8868"><i class="fa-solid fa-cloud-arrow-down"></i></button></span><small data-model-status></small></label><label>\u670D\u52A1\u7AEF\u51ED\u636E<select data-field="credentialId"><option value="">\u65E0\u51ED\u636E</option></select></label><label>\u8D85\u65F6\uFF08\u79D2\uFF09<input data-field="timeout" type="number" min="1" max="600" required></label><label class="echoes-check echoes-private-network-check" title="\u4EC5\u5728\u4F60\u4FE1\u4EFB\u8BE5 API \u4E3B\u673A\u65F6\u542F\u7528\uFF1B\u5141\u8BB8\u8BF7\u6C42\u8BBF\u95EE\u672C\u673A\u3001\u5C40\u57DF\u7F51\u6216\u89E3\u6790\u5230\u4FDD\u7559\u5730\u5740\u7684\u4E3B\u673A\u3002"><input data-field="allowPrivateNetwork" type="checkbox">\u5141\u8BB8\u79C1\u7F51</label><label class="echoes-check"><input data-field="enabled" type="checkbox">\u542F\u7528</label><div class="echoes-endpoint-editor-actions"></div>';
-      row.querySelector("[data-field=name]").value = endpoint.name;
-      row.querySelector("[data-field=baseUrl]").value = endpoint.baseUrl;
-      row.querySelector("[data-field=model]").value = endpoint.model;
-      row.querySelector("[data-field=allowPrivateNetwork]").checked = endpoint.allowPrivateNetwork ?? false;
-      const credential = row.querySelector("[data-field=credentialId]");
-      this.credentials.forEach((item) => credential.add(new Option(item.name, item.id)));
-      if (endpoint.credentialId && !this.credentials.some((item) => item.id === endpoint.credentialId)) credential.add(new Option(`\u7F3A\u5931\uFF1A${endpoint.credentialId}`, endpoint.credentialId));
-      credential.value = endpoint.credentialId ?? "";
-      row.querySelector("[data-field=timeout]").value = String(endpoint.timeoutMs / 1e3);
-      row.querySelector("[data-field=enabled]").checked = endpoint.enabled;
-      this.bindModelDiscovery(row, "[data-field=baseUrl]", "[data-field=credentialId]", "[data-field=model]", "[data-field=timeout]", "[data-field=allowPrivateNetwork]");
-      const up = iconButton2("arrow-up", "\u4E0A\u79FB", "noop");
-      const down = iconButton2("arrow-down", "\u4E0B\u79FB", "noop");
-      const remove = iconButton2("trash", "\u5220\u9664", "noop");
-      delete up.dataset.apiAction;
-      delete down.dataset.apiAction;
-      delete remove.dataset.apiAction;
-      up.disabled = index === 0;
-      down.disabled = index === rows.length - 1;
-      up.addEventListener("click", () => {
-        this.syncRetrievalEndpointEditor(host, rows);
-        [rows[index - 1], rows[index]] = [rows[index], rows[index - 1]];
-        redraw();
-      });
-      down.addEventListener("click", () => {
-        this.syncRetrievalEndpointEditor(host, rows);
-        [rows[index], rows[index + 1]] = [rows[index + 1], rows[index]];
-        redraw();
-      });
-      remove.addEventListener("click", () => {
-        this.syncRetrievalEndpointEditor(host, rows);
-        rows.splice(index, 1);
-        redraw();
-      });
-      row.querySelector(".echoes-endpoint-editor-actions").append(up, down, remove);
-      host.append(row);
-    });
-  }
-  syncRetrievalEndpointEditor(host, rows) {
-    host.querySelectorAll(".echoes-endpoint-editor-row").forEach((row) => {
-      const endpoint = rows[Number(row.dataset.index)];
-      if (!endpoint) return;
-      endpoint.name = fieldValue(row, "[data-field=name]");
-      endpoint.baseUrl = fieldValue(row, "[data-field=baseUrl]");
-      endpoint.model = fieldValue(row, "[data-field=model]");
-      endpoint.allowPrivateNetwork = row.querySelector("[data-field=allowPrivateNetwork]").checked;
-      const credentialId = fieldValue(row, "[data-field=credentialId]");
-      if (credentialId) endpoint.credentialId = credentialId;
-      else delete endpoint.credentialId;
-      delete endpoint.apiKey;
-      endpoint.timeoutMs = Number(fieldValue(row, "[data-field=timeout]")) * 1e3;
-      endpoint.enabled = row.querySelector("[data-field=enabled]").checked;
-    });
-  }
-  deleteRetrievalGroup(kind, groupId) {
-    if (!confirm("\u5220\u9664\u8BE5\u7AEF\u70B9\u7EC4\uFF1F\u6240\u6709\u5F15\u7528\u5B83\u7684\u5DE5\u4F5C\u6D41\u4F1A\u53D8\u4E3A\u672A\u914D\u7F6E\u3002")) return;
-    const settings = getSettings();
-    if (kind === "embedding") {
-      settings.retrieval.embeddingGroups = settings.retrieval.embeddingGroups.filter((group) => group.id !== groupId);
-      if (settings.summary.embeddingGroupId === groupId) settings.summary.embeddingGroupId = "";
-    } else {
-      settings.retrieval.rerankSets = settings.retrieval.rerankSets.filter((group) => group.id !== groupId);
-      if (settings.retrieval.recall.rerankSetId === groupId) settings.retrieval.recall.rerankSetId = "";
-    }
-    saveSettings(settings);
-    void this.render(kind);
-  }
-  toggleRetrievalEndpoint(input) {
-    const settings = getSettings();
-    const groups = input.dataset.kind === "rerank" ? settings.retrieval.rerankSets : settings.retrieval.embeddingGroups;
-    const endpoint = groups.find((group) => group.id === input.dataset.groupId)?.endpoints.find((item) => item.id === input.dataset.apiRetrievalToggle);
-    if (!endpoint) return;
-    endpoint.enabled = input.checked;
-    saveSettings(settings);
-  }
-  async testRetrievalEndpoint(target) {
-    const settings = getSettings();
-    const kind = target.dataset.kind === "rerank" ? "rerank" : "embedding";
-    const groups = kind === "rerank" ? settings.retrieval.rerankSets : settings.retrieval.embeddingGroups;
-    const group = groups.find((item) => item.id === target.dataset.groupId);
-    const endpoint = group?.endpoints.find((item) => item.id === target.dataset.endpointId);
-    if (!group || !endpoint) throw new Error("\u7AEF\u70B9\u914D\u7F6E\u4E0D\u5B58\u5728\u3002");
-    const requestedDimensions = kind === "embedding" && group.requestDimensions !== false ? group.dimensions : void 0;
-    const completed = await waitJob(await echoesApi.testRetrievalEndpoint({
-      kind,
-      endpoint,
-      ...requestedDimensions !== void 0 ? { requestedDimensions } : {}
-    }), endpoint.timeoutMs + 3e4);
-    const latency = completed.result?.latencyMs ?? 0;
-    const detectedDimensions = completed.result?.dimensions;
-    if (kind !== "embedding" || !detectedDimensions) {
-      toastr.success(`${latency} ms`, "\u7AEF\u70B9\u6D4B\u8BD5\u5B8C\u6210");
-      return;
-    }
-    const embeddingGroup = group;
-    if (detectedDimensions === embeddingGroup.dimensions) {
-      toastr.success(`${latency} ms \xB7 ${detectedDimensions} \u7EF4`, "\u7AEF\u70B9\u6D4B\u8BD5\u5B8C\u6210");
-      return;
-    }
-    const collections = await echoesApi.listRetrievalCollections();
-    const dependentCollections = collections.filter((item) => item.collection.embeddingSpaceId === embeddingGroup.embeddingSpaceId);
-    const createsNewSpace = dependentCollections.length > 0;
-    const accepted = confirm(createsNewSpace ? `\u7AEF\u70B9\u5B9E\u9645\u8FD4\u56DE ${detectedDimensions} \u7EF4\uFF0C\u4F46\u7AEF\u70B9\u7EC4\u914D\u7F6E\u4E3A ${embeddingGroup.dimensions} \u7EF4\u3002
-
-\u5D4C\u5165\u7A7A\u95F4\u201C${embeddingGroup.embeddingSpaceId}\u201D\u5DF2\u6709 ${dependentCollections.length} \u4E2A\u96C6\u5408\u3002\u4E3A\u907F\u514D\u4E0D\u540C\u7EF4\u5EA6\u7684\u5411\u91CF\u6DF7\u5165\u65E7\u7D22\u5F15\uFF0CEchoes \u5C06\u4E3A\u8BE5\u7AEF\u70B9\u7EC4\u521B\u5EFA\u65B0\u7684\u5D4C\u5165\u7A7A\u95F4\u5E76\u5E94\u7528\u5B9E\u6D4B\u7EF4\u5EA6\u3002\u65E7\u96C6\u5408\u4E0D\u4F1A\u88AB\u5220\u9664\uFF1B\u603B\u7ED3\u96C6\u5408\u4F1A\u5728\u540E\u7EED\u540C\u6B65\u65F6\u91CD\u5EFA\uFF0C\u666E\u901A\u96C6\u5408\u9700\u8981\u65B0\u5EFA\u540E\u91CD\u65B0\u5BFC\u5165\u3002
-
-\u662F\u5426\u7EE7\u7EED\uFF1F` : `\u7AEF\u70B9\u5B9E\u9645\u8FD4\u56DE ${detectedDimensions} \u7EF4\uFF0C\u4F46\u7AEF\u70B9\u7EC4\u914D\u7F6E\u4E3A ${embeddingGroup.dimensions} \u7EF4\u3002\u662F\u5426\u5C06\u8BE5\u7EC4\u66F4\u65B0\u4E3A\u5B9E\u6D4B\u7EF4\u5EA6\uFF1F`);
-    if (!accepted) {
-      toastr.warning(
-        `\u5B9E\u6D4B ${detectedDimensions} \u7EF4\uFF0C\u5F53\u524D\u4ECD\u914D\u7F6E\u4E3A ${embeddingGroup.dimensions} \u7EF4\uFF1B\u5728\u4FEE\u6B63\u524D\u8BE5\u7AEF\u70B9\u65E0\u6CD5\u7528\u4E8E\u5411\u91CF\u4EFB\u52A1\u3002`,
-        "Embedding \u7EF4\u5EA6\u4E0D\u5339\u914D"
-      );
-      return;
-    }
-    const latestSettings = getSettings();
-    const latestGroup = latestSettings.retrieval.embeddingGroups.find((item) => item.id === embeddingGroup.id);
-    const latestEndpoint = latestGroup?.endpoints.find((item) => item.id === endpoint.id);
-    if (!latestGroup || !latestEndpoint || latestEndpoint.baseUrl !== endpoint.baseUrl || latestEndpoint.model !== endpoint.model || latestEndpoint.credentialId !== endpoint.credentialId) {
-      throw new Error("\u6D4B\u8BD5\u671F\u95F4\u7AEF\u70B9\u914D\u7F6E\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6D4B\u8BD5\u540E\u518D\u5E94\u7528\u7EF4\u5EA6\u3002");
-    }
-    latestGroup.dimensions = detectedDimensions;
-    if (createsNewSpace) latestGroup.embeddingSpaceId = uid2("space");
-    saveSettings(latestSettings);
-    await this.render(kind);
-    toastr.success(
-      `${latency} ms \xB7 \u5DF2\u5E94\u7528 ${detectedDimensions} \u7EF4${createsNewSpace ? "\u5E76\u521B\u5EFA\u65B0\u5D4C\u5165\u7A7A\u95F4" : ""}\u3002\u8BF7\u7EE7\u7EED\u6D4B\u8BD5\u540C\u7EC4\u5176\u4ED6\u7AEF\u70B9\u3002`,
-      "Embedding \u7AEF\u70B9\u6D4B\u8BD5\u5B8C\u6210"
+    control.required = type !== "checkbox" && Boolean(field.required);
+    const label = el(
+      "label",
+      "ew-field " + (field.wide || type === "textarea" || type === "json" ? "wide " : "") + (type === "checkbox" ? "ew-toggle" : "")
     );
+    label.htmlFor = inputId;
+    if (type === "checkbox") label.append(control, el("span", "", field.label));
+    else
+      label.append(
+        el("span", "", field.label + (field.required ? " *" : "")),
+        control
+      );
+    controls.set(field.key, control);
+    node.append(label);
   }
-  renderCredentials() {
-    const legacy = legacyCredentialEndpoints();
-    const host = this.content();
-    if (this.credentialsLoading) {
-      host.innerHTML = '<section class="echoes-settings-section"><div class="echoes-section-heading"><div><h2>\u670D\u52A1\u7AEF\u51ED\u636E</h2><span>\u6B63\u5728\u8FDE\u63A5 Echoes \u540E\u7AEF</span></div></div><div class="echoes-grid-message">\u6B63\u5728\u8BFB\u53D6\u670D\u52A1\u7AEF\u51ED\u636E...</div></section>';
-      return;
+  node.addEventListener("input", () => {
+    if (trackChanges) {
+      changed = true;
+      node.dataset.dirty = "true";
     }
-    if (this.credentialLoadError) {
-      host.innerHTML = '<section class="echoes-settings-section"><div class="echoes-section-heading"><div><h2>\u670D\u52A1\u7AEF\u51ED\u636E</h2><span>\u540E\u7AEF\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u672C\u5730\u7AEF\u70B9\u914D\u7F6E\u4ECD\u53EF\u7F16\u8F91</span></div><button type="button" class="menu_button" data-api-action="refresh"><i class="fa-solid fa-rotate"></i> \u91CD\u8BD5</button></div><div class="echoes-warning-band"><i class="fa-solid fa-triangle-exclamation"></i><span data-credential-error></span></div></section>';
-      host.querySelector("[data-credential-error]").textContent = this.credentialLoadError;
-      return;
+  });
+  node.addEventListener("change", () => {
+    if (trackChanges) {
+      changed = true;
+      node.dataset.dirty = "true";
     }
-    host.innerHTML = `<section class="echoes-settings-section">
-      <div class="echoes-section-heading"><div><h2>\u670D\u52A1\u7AEF\u51ED\u636E</h2><span>\u5BC6\u94A5\u4EC5\u4FDD\u5B58\u5728\u670D\u52A1\u7AEF\uFF0C\u4E0D\u4F1A\u56DE\u4F20\u5230\u6D4F\u89C8\u5668</span></div><button type="button" class="echoes-icon-button" data-api-action="refresh" title="\u5237\u65B0" aria-label="\u5237\u65B0"><i class="fa-solid fa-rotate"></i></button></div>
-      ${legacy.length ? `<div class="echoes-warning-band"><strong>\u68C0\u6D4B\u5230 ${legacy.length} \u4E2A\u524D\u7AEF\u660E\u6587\u5BC6\u94A5</strong><button type="button" class="menu_button echoes-primary" data-api-action="migrate-credentials">\u539F\u5B50\u8FC1\u79FB</button></div>` : ""}
-      <form class="echoes-credential-form" data-api-credential-form>
-        <label class="echoes-field"><span>\u51ED\u636E\u540D\u79F0 <em>\u5FC5\u586B</em></span><input name="name" placeholder="\u4F8B\u5982\uFF1A\u4E3B\u751F\u6210 API" required maxlength="120"></label>
-        <label class="echoes-field"><span>API \u5BC6\u94A5 <em>\u5FC5\u586B</em></span><span class="echoes-secret-control"><input name="secret" type="password" placeholder="\u8F93\u5165 API \u5BC6\u94A5" required autocomplete="new-password"><button type="button" class="echoes-icon-button" data-secret-toggle title="\u663E\u793A\u5BC6\u94A5" aria-label="\u663E\u793A\u5BC6\u94A5" aria-pressed="false"><i class="fa-solid fa-eye"></i></button></span></label>
-        <button type="submit" class="menu_button echoes-primary"><i class="fa-solid fa-key"></i> \u6DFB\u52A0\u51ED\u636E</button>
-      </form>
-      <div class="echoes-credential-list" data-credential-list></div>
-    </section>`;
-    bindSecretVisibility(host);
-    const list = host.querySelector("[data-credential-list]");
-    if (this.credentials.length === 0) list.innerHTML = '<p class="echoes-empty-note">\u5C1A\u65E0\u670D\u52A1\u7AEF\u51ED\u636E\u3002</p>';
-    this.credentials.forEach((credential) => {
-      const row = document.createElement("div");
-      row.className = "echoes-credential-row";
-      const meta3 = document.createElement("span");
-      const name = document.createElement("strong");
-      name.textContent = credential.name;
-      const id2 = document.createElement("small");
-      id2.textContent = credential.id;
-      meta3.append(name, id2);
-      const time3 = document.createElement("time");
-      time3.textContent = new Date(credential.updatedAt).toLocaleString();
-      const edit = iconButton2("pen", "\u91CD\u547D\u540D\u6216\u8F6E\u6362\u5BC6\u94A5", "edit-credential");
-      edit.dataset.id = credential.id;
-      const remove = iconButton2("trash", "\u5220\u9664\u51ED\u636E", "delete-credential");
-      remove.dataset.id = credential.id;
-      row.append(meta3, time3, edit, remove);
-      list.append(row);
-    });
-  }
-  async editCredential(id2) {
-    const credential = this.credentials.find((item) => item.id === id2);
-    if (!credential) throw new Error("\u51ED\u636E\u4E0D\u5B58\u5728\u6216\u5217\u8868\u5C1A\u672A\u52A0\u8F7D\u3002");
-    const dialog = dialogShell("\u7F16\u8F91\u670D\u52A1\u7AEF\u51ED\u636E");
-    const body = dialog.querySelector(".echoes-dialog-body");
-    body.innerHTML = '<div class="echoes-form-grid"><label class="echoes-field"><span>\u51ED\u636E\u540D\u79F0 <em>\u5FC5\u586B</em></span><input name="name" required maxlength="120"></label><label class="echoes-field"><span>\u65B0 API \u5BC6\u94A5 <small>\u7559\u7A7A\u5219\u4FDD\u7559\u73B0\u6709\u5BC6\u94A5</small></span><span class="echoes-secret-control"><input name="secret" type="password" autocomplete="new-password"><button type="button" class="echoes-icon-button" data-secret-toggle title="\u663E\u793A\u5BC6\u94A5" aria-label="\u663E\u793A\u5BC6\u94A5" aria-pressed="false"><i class="fa-solid fa-eye"></i></button></span></label></div>';
-    bindSecretVisibility(body);
-    body.querySelector("[name=name]").value = credential.name;
-    const update = await submitDialog(dialog, () => {
-      const name = fieldValue(body, "[name=name]");
-      const secret = body.querySelector("[name=secret]").value;
-      if (!name) throw new Error("\u51ED\u636E\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002");
-      return { name, ...secret ? { secret } : {} };
-    }, { errorTitle: "\u51ED\u636E\u66F4\u65B0\u65E0\u6548" });
-    if (!update) return;
-    await echoesApi.updateCredential(id2, update);
-    await this.render("credentials", true);
-  }
-  async addCredential(form) {
-    const name = fieldValue(form, "[name=name]");
-    const secret = form.querySelector("[name=secret]").value;
-    if (!name || !secret) throw new Error("\u51ED\u636E\u540D\u79F0\u548C\u5BC6\u94A5\u4E0D\u80FD\u4E3A\u7A7A\u3002");
-    await echoesApi.createCredential({ name, secret });
-    form.reset();
-    await this.render("credentials", true);
-  }
-  async deleteCredential(id2) {
-    if (!confirm("\u5220\u9664\u8BE5\u670D\u52A1\u7AEF\u51ED\u636E\uFF1F\u5F15\u7528\u5B83\u7684\u7AEF\u70B9\u5C06\u65E0\u6CD5\u8C03\u7528\u3002")) return;
-    await echoesApi.deleteCredential(id2);
-    await this.render("credentials", true);
-  }
-  async migrateCredentials() {
-    const legacy = legacyCredentialEndpoints();
-    if (legacy.length === 0 || !confirm(`\u5C06 ${legacy.length} \u4E2A\u660E\u6587\u5BC6\u94A5\u8FC1\u79FB\u5230\u670D\u52A1\u7AEF\u51ED\u636E\u5E93\uFF1F`)) return;
-    const inputs = legacy.map((endpoint) => ({ id: `credential_${crypto.randomUUID().replaceAll("-", "")}`, name: `${endpoint.endpointName} (${endpoint.kind})`, secret: endpoint.apiKey }));
-    const previous = structuredClone(getSettings());
-    const created = await echoesApi.migrateCredentials(inputs);
-    try {
-      if (created.length !== inputs.length || created.some((credential, index) => credential.id !== inputs[index].id)) throw new Error("\u670D\u52A1\u7AEF\u672A\u80FD\u9A8C\u8BC1\u5168\u90E8\u8FC1\u79FB\u51ED\u636E\u3002");
-      applyCredentialMigration(legacy.map((endpoint, index) => ({ kind: endpoint.kind, containerId: endpoint.containerId, endpointId: endpoint.endpointId, credentialId: created[index].id })));
-    } catch (error51) {
-      saveSettings(previous);
-      await Promise.allSettled(created.map((credential) => echoesApi.deleteCredential(credential.id)));
-      throw error51;
-    }
-    await this.render("credentials", true);
-  }
-};
-
-// src/extension/summary/retrieval-document.ts
-async function hashIdentifier(value) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-async function summaryRetrievalDocumentId(collectionId, sliceId) {
-  return `summary_doc_${(await hashIdentifier(`${collectionId}\0${sliceId}`)).slice(0, 48)}`;
-}
-function summaryRetrievalText(slice) {
-  return `[${slice.timestamp}] ${slice.title}
-${slice.content}`;
-}
-async function summaryRetrievalContentHash(slice) {
-  return hashIdentifier(summaryRetrievalText(slice));
-}
-async function summaryRetrievalDocument(collectionId, slice, chatId) {
+  });
   return {
-    documentId: await summaryRetrievalDocumentId(collectionId, slice.id),
-    collectionId,
-    sourceType: "chat_summary",
-    sourceId: slice.id,
-    text: summaryRetrievalText(slice),
-    tags: slice.tags,
-    metadata: {
-      chatId,
-      batchId: slice.batch.id,
-      batchNumber: slice.batch.batchNumber,
-      sliceNumber: slice.sliceNumber,
-      startMessageId: slice.batch.startMessageId,
-      endMessageId: slice.batch.endMessageId,
-      messageIds: slice.batch.messageIds,
-      sourceHash: slice.batch.sourceHash,
-      revision: slice.batch.revision
+    node,
+    controls,
+    dirty: () => changed,
+    clean: () => {
+      changed = false;
+      delete node.dataset.dirty;
+    },
+    values: () => {
+      if (!node.reportValidity()) throw new Error("\u8BF7\u68C0\u67E5\u6807\u8BB0\u7684\u5B57\u6BB5\u3002");
+      const result = {};
+      for (const field of spec) {
+        const c = controls.get(field.key);
+        result[field.key] = field.type === "checkbox" ? c.checked : field.type === "number" ? c.value === "" ? void 0 : Number(c.value) : field.type === "json" ? JSON.parse(c.value) : c.value;
+      }
+      return result;
     }
   };
 }
+function saveForm(form, save, label = "\u4FDD\u5B58\u8BBE\u7F6E") {
+  const status = el("span", "ew-muted");
+  const b = button(
+    label,
+    "floppy-disk",
+    () => form.node.requestSubmit(),
+    "primary"
+  );
+  const footer = actions(status, b);
+  footer.classList.add("ew-form-footer");
+  form.node.append(footer);
+  form.node.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (b.disabled) return;
+    let values;
+    try {
+      values = form.values();
+    } catch (e) {
+      notifyError(e);
+      return;
+    }
+    b.disabled = true;
+    void Promise.resolve().then(() => save(values)).then(() => {
+      form.clean();
+      status.textContent = "\u5DF2\u4FDD\u5B58";
+    }).catch(notifyError).finally(() => {
+      b.disabled = false;
+    });
+  });
+  return form.node;
+}
+function dialog(title, body, save, dirty) {
+  const root = document.querySelector("#echoes-workbench") ?? document.body;
+  const node = el("dialog", "ew-dialog");
+  node.dataset.theme = root instanceof HTMLElement ? root.dataset.theme ?? "dark" : "dark";
+  const close = () => {
+    if (!dirty?.() || window.confirm("\u5B58\u5728\u672A\u4FDD\u5B58\u7684\u4FEE\u6539\uFF0C\u653E\u5F03\u4FEE\u6539\uFF1F"))
+      node.close();
+  };
+  node.append(
+    el("header", "", el("h2", "", title), tool("\u5173\u95ED\u7F16\u8F91\u5668", "xmark", close))
+  );
+  const content = el("div", "ew-dialog-body", body);
+  const error51 = el("p", "ew-inline-error");
+  error51.setAttribute("role", "alert");
+  const footer = actions(error51, button("\u53D6\u6D88", "xmark", close));
+  if (save)
+    footer.append(
+      button(
+        "\u4FDD\u5B58",
+        "floppy-disk",
+        async () => {
+          try {
+            await save();
+            node.close();
+          } catch (e) {
+            error51.textContent = e instanceof Error ? e.message : String(e);
+            throw e;
+          }
+        },
+        "primary"
+      )
+    );
+  node.append(content, el("footer", "", footer));
+  node.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    close();
+  });
+  node.addEventListener("close", () => node.remove(), { once: true });
+  root.append(node);
+  node.showModal();
+  return node;
+}
+function editDialog(title, spec, save) {
+  const form = fields(spec);
+  form.node.addEventListener("submit", (e) => e.preventDefault());
+  return dialog(title, form.node, () => save(form.values()), form.dirty);
+}
+function table(headers, rows) {
+  const t = el("table", "ew-table");
+  const h = el("tr");
+  headers.forEach((label) => {
+    const th = el("th", "", label);
+    th.scope = "col";
+    h.append(th);
+  });
+  const body = el("tbody");
+  rows.forEach((cells) => {
+    const row = el("tr");
+    cells.forEach((value, i) => {
+      const td = el("td", "", value);
+      td.dataset.label = headers[i] ?? "";
+      row.append(td);
+    });
+    body.append(row);
+  });
+  t.append(el("thead", "", h), body);
+  return el("div", "ew-table-scroll", t);
+}
+function check2(label, checked, change) {
+  const input = el("input");
+  input.type = "checkbox";
+  input.checked = checked;
+  input.setAttribute("aria-label", label);
+  input.addEventListener("change", () => {
+    try {
+      const result = change(input.checked);
+      if (result instanceof Promise)
+        void result.catch((error51) => {
+          input.checked = !input.checked;
+          notifyError(error51);
+        });
+    } catch (error51) {
+      input.checked = !input.checked;
+      notifyError(error51);
+    }
+  });
+  return input;
+}
+function searchBox(value, change, label = "\u641C\u7D22") {
+  const input = el("input", "ew-search");
+  input.type = "search";
+  input.value = value;
+  input.placeholder = label;
+  input.setAttribute("aria-label", label);
+  input.addEventListener("input", () => change(input.value));
+  return input;
+}
+function move(items, from, offset) {
+  const result = [...items];
+  const to = from + offset;
+  if (to < 0 || to >= result.length) return result;
+  const item = result.splice(from, 1)[0];
+  result.splice(to, 0, item);
+  return result;
+}
+function local(ctx, key, initial) {
+  if (!ctx.state.has(key)) ctx.state.set(key, initial());
+  return ctx.state.get(key);
+}
+async function waitJob(initial, update, signal) {
+  let job = initial;
+  const deadline = Date.now() + 2 * 60 * 6e4;
+  while (true) {
+    signal.throwIfAborted();
+    update(job);
+    if (job.status === "succeeded") {
+      if (job.result === void 0) throw new Error("\u4EFB\u52A1\u6CA1\u6709\u8FD4\u56DE\u7ED3\u679C\u3002");
+      return job.result;
+    }
+    if (job.status === "cancelled")
+      throw new DOMException(job.message || "\u4EFB\u52A1\u5DF2\u53D6\u6D88", "AbortError");
+    if (["failed", "ambiguous"].includes(job.status))
+      throw new Error(job.error?.message ?? job.message);
+    if (Date.now() >= deadline)
+      throw new Error("\u4EFB\u52A1\u7B49\u5F85\u8D85\u65F6\uFF0C\u8BF7\u5728\u4EFB\u52A1\u65E5\u5FD7\u4E2D\u68C0\u67E5\u540E\u53F0\u72B6\u6001\u3002");
+    await new Promise((resolve, reject) => {
+      const abort = () => {
+        clearTimeout(timer);
+        reject(signal.reason);
+      };
+      const timer = setTimeout(() => {
+        signal.removeEventListener("abort", abort);
+        resolve();
+      }, 750);
+      signal.addEventListener("abort", abort, { once: true });
+    });
+    job = await echoesApi.getJob(job.id);
+  }
+}
+var injectionFields = (value) => [
+  {
+    key: "position",
+    label: "\u6CE8\u5165\u4F4D\u7F6E",
+    type: "select",
+    value: value.position,
+    options: [
+      ["before_character", "\u89D2\u8272\u5B9A\u4E49\u524D"],
+      ["after_character", "\u89D2\u8272\u5B9A\u4E49\u540E"],
+      ["at_depth", "\u6307\u5B9A\u6DF1\u5EA6"]
+    ]
+  },
+  {
+    key: "role",
+    label: "\u6D88\u606F\u89D2\u8272",
+    type: "select",
+    value: value.role,
+    options: [
+      ["system", "System"],
+      ["user", "User"],
+      ["assistant", "Assistant"]
+    ]
+  },
+  {
+    key: "depth",
+    label: "\u6DF1\u5EA6",
+    type: "number",
+    value: value.depth,
+    min: 0,
+    max: 100
+  },
+  {
+    key: "order",
+    label: "\u987A\u5E8F",
+    type: "number",
+    value: value.order,
+    min: -1e4,
+    max: 1e4
+  },
+  {
+    key: "maxWaitMs",
+    label: "\u6700\u957F\u7B49\u5F85\uFF08\u6BEB\u79D2\uFF09",
+    type: "number",
+    value: value.maxWaitMs,
+    min: 1e3,
+    max: 3e5
+  },
+  {
+    key: "template",
+    label: "\u6CE8\u5165\u6A21\u677F",
+    type: "textarea",
+    value: value.template,
+    required: true
+  }
+];
+
+// src/extension/workbench/editors.ts
+init_domain();
+function orderedEditor(ctx, title, original, describe3, edit, save, toggles = true) {
+  let items = structuredClone(original);
+  let dirty = false;
+  const root = el("div", "ew-page-content");
+  const host = el("div");
+  const status = el("span", "ew-muted");
+  const changed = () => {
+    dirty = true;
+    root.dataset.dirty = "true";
+    status.textContent = "\u6709\u672A\u4FDD\u5B58\u7684\u4FEE\u6539";
+    render();
+  };
+  const render = () => {
+    host.replaceChildren(
+      table(
+        ["\u987A\u5E8F", title, "\u7C7B\u578B", "\u542F\u7528", "\u64CD\u4F5C"],
+        items.map((item, i) => [
+          String(i + 1),
+          describe3(item)[0],
+          badge(describe3(item)[1]),
+          toggles ? check2("\u542F\u7528 " + describe3(item)[0], item.enabled, (v) => {
+            item.enabled = v;
+            changed();
+          }) : "\u59CB\u7EC8",
+          actions(
+            tool(
+              "\u7F16\u8F91",
+              "pen",
+              () => edit(item, (v) => {
+                items[i] = v;
+                changed();
+              })
+            ),
+            tool("\u4E0A\u79FB", "arrow-up", () => {
+              items = move(items, i, -1);
+              changed();
+            }),
+            tool("\u4E0B\u79FB", "arrow-down", () => {
+              items = move(items, i, 1);
+              changed();
+            }),
+            tool(
+              "\u5220\u9664",
+              "trash",
+              () => {
+                if (confirm("\u5220\u9664\u8FD9\u4E00\u914D\u7F6E\u9879\uFF1F")) {
+                  items.splice(i, 1);
+                  changed();
+                }
+              },
+              "danger"
+            )
+          )
+        ])
+      )
+    );
+    const rows = host.querySelectorAll("tbody tr");
+    rows.forEach((row, i) => {
+      row.draggable = true;
+      row.addEventListener(
+        "dragstart",
+        (e) => e.dataTransfer?.setData("text/echoes-index", String(i))
+      );
+      row.addEventListener("dragover", (e) => e.preventDefault());
+      row.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const raw = e.dataTransfer?.getData("text/echoes-index");
+        if (!raw) return;
+        const from = Number(raw);
+        if (!Number.isInteger(from) || from < 0 || from >= items.length) return;
+        items = move(items, from, i - from);
+        changed();
+      });
+    });
+  };
+  root.append(
+    actions(
+      button(
+        "\u6DFB\u52A0",
+        "plus",
+        () => edit(void 0, (v) => {
+          items.push(v);
+          changed();
+        })
+      ),
+      status,
+      button(
+        "\u4FDD\u5B58\u7F16\u6392",
+        "floppy-disk",
+        async () => {
+          ctx.guard();
+          await save(items);
+          dirty = false;
+          delete root.dataset.dirty;
+          status.textContent = "\u5DF2\u4FDD\u5B58";
+        },
+        "primary"
+      )
+    ),
+    host
+  );
+  void dirty;
+  render();
+  return root;
+}
+var kindNames = {
+  main: "\u4E3B\u63D0\u793A\u8BCD",
+  custom: "\u81EA\u5B9A\u4E49\u6587\u672C",
+  type_writer: "\u5199\u8868\u63D0\u793A\u8BCD",
+  character: "\u89D2\u8272\u5361",
+  worldbook: "\u4E16\u754C\u4E66",
+  persona: "\u7528\u6237\u8BBE\u5B9A",
+  previous_summaries: "\u524D\u6587\u603B\u7ED3",
+  messages: "\u589E\u91CF\u6D88\u606F",
+  current_state: "\u5F53\u524D\u72B6\u6001",
+  current_message: "\u5F53\u524D\u6D88\u606F",
+  recent_messages: "\u8FD1\u671F\u6D88\u606F"
+};
+function promptEditor(mode, types = []) {
+  return (item, done) => {
+    const kinds = mode === "structured" ? ["main", "custom", "type_writer"] : mode === "summary" ? [
+      "custom",
+      "character",
+      "worldbook",
+      "persona",
+      "previous_summaries",
+      "messages"
+    ] : mode === "status" ? [
+      "custom",
+      "character",
+      "worldbook",
+      "persona",
+      "current_state",
+      "messages"
+    ] : [
+      "custom",
+      "current_message",
+      "recent_messages",
+      "character",
+      "persona"
+    ];
+    const value = item ?? {};
+    const form = fields([
+      { key: "title", label: "\u6807\u9898", value: value.title ?? "", required: true },
+      {
+        key: "kind",
+        label: "\u5185\u5BB9\u7C7B\u578B",
+        type: "select",
+        value: value.kind ?? "custom",
+        options: kinds.map((k) => [k, kindNames[k]])
+      },
+      ...mode !== "query" ? [
+        {
+          key: "role",
+          label: "\u6D88\u606F\u89D2\u8272",
+          type: "select",
+          value: value.role ?? "system",
+          options: [
+            ["system", "System"],
+            ["user", "User"],
+            ["assistant", "Assistant"]
+          ]
+        }
+      ] : [],
+      {
+        key: "enabled",
+        label: "\u542F\u7528",
+        type: "checkbox",
+        value: value.enabled ?? true
+      },
+      {
+        key: "typeId",
+        label: "\u76EE\u6807\u8868",
+        type: "select",
+        value: value.typeId ?? types[0]?.id ?? "",
+        options: types.map((t) => [t.id, t.name])
+      },
+      {
+        key: "count",
+        label: "\u6570\u91CF",
+        type: "number",
+        value: value.count ?? 2,
+        min: 0,
+        max: 100
+      },
+      {
+        key: "unit",
+        label: "\u524D\u6587\u8BA1\u6570\u5355\u4F4D",
+        type: "select",
+        value: value.unit ?? "batches",
+        options: [
+          ["batches", "\u5B8C\u6574\u6279\u6B21"],
+          ["slices", "\u5207\u7247"]
+        ]
+      },
+      {
+        key: "content",
+        label: "\u63D0\u793A\u8BCD\u5185\u5BB9",
+        type: "textarea",
+        value: value.content ?? "",
+        rows: 18
+      }
+    ]);
+    const update = () => {
+      const kind = form.controls.get("kind").value;
+      for (const [key, show] of Object.entries({
+        typeId: kind === "type_writer",
+        count: ["previous_summaries", "recent_messages"].includes(kind),
+        unit: kind === "previous_summaries",
+        content: ["main", "custom"].includes(kind)
+      })) {
+        form.controls.get(key).closest("label").hidden = !show;
+        form.controls.get(key).disabled = !show;
+      }
+    };
+    form.controls.get("kind").addEventListener("change", update);
+    update();
+    form.node.addEventListener("submit", (e) => e.preventDefault());
+    dialog(
+      item ? "\u7F16\u8F91\u63D0\u793A\u8BCD" : "\u6DFB\u52A0\u63D0\u793A\u8BCD",
+      form.node,
+      () => {
+        const v = form.values();
+        const result = {
+          id: value.id ?? id("prompt"),
+          title: v.title,
+          kind: v.kind,
+          enabled: v.enabled
+        };
+        if (mode !== "query") result.role = v.role;
+        if (["custom", "main"].includes(v.kind)) result.content = v.content;
+        if (v.kind === "type_writer") result.typeId = v.typeId;
+        if (["previous_summaries", "recent_messages"].includes(v.kind))
+          result.count = v.count;
+        if (v.kind === "previous_summaries") result.unit = v.unit;
+        done(result);
+      },
+      form.dirty
+    );
+  };
+}
+function promptDescription(item) {
+  return [item.title, kindNames[item.kind] ?? item.kind];
+}
+function ruleEditor(item, done) {
+  editDialog(
+    item ? "\u7F16\u8F91\u6E05\u6D17\u89C4\u5219" : "\u6DFB\u52A0\u6E05\u6D17\u89C4\u5219",
+    [
+      { key: "name", label: "\u540D\u79F0", value: item?.name, required: true },
+      {
+        key: "type",
+        label: "\u64CD\u4F5C",
+        type: "select",
+        value: item?.type ?? "remove",
+        options: [
+          ["remove", "\u5220\u9664\u5339\u914D"],
+          ["replace", "\u66FF\u6362"],
+          ["extract", "\u4FDD\u7559\u5339\u914D"]
+        ]
+      },
+      {
+        key: "pattern",
+        label: "\u6B63\u5219\u8868\u8FBE\u5F0F",
+        value: item?.pattern,
+        required: true,
+        wide: true
+      },
+      { key: "flags", label: "\u6807\u5FD7", value: item?.flags ?? "g" },
+      { key: "replacement", label: "\u66FF\u6362\u6587\u672C", value: item?.replacement },
+      {
+        key: "user",
+        label: "\u7528\u6237\u6D88\u606F",
+        type: "checkbox",
+        value: item?.roles.includes("user") ?? true
+      },
+      {
+        key: "assistant",
+        label: "\u52A9\u624B\u6D88\u606F",
+        type: "checkbox",
+        value: item?.roles.includes("assistant") ?? true
+      }
+    ],
+    (v) => {
+      new RegExp(v.pattern, v.flags);
+      done({
+        id: item?.id ?? id("rule"),
+        name: v.name,
+        type: v.type,
+        pattern: v.pattern,
+        flags: v.flags,
+        replacement: v.replacement,
+        roles: [
+          ...v.user ? ["user"] : [],
+          ...v.assistant ? ["assistant"] : []
+        ],
+        enabled: item?.enabled ?? true,
+        order: item?.order ?? 0
+      });
+    }
+  );
+}
+function typeEditor(current, save, title = "\u7F16\u8F91\u8868\u7ED3\u6784") {
+  let columns = structuredClone(current.columns);
+  let columnsDirty = false;
+  const form = fields([
+    { key: "name", label: "\u540D\u79F0", value: current.name, required: true },
+    { key: "description", label: "\u7528\u9014", value: current.description },
+    {
+      key: "writePrompt",
+      label: "\u5199\u8868\u63D0\u793A\u8BCD",
+      type: "textarea",
+      value: current.writePrompt,
+      required: true,
+      rows: 9
+    }
+  ]);
+  const host = el("div");
+  const editColumn = (index) => {
+    const col = index === void 0 ? void 0 : columns[index];
+    editDialog(
+      col ? "\u7F16\u8F91\u5B57\u6BB5" : "\u6DFB\u52A0\u5B57\u6BB5",
+      [
+        {
+          key: "id",
+          label: "\u5B57\u6BB5 ID",
+          value: col?.id ?? id("column"),
+          required: true,
+          readonly: !!col
+        },
+        { key: "name", label: "\u8868\u5934\u540D\u79F0", value: col?.name, required: true },
+        {
+          key: "type",
+          label: "\u5B57\u6BB5\u7C7B\u578B",
+          type: "select",
+          value: col?.type ?? "text",
+          options: MEMORY_COLUMN_TYPES.map((x) => [x, x])
+        },
+        {
+          key: "required",
+          label: "\u5FC5\u586B",
+          type: "checkbox",
+          value: col?.required ?? false
+        },
+        { key: "description", label: "\u5B57\u6BB5\u8BF4\u660E", value: col?.description },
+        {
+          key: "enumValues",
+          label: "\u679A\u4E3E\u9009\u9879\uFF08\u6BCF\u884C\u4E00\u9879\uFF09",
+          type: "textarea",
+          value: col?.enumValues?.join("\n") ?? ""
+        },
+        {
+          key: "defaultValue",
+          label: "\u9ED8\u8BA4\u503C\uFF08JSON\uFF0C\u53EF\u7559\u7A7A\uFF09",
+          value: col?.defaultValue === void 0 ? "" : JSON.stringify(col.defaultValue),
+          wide: true
+        }
+      ],
+      (v) => {
+        const next = {
+          id: v.id,
+          name: v.name,
+          type: v.type,
+          required: v.required,
+          description: v.description
+        };
+        if (v.enumValues.trim())
+          next.enumValues = v.enumValues.split("\n").map((x) => x.trim()).filter(Boolean);
+        if (v.defaultValue.trim())
+          next.defaultValue = JSON.parse(v.defaultValue);
+        if (index === void 0) columns.push(next);
+        else columns[index] = next;
+        columnsDirty = true;
+        render();
+      }
+    );
+  };
+  const render = () => {
+    host.replaceChildren(
+      actions(
+        el("h3", "", "\u5B57\u6BB5\u987A\u5E8F"),
+        button("\u6DFB\u52A0\u5B57\u6BB5", "plus", () => editColumn())
+      ),
+      table(
+        ["\u987A\u5E8F", "\u8868\u5934", "\u7C7B\u578B", "\u5FC5\u586B", "\u64CD\u4F5C"],
+        columns.map((col, i) => [
+          i + 1,
+          col.name,
+          col.type,
+          col.required ? "\u662F" : "\u5426",
+          actions(
+            tool("\u7F16\u8F91\u5B57\u6BB5", "pen", () => editColumn(i)),
+            tool("\u5B57\u6BB5\u4E0A\u79FB", "arrow-up", () => {
+              columns = move(columns, i, -1);
+              columnsDirty = true;
+              render();
+            }),
+            tool("\u5B57\u6BB5\u4E0B\u79FB", "arrow-down", () => {
+              columns = move(columns, i, 1);
+              columnsDirty = true;
+              render();
+            }),
+            tool(
+              "\u5220\u9664\u5B57\u6BB5",
+              "trash",
+              () => {
+                if (confirm("\u5220\u9664\u5B57\u6BB5\u53EF\u80FD\u79FB\u9664\u5DF2\u6709\u8BB0\u5F55\u4E2D\u7684\u8BE5\u5B57\u6BB5\uFF0C\u7EE7\u7EED\uFF1F")) {
+                  columns.splice(i, 1);
+                  columnsDirty = true;
+                  render();
+                }
+              },
+              "danger"
+            )
+          )
+        ])
+      )
+    );
+    host.querySelectorAll("tbody tr").forEach((row, i) => {
+      row.draggable = true;
+      row.addEventListener(
+        "dragstart",
+        (event) => event.dataTransfer?.setData(
+          "text/echoes-column",
+          String(i)
+        )
+      );
+      row.addEventListener("dragover", (event) => event.preventDefault());
+      row.addEventListener("drop", (event) => {
+        event.preventDefault();
+        const raw = event.dataTransfer?.getData(
+          "text/echoes-column"
+        );
+        if (!raw) return;
+        const from = Number(raw);
+        if (!Number.isInteger(from) || from < 0 || from >= columns.length)
+          return;
+        columns = move(columns, from, i - from);
+        columnsDirty = true;
+        render();
+      });
+    });
+  };
+  render();
+  const body = el("div", "ew-page-content", form.node, host);
+  form.node.addEventListener("submit", (e) => e.preventDefault());
+  return dialog(
+    title,
+    body,
+    async () => {
+      const v = form.values();
+      await save({
+        name: v.name,
+        description: v.description,
+        writePrompt: v.writePrompt,
+        columns
+      });
+    },
+    () => form.dirty() || columnsDirty
+  );
+}
+
+// src/extension/workbench/memory.ts
+var store = new WorldbookMemoryStore();
+async function memoryView(ctx) {
+  const state = await store.load();
+  if (ctx.signal.aborted) return el("div");
+  const page = el("div", "ew-page-content");
+  const saveType = (type) => typeEditor(type, async (v) => {
+    ctx.guard();
+    await store.saveType(
+      { ...v, templateId: type.templateId, enabled: type.enabled },
+      type.id
+    );
+    await ctx.refresh();
+  });
+  const addType = () => editDialog(
+    "\u65B0\u5EFA\u8BB0\u5FC6\u8868",
+    [
+      {
+        key: "template",
+        label: "\u57FA\u4E8E\u6A21\u677F",
+        type: "select",
+        options: getSettings().typeTemplates.map((t) => [t.id, t.name])
+      },
+      { key: "name", label: "\u8868\u540D\u79F0", required: true }
+    ],
+    async (v) => {
+      ctx.guard();
+      const template = getSettings().typeTemplates.find(
+        (t) => t.id === v.template
+      );
+      const type = instantiateType(template, v.name);
+      await store.saveType(type);
+      await ctx.refresh();
+    }
+  );
+  if (ctx.route === "memory/templates") {
+    page.append(
+      actions(
+        button(
+          "\u65B0\u5EFA\u6A21\u677F",
+          "plus",
+          () => typeEditor(
+            {
+              name: "",
+              description: "",
+              columns: [
+                {
+                  id: "content",
+                  name: "\u5185\u5BB9",
+                  type: "long_text",
+                  required: true
+                }
+              ],
+              writePrompt: "Write reusable, source-supported information in Chinese according to this table's columns."
+            },
+            async (v) => {
+              saveTypeTemplate(v);
+              await ctx.refresh();
+            },
+            "\u65B0\u5EFA\u7C7B\u578B\u6A21\u677F"
+          )
+        )
+      ),
+      table(
+        ["\u6A21\u677F", "\u7528\u9014", "\u5B57\u6BB5\u6570", "\u6765\u6E90", "\u64CD\u4F5C"],
+        getSettings().typeTemplates.map((t) => [
+          t.name,
+          t.description,
+          t.columns.length,
+          t.builtIn ? "\u5185\u7F6E" : "\u81EA\u5B9A\u4E49",
+          actions(
+            tool(
+              "\u7F16\u8F91\u526F\u672C",
+              "copy",
+              () => typeEditor(
+                { ...t, name: t.name + " \u526F\u672C" },
+                async (v) => {
+                  saveTypeTemplate(v);
+                  await ctx.refresh();
+                },
+                "\u590D\u5236\u6A21\u677F"
+              )
+            ),
+            ...!t.builtIn ? [
+              tool(
+                "\u7F16\u8F91\u6A21\u677F",
+                "pen",
+                () => typeEditor(t, async (v) => {
+                  saveTypeTemplate({ ...v, id: t.id }, t);
+                  await ctx.refresh();
+                })
+              ),
+              tool(
+                "\u5220\u9664\u6A21\u677F",
+                "trash",
+                async () => {
+                  if (confirm("\u5220\u9664\u6A21\u677F " + t.name + "\uFF1F")) {
+                    deleteTypeTemplate(t.id);
+                    await ctx.refresh();
+                  }
+                },
+                "danger"
+              )
+            ] : []
+          )
+        ])
+      )
+    );
+    return page;
+  }
+  if (ctx.route === "memory/schema") {
+    page.append(
+      actions(
+        button("\u65B0\u5EFA\u8868", "plus", addType, "primary"),
+        button("\u4ECE\u5176\u4ED6\u804A\u5929\u8FC1\u79FB", "file-import", async () => {
+          const choose = fields([
+            {
+              key: "source",
+              label: "\u6765\u6E90\u4E16\u754C\u4E66",
+              type: "select",
+              options: store.listWorldbooks().filter((x) => x !== state.worldbookName).map((x) => [x, x])
+            },
+            {
+              key: "policy",
+              label: "\u5DF2\u6709\u540C ID \u7C7B\u578B",
+              type: "select",
+              options: [
+                ["copy", "\u521B\u5EFA\u526F\u672C"],
+                ["skip", "\u8DF3\u8FC7"],
+                ["overwrite", "\u8986\u76D6"]
+              ]
+            }
+          ]);
+          let source = await store.inspect(
+            choose.controls.get("source").value
+          );
+          const chosen = new Set(source.catalog.types.map((t) => t.id));
+          const host2 = el("div", "ew-list");
+          const draw2 = () => host2.replaceChildren(
+            ...source.catalog.types.map(
+              (t) => el(
+                "label",
+                "ew-toggle",
+                check2(
+                  t.name,
+                  chosen.has(t.id),
+                  (v) => v ? chosen.add(t.id) : chosen.delete(t.id)
+                ),
+                t.name
+              )
+            )
+          );
+          draw2();
+          choose.controls.get("source").addEventListener(
+            "change",
+            () => void store.inspect(choose.controls.get("source").value).then((s) => {
+              source = s;
+              chosen.clear();
+              s.catalog.types.forEach((t) => chosen.add(t.id));
+              draw2();
+            })
+          );
+          dialog(
+            "\u8FC1\u79FB\u8BB0\u5FC6\u7C7B\u578B",
+            el("div", "ew-page-content", choose.node, host2),
+            async () => {
+              ctx.guard();
+              const v = choose.values();
+              if (!chosen.size) throw new Error("\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u7C7B\u578B\u3002");
+              if (v.policy === "overwrite" && !confirm("\u8986\u76D6\u4F1A\u66FF\u6362\u76EE\u6807\u8868\u5DF2\u6709\u8BB0\u5F55\uFF0C\u7EE7\u7EED\uFF1F"))
+                return;
+              await store.migrateFrom(v.source, [...chosen], v.policy);
+              await ctx.refresh();
+            }
+          );
+        })
+      ),
+      table(
+        ["\u8868\u540D\u79F0", "\u7528\u9014", "\u5B57\u6BB5", "\u542F\u7528", "\u64CD\u4F5C"],
+        state.catalog.types.map((t) => [
+          t.name,
+          t.description,
+          t.columns.length,
+          check2("\u542F\u7528 " + t.name, t.enabled, async (v) => {
+            ctx.guard();
+            await store.setTypeEnabled(t.id, v);
+            await ctx.refresh();
+          }),
+          actions(
+            tool("\u7F16\u8F91\u8868\u7ED3\u6784", "table-columns", () => saveType(t)),
+            tool(
+              "\u5220\u9664\u8868\u53CA\u8BB0\u5F55",
+              "trash",
+              async () => {
+                if (confirm("\u5220\u9664 " + t.name + " \u53CA\u5176\u4E2D\u6240\u6709\u8BB0\u5F55\uFF1F")) {
+                  ctx.guard();
+                  await store.deleteType(t.id);
+                  await ctx.refresh();
+                }
+              },
+              "danger"
+            )
+          )
+        ])
+      )
+    );
+    return page;
+  }
+  if (ctx.route === "memory/prompts") {
+    page.append(
+      orderedEditor(
+        ctx,
+        "\u63D0\u793A\u8BCD",
+        state.catalog.promptPreset.items,
+        promptDescription,
+        promptEditor("structured", state.catalog.types),
+        async (items) => {
+          ctx.guard();
+          await store.savePromptPreset({
+            ...state.catalog.promptPreset,
+            items,
+            updatedAt: now()
+          });
+        }
+      ),
+      button("\u9884\u89C8\u6700\u7EC8\u8BF7\u6C42", "eye", async () => {
+        const prepared = await prepareExtraction(
+          await store.load(),
+          getSettings(),
+          "manual"
+        );
+        dialog(
+          "\u7ED3\u6784\u5316\u63D0\u53D6\u8BF7\u6C42",
+          detail("\u5B8C\u6574\u8BF7\u6C42\u6D88\u606F", prepared.request.promptMessages)
+        );
+      })
+    );
+    return page;
+  }
+  if (ctx.route === "memory/rules") {
+    const settings = getSettings();
+    const form = fields([
+      {
+        key: "count",
+        label: "\u5355\u6279\u6D88\u606F\u6570\u91CF",
+        type: "number",
+        min: 2,
+        max: 500,
+        value: settings.extractionMessageCount
+      },
+      {
+        key: "enabled",
+        label: "\u81EA\u52A8\u63D0\u53D6",
+        type: "checkbox",
+        value: state.catalog.automation.enabled
+      }
+    ]);
+    page.append(
+      saveForm(form, async (v) => {
+        ctx.guard();
+        const s = getSettings();
+        s.extractionMessageCount = v.count;
+        saveSettings(s);
+        await extractionCoordinator.setAutomationEnabled(v.enabled);
+      })
+    );
+    return page;
+  }
+  if (ctx.route === "memory/tasks") {
+    const trace = extractionCoordinator.trace();
+    page.append(
+      actions(
+        button(
+          "\u5904\u7406\u4E0B\u4E00\u6279",
+          "play",
+          () => ctx.run(
+            "\u7ED3\u6784\u5316\u8BB0\u5FC6\u63D0\u53D6",
+            () => extractionCoordinator.runManual(),
+            () => extractionCoordinator.stopCurrent()
+          ).then(() => ctx.refresh()),
+          "primary"
+        ),
+        button("\u505C\u6B62\u63D0\u53D6", "stop", () => extractionCoordinator.stopCurrent(), "danger"),
+        button(
+          "\u91CD\u8BD5",
+          "rotate",
+          () => ctx.run(
+            "\u91CD\u8BD5\u7ED3\u6784\u5316\u63D0\u53D6",
+            () => extractionCoordinator.retryCurrent(),
+            () => extractionCoordinator.stopCurrent()
+          ).then(() => ctx.refresh())
+        )
+      ),
+      section(
+        "\u5904\u7406\u8FDB\u5EA6",
+        el(
+          "p",
+          "",
+          extractionCoordinator.isRunning() ? "\u6B63\u5728\u63D0\u53D6" : extractionCoordinator.pauseReason() ?? "\u7B49\u5F85\u5904\u7406"
+        ),
+        el(
+          "p",
+          "ew-muted",
+          "\u68C0\u67E5\u70B9\uFF1A" + (state.catalog.lastProcessedMessageId ?? "\u5C1A\u672A\u5904\u7406")
+        ),
+        trace ? detail("\u6700\u8FD1\u4E00\u6B21\u63D0\u53D6", trace) : empty("\u6682\u65E0\u63D0\u53D6\u4EFB\u52A1")
+      ),
+      section(
+        "\u68C0\u67E5\u70B9",
+        actions(
+          button("\u79FB\u81F3\u6700\u65B0\u6D88\u606F", "forward", async () => {
+            if (confirm("\u8DF3\u8FC7\u5C1A\u672A\u5904\u7406\u7684\u6D88\u606F\uFF0C\u5C06\u68C0\u67E5\u70B9\u79FB\u5230\u6700\u65B0\uFF1F")) {
+              ctx.guard();
+              await extractionCoordinator.relocateCheckpoint(
+                currentExtractionMessages().at(-1)?.id ?? null
+              );
+              await ctx.refresh();
+            }
+          }),
+          button("\u4ECE\u5934\u5F00\u59CB", "rotate-left", async () => {
+            if (confirm("\u6E05\u9664\u68C0\u67E5\u70B9\u540E\u5C06\u4ECE\u5F00\u5934\u91CD\u65B0\u63D0\u53D6\uFF0C\u5DF2\u6709\u8BB0\u5FC6\u4E0D\u4F1A\u5220\u9664\u3002\u7EE7\u7EED\uFF1F")) {
+              ctx.guard();
+              await extractionCoordinator.relocateCheckpoint(null);
+              await ctx.refresh();
+            }
+          })
+        )
+      )
+    );
+    return page;
+  }
+  if (ctx.route === "memory/review") {
+    const review = extractionCoordinator.review();
+    if (!review) return empty("\u6CA1\u6709\u5F85\u5BA1\u6838\u64CD\u4F5C");
+    const selected = new Set(review.selectedIndexes);
+    const rows = review.result.reviewItems.map((item) => {
+      const op = item.operation;
+      const valid = item.state === "valid";
+      const c = check2(
+        "\u9009\u62E9\u64CD\u4F5C " + (item.index + 1),
+        selected.has(item.index),
+        (v) => v ? selected.add(item.index) : selected.delete(item.index)
+      );
+      c.disabled = !valid;
+      const previous = valid && op.rowId ? state.rows.find((r) => r.id === op.rowId) : void 0;
+      return [
+        c,
+        item.index + 1,
+        valid ? String(op.action) : badge("\u65E0\u6548\u64CD\u4F5C", "danger"),
+        valid ? op.dataName ?? previous?.dataName ?? op.rowId ?? "" : item.reason,
+        button(
+          "\u67E5\u770B\u53D8\u66F4",
+          "code-compare",
+          () => dialog(
+            "\u64CD\u4F5C " + (item.index + 1),
+            el(
+              "div",
+              "ew-page-content",
+              item.reason ? el("p", "danger", item.reason) : null,
+              previous ? detail("\u4FEE\u6539\u524D", previous) : null,
+              detail("\u63D0\u8BAE\u5185\u5BB9", item.operation)
+            )
+          )
+        )
+      ];
+    });
+    page.append(
+      actions(
+        badge(
+          "\u6709\u6548\u64CD\u4F5C " + review.result.reviewItems.filter((i) => i.state === "valid").length
+        ),
+        button(
+          "\u63D0\u4EA4\u9009\u4E2D\u64CD\u4F5C",
+          "check",
+          async () => {
+            ctx.guard();
+            await extractionCoordinator.submitReview([...selected]);
+            await ctx.refresh();
+          },
+          "primary"
+        )
+      ),
+      table(["\u9009\u62E9", "\u5E8F\u53F7", "\u64CD\u4F5C", "\u5BF9\u8C61 / \u539F\u56E0", "\u8BE6\u60C5"], rows)
+    );
+    return page;
+  }
+  const ui = local(ctx, "memory-filter", () => ({
+    typeId: state.catalog.types[0]?.id ?? "",
+    query: "",
+    status: "all"
+  }));
+  if (!state.catalog.types.some((t) => t.id === ui.typeId))
+    ui.typeId = state.catalog.types[0]?.id ?? "";
+  const nav = el("aside", "ew-list");
+  const host = el("div", "ew-page-content");
+  const split = el("div", "ew-split", nav, host);
+  const select = document.createElement("select");
+  select.setAttribute("aria-label", "\u6FC0\u6D3B\u65B9\u5F0F\u7B5B\u9009");
+  [
+    ["all", "\u5168\u90E8\u6FC0\u6D3B\u65B9\u5F0F"],
+    ["permanent", "\u5E38\u9A7B"],
+    ["keyword", "\u5173\u952E\u8BCD"],
+    ["vectorized", "\u5411\u91CF"]
+  ].forEach(([v, l]) => select.add(new Option(l, v)));
+  select.value = ui.status;
+  const grid = el("div");
+  const editRow = (type, row) => {
+    const spec = [
+      {
+        key: "dataName",
+        label: "\u6761\u76EE\u540D\u79F0",
+        value: row?.dataName,
+        required: true
+      },
+      {
+        key: "status",
+        label: "\u6FC0\u6D3B\u65B9\u5F0F",
+        type: "select",
+        value: row?.status ?? "keyword",
+        options: [
+          ["keyword", "\u5173\u952E\u8BCD"],
+          ["vectorized", "\u5411\u91CF"],
+          ["permanent", "\u5E38\u9A7B"]
+        ]
+      },
+      {
+        key: "keywords",
+        label: "\u5173\u952E\u8BCD\uFF08\u6BCF\u884C\u4E00\u9879\uFF09",
+        type: "textarea",
+        value: row?.keywords.join("\n"),
+        rows: 3
+      },
+      ...type.columns.map(
+        (col) => ({
+          key: "value:" + col.id,
+          label: col.name,
+          type: col.type === "number" ? "number" : col.type === "boolean" || col.type === "enum" ? "select" : col.type === "json" ? "json" : col.type === "long_text" ? "textarea" : "text",
+          value: row?.values[col.id] ?? col.defaultValue,
+          required: col.required,
+          options: col.type === "boolean" ? [
+            ["", "\u672A\u8BBE\u7F6E"],
+            ["true", "\u662F"],
+            ["false", "\u5426"]
+          ] : col.enumValues?.map((x) => [x, x]),
+          step: col.type === "number" ? 0.01 : void 0
+        })
+      )
+    ];
+    editDialog(row ? "\u7F16\u8F91 " + row.dataName : "\u65B0\u589E\u6863\u6848", spec, async (v) => {
+      ctx.guard();
+      const values = {};
+      for (const col of type.columns) {
+        const value = v["value:" + col.id];
+        if (value !== "" && value !== void 0)
+          values[col.id] = col.type === "boolean" ? value === "true" : value;
+      }
+      await store.saveRow(
+        type.id,
+        {
+          dataName: v.dataName,
+          status: v.status,
+          keywords: v.keywords.split("\n").map((x) => x.trim()).filter(Boolean),
+          values
+        },
+        row?.id
+      );
+      await ctx.refresh();
+    });
+  };
+  const draw = () => {
+    const type = state.catalog.types.find((t) => t.id === ui.typeId);
+    if (!type) {
+      host.replaceChildren(
+        empty("\u5C1A\u672A\u521B\u5EFA\u8BB0\u5FC6\u8868", button("\u65B0\u5EFA\u8868", "plus", addType))
+      );
+      return;
+    }
+    const rows = state.rows.filter(
+      (r) => r.typeId === type.id && (ui.status === "all" || r.status === ui.status) && JSON.stringify(r).toLocaleLowerCase().includes(ui.query.toLocaleLowerCase())
+    );
+    grid.replaceChildren(
+      rows.length ? table(
+        [
+          "\u6761\u76EE\u540D\u79F0",
+          ...type.columns.slice(0, 3).map((c) => c.name),
+          "\u6FC0\u6D3B\u65B9\u5F0F",
+          "\u64CD\u4F5C"
+        ],
+        rows.map((row) => [
+          el("strong", "", row.dataName),
+          ...type.columns.slice(0, 3).map(
+            (c) => el(
+              "span",
+              "ew-cell-summary",
+              typeof row.values[c.id] === "object" ? JSON.stringify(row.values[c.id]) : String(row.values[c.id] ?? "")
+            )
+          ),
+          stateBadge(row.status),
+          actions(
+            tool("\u7F16\u8F91 " + row.dataName, "pen", () => editRow(type, row)),
+            tool(
+              "\u5220\u9664 " + row.dataName,
+              "trash",
+              async () => {
+                if (confirm("\u5220\u9664\u6761\u76EE " + row.dataName + "\uFF1F")) {
+                  ctx.guard();
+                  await store.deleteRow(row.id);
+                  await ctx.refresh();
+                }
+              },
+              "danger"
+            )
+          )
+        ])
+      ) : empty("\u6CA1\u6709\u5339\u914D\u7684\u8BB0\u5F55")
+    );
+    nav.replaceChildren(
+      ...state.catalog.types.map(
+        (t) => button(
+          t.name,
+          "table-cells",
+          () => {
+            ui.typeId = t.id;
+            draw();
+          },
+          t.id === ui.typeId ? "is-selected" : ""
+        )
+      )
+    );
+    host.replaceChildren(
+      actions(
+        el("h2", "", type.name),
+        badge(String(rows.length) + " \u6761"),
+        button("\u65B0\u589E\u6863\u6848", "plus", () => editRow(type), "primary")
+      ),
+      el(
+        "div",
+        "ew-toolbar",
+        searchBox(
+          ui.query,
+          (v) => {
+            ui.query = v;
+            drawGrid();
+          },
+          "\u641C\u7D22\u540D\u79F0\u6216\u5185\u5BB9"
+        ),
+        select
+      ),
+      grid
+    );
+  };
+  const drawGrid = () => {
+    const focused = host.querySelector(".ew-search");
+    const caret = focused?.selectionStart;
+    draw();
+    const next = host.querySelector(".ew-search");
+    next?.focus();
+    if (next && caret !== null && caret !== void 0)
+      try {
+        next.setSelectionRange(caret, caret);
+      } catch {
+      }
+  };
+  select.addEventListener("change", () => {
+    ui.status = select.value;
+    draw();
+  });
+  draw();
+  page.append(split);
+  if (state.issues.length)
+    page.prepend(
+      detail(
+        "\u6709 " + state.issues.length + " \u4E2A\u4E16\u754C\u4E66\u6761\u76EE\u65E0\u6CD5\u89E3\u6790",
+        state.issues
+      )
+    );
+  return page;
+}
+
+// src/extension/recall-coordinator.ts
+init_client();
 
 // src/extension/recall-query.ts
 function messages(chat) {
   const seen = /* @__PURE__ */ new Set();
-  return chat.flatMap((message3, index) => {
-    const content = String(message3.mes ?? message3.message ?? message3.content ?? "").trim();
+  return chat.flatMap((message, index) => {
+    const content = String(message.mes ?? message.message ?? message.content ?? "").trim();
     if (!content) return [];
-    const rawId = String(message3.message_id ?? message3.id ?? index);
+    const rawId = String(message.message_id ?? message.id ?? index);
     const id2 = seen.has(rawId) ? `${rawId}:${index}` : rawId;
     seen.add(id2);
     return [{
       id: id2,
-      role: message3.is_user === true || message3.role === "user" ? "user" : "assistant",
+      role: message.is_user === true || message.role === "user" ? "user" : "assistant",
       content
     }];
   });
 }
-function macro(value, characterName, userName) {
+function macro2(value, characterName, userName) {
   return value.replaceAll("{{char}}", characterName).replaceAll("{{user}}", userName);
 }
 function itemContent(item, chatMessages2, input) {
@@ -27085,8 +28141,8 @@ function itemContent(item, chatMessages2, input) {
     const count = Math.max(0, item.count);
     const selected = chatMessages2.slice(Math.max(0, chatMessages2.length - count - 1), -1);
     return {
-      content: selected.map((message3) => `${message3.role}: ${message3.content}`).join("\n"),
-      messageIds: selected.map((message3) => message3.id)
+      content: selected.map((message) => `${message.role}: ${message.content}`).join("\n"),
+      messageIds: selected.map((message) => message.id)
     };
   }
   if (item.kind === "character") {
@@ -27105,7 +28161,7 @@ ${input.personaDescription.trim()}` : "",
   }
   if (item.kind === "custom") {
     return {
-      content: macro(item.content, input.characterName, input.userName).trim(),
+      content: macro2(item.content, input.characterName, input.userName).trim(),
       messageIds: []
     };
   }
@@ -27148,503 +28204,6 @@ async function authoritativeRecallHits(hits, sources) {
   };
 }
 
-// src/extension/recall-coordinator.ts
-init_client();
-
-// src/extension/summary/compression-core.ts
-function uniqueBatches(slices) {
-  const grouped = /* @__PURE__ */ new Map();
-  for (const slice of slices) {
-    const current = grouped.get(slice.batch.id) ?? [];
-    current.push(slice);
-    grouped.set(slice.batch.id, current);
-  }
-  return [...grouped.values()].map((items) => ({
-    batch: items[0].batch,
-    slices: [...items].sort((left, right) => left.sliceNumber - right.sliceNumber)
-  }));
-}
-function exactMessageRange(messages2, batch) {
-  const startIndex = messages2.findIndex((message3) => message3.id === batch.startMessageId);
-  if (startIndex < 0) return null;
-  const selected = messages2.slice(startIndex, startIndex + batch.messageIds.length);
-  if (selected.length !== batch.messageIds.length || selected.some((message3, index) => message3.id !== batch.messageIds[index])) {
-    return null;
-  }
-  const endIndex = startIndex + selected.length - 1;
-  return messages2[endIndex]?.id === batch.endMessageId ? { startIndex, endIndex } : null;
-}
-function continuousSummaryCoverage(messages2, slices, lastCommittedMessageId) {
-  if (messages2.length === 0 || !lastCommittedMessageId) return [];
-  const committedIndex = messages2.findIndex((message3) => message3.id === lastCommittedMessageId);
-  if (committedIndex < 0) return [];
-  const candidates = uniqueBatches(slices).filter(({ batch }) => batch.state !== "stale" && batch.source?.kind !== "imported").flatMap(({ batch, slices: batchSlices }) => {
-    const range = exactMessageRange(messages2, batch);
-    return range && range.endIndex <= committedIndex ? [{ batch, slices: batchSlices, ...range }] : [];
-  });
-  const chain = [];
-  let expectedStart = 0;
-  let previousBatchNumber = 0;
-  while (expectedStart <= committedIndex) {
-    const next = candidates.filter((candidate) => candidate.startIndex === expectedStart && candidate.batch.batchNumber > previousBatchNumber).sort((left, right) => left.batch.batchNumber - right.batch.batchNumber || right.endIndex - left.endIndex)[0];
-    if (!next) break;
-    chain.push(next);
-    expectedStart = next.endIndex + 1;
-    previousBatchNumber = next.batch.batchNumber;
-    if (next.endIndex === committedIndex) break;
-  }
-  return chain;
-}
-function compressionPlan(messages2, slices, lastCommittedMessageId, keepRecentMessages) {
-  const chain = continuousSummaryCoverage(messages2, slices, lastCommittedMessageId);
-  const latestEnd = chain.at(-1)?.endIndex ?? -1;
-  const hideThroughIndex = latestEnd - Math.max(0, keepRecentMessages);
-  const coveredMessageIds = /* @__PURE__ */ new Set();
-  const batchByMessageId = /* @__PURE__ */ new Map();
-  for (const coverage of chain) {
-    for (const messageId of coverage.batch.messageIds) {
-      coveredMessageIds.add(messageId);
-      batchByMessageId.set(messageId, coverage.batch.id);
-    }
-  }
-  return { chain, hideThroughIndex, coveredMessageIds, batchByMessageId };
-}
-function recentSummaryBatches(slices, count) {
-  if (count <= 0) return [];
-  return uniqueBatches(slices).filter(({ batch }) => batch.state !== "stale" && batch.source?.kind !== "imported").sort((left, right) => left.batch.batchNumber - right.batch.batchNumber).slice(-count).map(({ batch, slices: batchSlices }) => ({
-    batch,
-    slices: batchSlices,
-    startIndex: -1,
-    endIndex: -1
-  }));
-}
-
-// src/extension/worldbook/summary-worldbook.ts
-function helper() {
-  if (!window.TavernHelper) throw new Error("Echoes requires TavernHelper for summary storage.");
-  return window.TavernHelper;
-}
-function uniqueId3(prefix) {
-  return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
-}
-function metadata(entry) {
-  const value = entry.extra?.echoes;
-  if (!value) return null;
-  if (value.kind === "summary_catalog") {
-    if (value.version !== 1 && value.version !== 2) return null;
-    return value;
-  }
-  if (value.kind === "summary_slice") {
-    if (value.version !== 2) {
-      throw new Error("Echoes summary slices must use metadata version 2 with a required timestamp.");
-    }
-    return value;
-  }
-  return null;
-}
-function createCatalog(chatId) {
-  return {
-    formatVersion: 2,
-    chatId,
-    namespaceId: uniqueId3("summary_namespace"),
-    autoRun: false,
-    recallEnabled: false,
-    recallSourceWeight: 1,
-    recallSourceOrder: 0,
-    attachedRecallSources: [],
-    compression: {
-      enabled: false,
-      keepRecentMessages: 30,
-      recentBatchCount: 2,
-      deletionPolicy: "confirm_restore"
-    },
-    nextBatchNumber: 1,
-    pendingRetrievalDeletes: [],
-    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-}
-function catalogEntry2(catalog) {
-  return {
-    name: "Echoes Summary Catalog",
-    enabled: false,
-    strategy: { type: "constant", keys: [] },
-    content: "Echoes summary catalog. Managed by the Echoes extension.",
-    extra: { echoes: { kind: "summary_catalog", version: 2, catalog } }
-  };
-}
-function summaryId(namespaceId, batchNumber, sliceNumber) {
-  const namespace = namespaceId.replace(/^summary_namespace_/, "").slice(0, 32);
-  return `summary_${namespace}_${batchNumber}_${sliceNumber}`;
-}
-function sliceEntry(slice) {
-  return {
-    name: `\u603B\u7ED3 ${slice.batch.batchNumber}.${slice.sliceNumber} [${slice.timestamp}] - ${slice.title}`,
-    enabled: false,
-    strategy: { type: "selective", keys: slice.tags },
-    content: slice.content,
-    extra: {
-      echoes: {
-        kind: "summary_slice",
-        version: 2,
-        summaryId: slice.id,
-        timestamp: slice.timestamp,
-        title: slice.title,
-        tags: slice.tags,
-        batch: slice.batch,
-        sliceNumber: slice.sliceNumber
-      }
-    }
-  };
-}
-function readState(worldbookName, entries2) {
-  const catalogWorldbookEntry = entries2.find((entry) => metadata(entry)?.kind === "summary_catalog");
-  if (!catalogWorldbookEntry) return null;
-  const catalogMetadata2 = metadata(catalogWorldbookEntry);
-  const catalog = summaryCatalogSchema.parse(catalogMetadata2.catalog);
-  const slices = entries2.flatMap((entry) => {
-    const item = metadata(entry);
-    if (!item || item.kind !== "summary_slice") return [];
-    return [summarySliceSchema.parse({
-      id: item.summaryId,
-      timestamp: item.timestamp,
-      title: item.title,
-      content: entry.content,
-      tags: item.tags,
-      batch: item.batch,
-      sliceNumber: item.sliceNumber,
-      worldbookUid: entry.uid
-    })];
-  }).sort((left, right) => left.batch.batchNumber - right.batch.batchNumber || left.sliceNumber - right.sliceNumber);
-  return { worldbookName, catalog, slices };
-}
-function structuredCatalogChatId(entries2) {
-  for (const entry of entries2) {
-    const echoes = entry.extra?.echoes;
-    if (echoes?.kind === "catalog" && typeof echoes.catalog?.chatId === "string") return echoes.catalog.chatId;
-  }
-  return null;
-}
-var SummaryWorldbookStore = class {
-  async load() {
-    const chatId = SillyTavern.getContext().chatId;
-    if (!chatId) throw new Error("Open a SillyTavern chat before using summaries.");
-    const api = helper();
-    const boundWorldbookName = api.getChatWorldbookName("current");
-    return worldbookWriteCoordinator.run(boundWorldbookName ?? `chat:${chatId}`, async () => {
-      if (SillyTavern.getContext().chatId !== chatId) {
-        throw new Error("The active chat changed before the summary operation started.");
-      }
-      const baseName = chatId.replace(/\.(json|jsonl)$/i, "");
-      let worldbookName = boundWorldbookName;
-      if (!worldbookName) {
-        worldbookName = await api.getOrCreateChatWorldbook("current", `Echoes-${baseName}`);
-        if (SillyTavern.getContext().chatId !== chatId) {
-          throw new Error("The active chat changed while the summary worldbook was being created.");
-        }
-      }
-      let entries2 = await api.getWorldbook(worldbookName);
-      let state = readState(worldbookName, entries2);
-      if (state && state.catalog.chatId !== chatId || !state && structuredCatalogChatId(entries2) && structuredCatalogChatId(entries2) !== chatId) {
-        const names = new Set(api.getWorldbookNames());
-        let candidate = `Echoes-${baseName}`;
-        let suffix = 2;
-        while (names.has(candidate)) candidate = `Echoes-${baseName}-${suffix++}`;
-        await api.createWorldbook(candidate);
-        if (SillyTavern.getContext().chatId !== chatId) {
-          throw new Error("The active chat changed before the summary worldbook could be rebound.");
-        }
-        await api.rebindChatWorldbook("current", candidate);
-        if (SillyTavern.getContext().chatId !== chatId) {
-          throw new Error("The active chat changed while the summary worldbook was being rebound.");
-        }
-        worldbookName = candidate;
-        entries2 = [];
-        state = null;
-      }
-      if (!state) {
-        await api.createWorldbookEntries(worldbookName, [catalogEntry2(createCatalog(chatId))]);
-        entries2 = await api.getWorldbook(worldbookName);
-        state = readState(worldbookName, entries2);
-      }
-      if (!state) throw new Error("Failed to initialize the Echoes summary catalog.");
-      return state;
-    });
-  }
-  inspect(worldbookName) {
-    return helper().getWorldbook(worldbookName).then((entries2) => {
-      const state = readState(worldbookName, entries2);
-      if (!state) throw new Error("The worldbook has no Echoes summary catalog.");
-      return state;
-    });
-  }
-  async listAvailableSources() {
-    const inspected = await Promise.allSettled(
-      helper().getWorldbookNames().map((worldbookName) => this.inspect(worldbookName))
-    );
-    return inspected.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
-  }
-  commitBatch(options) {
-    return this.serialize(options.worldbookName, async () => {
-      options.signal?.throwIfAborted();
-      const api = helper();
-      const now = (/* @__PURE__ */ new Date()).toISOString();
-      await api.updateWorldbookWith(options.worldbookName, (entries2) => {
-        options.signal?.throwIfAborted();
-        const currentState = readState(options.worldbookName, entries2);
-        if (!currentState || currentState.catalog.namespaceId !== options.catalog.namespaceId) {
-          throw new Error("The summary worldbook changed while the generation task was running.");
-        }
-        const existing = currentState.slices.filter((slice) => slice.batch.id === options.batch.id);
-        if (options.expectedCheckpoint !== void 0 && (currentState.catalog.lastCommittedMessageId ?? null) !== options.expectedCheckpoint) {
-          throw new Error("The summary checkpoint changed while the generation task was running.");
-        }
-        if (options.expectedNextBatchNumber !== void 0 && currentState.catalog.nextBatchNumber !== options.expectedNextBatchNumber) {
-          throw new Error("The summary batch sequence changed while the generation task was running.");
-        }
-        if (options.expectedBatchRevision !== void 0) {
-          const currentRevision = existing.length > 0 ? Math.max(...existing.map((slice) => slice.batch.revision)) : null;
-          if (currentRevision !== options.expectedBatchRevision) {
-            throw new Error("The summary batch revision changed while the generation task was running.");
-          }
-        }
-        const revision = Math.max(0, ...existing.map((slice) => slice.batch.revision)) + 1;
-        const createdAt = existing[0]?.batch.createdAt ?? now;
-        const slices = options.candidates.map((candidate, index) => ({
-          ...summarySliceCandidateSchema.parse(candidate),
-          id: summaryId(currentState.catalog.namespaceId, options.batch.batchNumber, index + 1),
-          sliceNumber: index + 1,
-          batch: {
-            ...options.batch,
-            source: { kind: "chat_messages" },
-            state: "pending",
-            revision,
-            createdAt,
-            updatedAt: now
-          }
-        }));
-        const desiredIds = new Set(slices.map((slice) => slice.id));
-        const removedIds = existing.map((slice) => slice.id).filter((id2) => !desiredIds.has(id2));
-        const existingIds = new Set(existing.map((slice) => slice.id));
-        const nextCatalog = summaryCatalogSchema.parse({
-          ...currentState.catalog,
-          ...options.advanceCheckpoint !== false ? { lastCommittedMessageId: options.batch.endMessageId } : {},
-          nextBatchNumber: Math.max(currentState.catalog.nextBatchNumber, options.batch.batchNumber + 1),
-          pendingRetrievalDeletes: [.../* @__PURE__ */ new Set([
-            ...currentState.catalog.pendingRetrievalDeletes,
-            ...removedIds
-          ])],
-          updatedAt: now
-        });
-        const nextEntries = entries2.flatMap((entry) => {
-          const item = metadata(entry);
-          if (item?.kind === "summary_catalog") {
-            return [{ ...entry, ...catalogEntry2(nextCatalog) }];
-          }
-          if (item?.kind === "summary_slice" && item.batch.id === options.batch.id) {
-            const replacement2 = slices.find((slice) => slice.id === item.summaryId);
-            return replacement2 ? [{ ...entry, ...sliceEntry(replacement2) }] : [];
-          }
-          return [entry];
-        });
-        nextEntries.push(...slices.filter((slice) => !existingIds.has(slice.id)).map((slice) => sliceEntry(slice)));
-        return nextEntries;
-      });
-      return this.inspect(options.worldbookName);
-    });
-  }
-  setAutoRun(worldbookName, enabled) {
-    return this.updateState(worldbookName, (catalog) => ({ ...catalog, autoRun: enabled }));
-  }
-  saveCompressionConfiguration(worldbookName, compression2) {
-    return this.updateState(worldbookName, (catalog) => ({
-      ...catalog,
-      compression: structuredClone(compression2)
-    }));
-  }
-  saveRecallConfiguration(worldbookName, configuration) {
-    return this.updateState(worldbookName, (catalog) => ({
-      ...catalog,
-      recallEnabled: configuration.enabled,
-      recallSourceWeight: configuration.weight,
-      recallSourceOrder: configuration.order,
-      attachedRecallSources: structuredClone(configuration.attachedSources)
-    }));
-  }
-  setRetrievalBinding(worldbookName, collectionId, embeddingSpaceId) {
-    return this.updateState(worldbookName, (catalog) => ({
-      ...catalog,
-      retrievalCollectionId: collectionId,
-      retrievalEmbeddingSpaceId: embeddingSpaceId
-    }));
-  }
-  markBatchState(worldbookName, batchId, state, sliceIds) {
-    return this.serialize(worldbookName, async () => {
-      const api = helper();
-      const now = (/* @__PURE__ */ new Date()).toISOString();
-      const targets = sliceIds ? new Set(sliceIds) : null;
-      await api.updateWorldbookWith(worldbookName, (entries2) => entries2.map((entry) => {
-        const item = metadata(entry);
-        if (item?.kind !== "summary_slice" || item.batch.id !== batchId) return entry;
-        if (targets && !targets.has(item.summaryId)) return entry;
-        return {
-          ...entry,
-          extra: {
-            ...entry.extra,
-            echoes: { ...item, batch: { ...item.batch, state, updatedAt: now } }
-          }
-        };
-      }));
-      return this.inspect(worldbookName);
-    });
-  }
-  markStaleFrom(worldbookName, batchNumber) {
-    return this.serialize(worldbookName, async () => {
-      const api = helper();
-      const now = (/* @__PURE__ */ new Date()).toISOString();
-      const state = await this.inspect(worldbookName);
-      const staleIds = state.slices.filter((slice) => slice.batch.source?.kind !== "imported" && slice.batch.batchNumber >= batchNumber).map((slice) => slice.id);
-      await api.updateWorldbookWith(worldbookName, (entries2) => entries2.map((entry) => {
-        const item = metadata(entry);
-        if (item?.kind !== "summary_slice" || item.batch.source?.kind === "imported" || item.batch.batchNumber < batchNumber) return entry;
-        return {
-          ...entry,
-          extra: {
-            ...entry.extra,
-            echoes: { ...item, batch: { ...item.batch, state: "stale", updatedAt: now } }
-          }
-        };
-      }));
-      await this.updateCatalog(worldbookName, {
-        ...state.catalog,
-        pendingRetrievalDeletes: [.../* @__PURE__ */ new Set([
-          ...state.catalog.pendingRetrievalDeletes,
-          ...staleIds
-        ])],
-        updatedAt: now
-      });
-      return this.inspect(worldbookName);
-    });
-  }
-  saveSlice(worldbookName, sliceId, candidate) {
-    return this.serialize(worldbookName, async () => {
-      const api = helper();
-      const parsed = summarySliceCandidateSchema.parse(candidate);
-      const now = (/* @__PURE__ */ new Date()).toISOString();
-      await api.updateWorldbookWith(worldbookName, (entries2) => entries2.map((entry) => {
-        const item = metadata(entry);
-        if (item?.kind !== "summary_slice" || item.summaryId !== sliceId) return entry;
-        const updated = {
-          ...parsed,
-          id: item.summaryId,
-          sliceNumber: item.sliceNumber,
-          worldbookUid: entry.uid,
-          batch: {
-            ...item.batch,
-            state: "pending",
-            revision: item.batch.revision + 1,
-            updatedAt: now
-          }
-        };
-        return { ...entry, ...sliceEntry(updated) };
-      }));
-      return this.inspect(worldbookName);
-    });
-  }
-  deleteSlice(worldbookName, sliceId) {
-    return this.deleteSlices(worldbookName, [sliceId]);
-  }
-  deleteSlices(worldbookName, sliceIds) {
-    return this.serialize(worldbookName, async () => {
-      const state = await this.inspect(worldbookName);
-      const removed = new Set(sliceIds);
-      const existingIds = state.slices.filter((slice) => removed.has(slice.id)).map((slice) => slice.id);
-      await helper().updateWorldbookWith(worldbookName, (entries2) => entries2.filter((entry) => {
-        const item = metadata(entry);
-        return item?.kind !== "summary_slice" || !removed.has(item.summaryId);
-      }));
-      await this.updateCatalog(worldbookName, {
-        ...state.catalog,
-        pendingRetrievalDeletes: [.../* @__PURE__ */ new Set([
-          ...state.catalog.pendingRetrievalDeletes,
-          ...existingIds
-        ])],
-        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-      });
-      return this.inspect(worldbookName);
-    });
-  }
-  setNextBatchNumber(worldbookName, batchNumber) {
-    if (!Number.isInteger(batchNumber) || batchNumber < 1) {
-      return Promise.reject(new Error("\u603B\u7ED3\u6279\u6B21\u7F16\u53F7\u5FC5\u987B\u662F\u5927\u4E8E 0 \u7684\u6574\u6570\u3002"));
-    }
-    return this.serialize(worldbookName, async () => {
-      const state = await this.inspect(worldbookName);
-      if (state.slices.some((slice) => slice.batch.batchNumber === batchNumber)) {
-        throw new Error("\u8BE5\u6279\u6B21\u7F16\u53F7\u5DF2\u7ECF\u5B58\u5728\uFF0C\u8BF7\u5148\u91CD\u5EFA\u3001\u91CD\u7F6E\u6216\u5220\u9664\u5BF9\u5E94\u6279\u6B21\u3002");
-      }
-      await this.updateCatalog(worldbookName, {
-        ...state.catalog,
-        nextBatchNumber: batchNumber,
-        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-      });
-      return this.inspect(worldbookName);
-    });
-  }
-  resetFrom(worldbookName, batchNumber) {
-    return this.serialize(worldbookName, async () => {
-      const state = await this.inspect(worldbookName);
-      const removed = state.slices.filter((slice) => slice.batch.source?.kind !== "imported" && slice.batch.batchNumber >= batchNumber);
-      const retained = state.slices.filter((slice) => slice.batch.source?.kind !== "imported" && slice.batch.batchNumber < batchNumber);
-      const previous = retained.at(-1)?.batch;
-      await helper().updateWorldbookWith(worldbookName, (entries2) => entries2.filter((entry) => {
-        const item = metadata(entry);
-        return item?.kind !== "summary_slice" || item.batch.source?.kind === "imported" || item.batch.batchNumber < batchNumber;
-      }));
-      const nextCatalog = {
-        ...state.catalog,
-        nextBatchNumber: batchNumber,
-        pendingRetrievalDeletes: [.../* @__PURE__ */ new Set([
-          ...state.catalog.pendingRetrievalDeletes,
-          ...removed.map((slice) => slice.id)
-        ])],
-        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      if (previous) nextCatalog.lastCommittedMessageId = previous.endMessageId;
-      else delete nextCatalog.lastCommittedMessageId;
-      await this.updateCatalog(worldbookName, nextCatalog);
-      return this.inspect(worldbookName);
-    });
-  }
-  clearPendingDeletes(worldbookName, deletedIds) {
-    const removed = new Set(deletedIds);
-    return this.updateState(worldbookName, (catalog) => ({
-      ...catalog,
-      pendingRetrievalDeletes: catalog.pendingRetrievalDeletes.filter((id2) => !removed.has(id2))
-    }));
-  }
-  updateState(worldbookName, updater) {
-    return this.serialize(worldbookName, async () => {
-      const state = await this.inspect(worldbookName);
-      const catalog = {
-        ...updater(structuredClone(state.catalog)),
-        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      await this.updateCatalog(worldbookName, catalog);
-      return this.inspect(worldbookName);
-    });
-  }
-  async updateCatalog(worldbookName, catalog) {
-    const parsed = summaryCatalogSchema.parse(catalog);
-    await helper().updateWorldbookWith(worldbookName, (entries2) => entries2.map((entry) => {
-      const item = metadata(entry);
-      return item?.kind === "summary_catalog" ? { ...entry, ...catalogEntry2(parsed) } : entry;
-    }));
-  }
-  serialize(worldbookName, operation) {
-    return worldbookWriteCoordinator.run(worldbookName, operation);
-  }
-};
-
 // src/extension/worldbook/recall-worldbook.ts
 var ENTRY_NAME = "[Echoes] Retrieval Injection";
 var STALE_MS = 5 * 6e4;
@@ -27657,7 +28216,7 @@ function metadata2(entry) {
   return value?.kind === "retrieval_injection" && value.version === 1 ? value : null;
 }
 function recallEntry(chatId, namespaceId, content, config2, createdAt) {
-  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const now3 = (/* @__PURE__ */ new Date()).toISOString();
   return {
     name: ENTRY_NAME,
     enabled: Boolean(content.trim()),
@@ -27677,7 +28236,7 @@ function recallEntry(chatId, namespaceId, content, config2, createdAt) {
         chatId,
         namespaceId,
         createdAt,
-        updatedAt: now
+        updatedAt: now3
       }
     }
   };
@@ -27686,8 +28245,8 @@ var RecallWorldbookStore = class {
   async write(options) {
     await worldbookWriteCoordinator.run(options.worldbookName, async () => {
       const api = helper2();
-      const entries2 = await api.getWorldbook(options.worldbookName);
-      const existing = entries2.find((candidate) => metadata2(candidate));
+      const entries = await api.getWorldbook(options.worldbookName);
+      const existing = entries.find((candidate) => metadata2(candidate));
       const createdAt = existing ? metadata2(existing).createdAt : (/* @__PURE__ */ new Date()).toISOString();
       if (existing) {
         await api.updateWorldbookWith(options.worldbookName, (current) => current.map((candidate) => metadata2(candidate) ? {
@@ -27715,7 +28274,7 @@ var RecallWorldbookStore = class {
   }
   async clear(worldbookName) {
     await worldbookWriteCoordinator.run(worldbookName, async () => {
-      await helper2().updateWorldbookWith(worldbookName, (entries2) => entries2.map((candidate) => {
+      await helper2().updateWorldbookWith(worldbookName, (entries) => entries.map((candidate) => {
         const item = metadata2(candidate);
         if (!item) return candidate;
         return {
@@ -27730,11 +28289,11 @@ var RecallWorldbookStore = class {
       }));
     });
   }
-  async cleanupStale(worldbookName, now = Date.now()) {
+  async cleanupStale(worldbookName, now3 = Date.now()) {
     await worldbookWriteCoordinator.run(worldbookName, async () => {
-      await helper2().updateWorldbookWith(worldbookName, (entries2) => entries2.map((candidate) => {
+      await helper2().updateWorldbookWith(worldbookName, (entries) => entries.map((candidate) => {
         const item = metadata2(candidate);
-        if (!item || !candidate.enabled || now - Date.parse(item.updatedAt) <= STALE_MS) {
+        if (!item || !candidate.enabled || now3 - Date.parse(item.updatedAt) <= STALE_MS) {
           return candidate;
         }
         return { ...candidate, enabled: false, content: "" };
@@ -27747,8 +28306,8 @@ var RecallWorldbookStore = class {
 var BLOCKED_SEGMENTS = /* @__PURE__ */ new Set(["__proto__", "prototype", "constructor"]);
 var StatusValidationError = class extends Error {
   code = "INVALID_STATUS_UPDATE";
-  constructor(message3) {
-    super(message3);
+  constructor(message) {
+    super(message);
     this.name = "StatusValidationError";
   }
 };
@@ -27816,11 +28375,11 @@ function matchRule(current, rulePath, index = 0, path = []) {
   }
   const segment = rulePath[index];
   if (segment === "*") {
-    const entries2 = Object.entries(current);
-    if (entries2.length === 0) {
+    const entries = Object.entries(current);
+    if (entries.length === 0) {
       return { values: [], missingPaths: [[...path, ...rulePath.slice(index)]] };
     }
-    return entries2.reduce((result, [key, value]) => {
+    return entries.reduce((result, [key, value]) => {
       const matched = matchRule(value, rulePath, index + 1, [...path, key]);
       result.values.push(...matched.values);
       result.missingPaths.push(...matched.missingPaths);
@@ -27976,7 +28535,7 @@ function catalogEntry3(catalog) {
   };
 }
 function injectionEntry(options) {
-  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const now3 = (/* @__PURE__ */ new Date()).toISOString();
   return {
     name: INJECTION_NAME,
     enabled: Boolean(options.content.trim()),
@@ -27996,21 +28555,21 @@ function injectionEntry(options) {
         chatId: options.chatId,
         namespaceId: options.namespaceId,
         createdAt: options.createdAt,
-        updatedAt: now
+        updatedAt: now3
       }
     }
   };
 }
-function readState2(worldbookName, entries2) {
-  const entry = entries2.find((candidate) => catalogMetadata(candidate));
+function readState2(worldbookName, entries) {
+  const entry = entries.find((candidate) => catalogMetadata(candidate));
   if (!entry) return null;
   return {
     worldbookName,
     catalog: statusCatalogSchema.parse(catalogMetadata(entry).catalog)
   };
 }
-function ownedChatId(entries2) {
-  for (const entry of entries2) {
+function ownedChatId(entries) {
+  for (const entry of entries) {
     const value = entry.extra?.echoes;
     if (["catalog", "summary_catalog", "status_catalog"].includes(String(value?.kind)) && typeof value?.catalog?.chatId === "string") return value.catalog.chatId;
   }
@@ -28034,9 +28593,9 @@ var StatusWorldbookStore = class {
           throw new Error("The active chat changed while the status worldbook was being created.");
         }
       }
-      let entries2 = await api.getWorldbook(worldbookName);
-      let state = readState2(worldbookName, entries2);
-      const owner = ownedChatId(entries2);
+      let entries = await api.getWorldbook(worldbookName);
+      let state = readState2(worldbookName, entries);
+      const owner = ownedChatId(entries);
       if (state && state.catalog.chatId !== chatId || !state && owner && owner !== chatId) {
         const names = new Set(api.getWorldbookNames());
         let candidate = `Echoes-${baseName}`;
@@ -28051,21 +28610,21 @@ var StatusWorldbookStore = class {
           throw new Error("The active chat changed while the status worldbook was being rebound.");
         }
         worldbookName = candidate;
-        entries2 = [];
+        entries = [];
         state = null;
       }
       if (!state) {
         await api.createWorldbookEntries(worldbookName, [catalogEntry3(createCatalog2(chatId))]);
-        entries2 = await api.getWorldbook(worldbookName);
-        state = readState2(worldbookName, entries2);
+        entries = await api.getWorldbook(worldbookName);
+        state = readState2(worldbookName, entries);
       }
       if (!state) throw new Error("Failed to initialize the Echoes status catalog.");
       return state;
     });
   }
   inspect(worldbookName) {
-    return helper3().getWorldbook(worldbookName).then((entries2) => {
-      const state = readState2(worldbookName, entries2);
+    return helper3().getWorldbook(worldbookName).then((entries) => {
+      const state = readState2(worldbookName, entries);
       if (!state) throw new Error("The worldbook has no Echoes status catalog.");
       return state;
     });
@@ -28078,15 +28637,15 @@ var StatusWorldbookStore = class {
         ...patch,
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       });
-      await helper3().updateWorldbookWith(worldbookName, (entries2) => entries2.map((entry) => catalogMetadata(entry) ? { ...entry, ...catalogEntry3(catalog) } : entry));
+      await helper3().updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => catalogMetadata(entry) ? { ...entry, ...catalogEntry3(catalog) } : entry));
       return { worldbookName, catalog };
     });
   }
   async writeInjection(state, content) {
     await worldbookWriteCoordinator.run(state.worldbookName, async () => {
       const api = helper3();
-      const entries2 = await api.getWorldbook(state.worldbookName);
-      const existing = entries2.find((candidate) => injectionMetadata(candidate));
+      const entries = await api.getWorldbook(state.worldbookName);
+      const existing = entries.find((candidate) => injectionMetadata(candidate));
       const createdAt = existing ? injectionMetadata(existing).createdAt : (/* @__PURE__ */ new Date()).toISOString();
       const replacement2 = injectionEntry({
         chatId: state.catalog.chatId,
@@ -28104,91 +28663,18 @@ var StatusWorldbookStore = class {
   }
   async clearInjection(worldbookName) {
     await worldbookWriteCoordinator.run(worldbookName, async () => {
-      await helper3().updateWorldbookWith(worldbookName, (entries2) => entries2.map((entry) => injectionMetadata(entry) ? { ...entry, enabled: false, content: "" } : entry));
+      await helper3().updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => injectionMetadata(entry) ? { ...entry, enabled: false, content: "" } : entry));
     });
   }
-  async cleanupStale(worldbookName, now = Date.now()) {
+  async cleanupStale(worldbookName, now3 = Date.now()) {
     await worldbookWriteCoordinator.run(worldbookName, async () => {
-      await helper3().updateWorldbookWith(worldbookName, (entries2) => entries2.map((entry) => {
+      await helper3().updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => {
         const item = injectionMetadata(entry);
-        return item && entry.enabled && now - Date.parse(item.updatedAt) > STALE_MS2 ? { ...entry, enabled: false, content: "" } : entry;
+        return item && entry.enabled && now3 - Date.parse(item.updatedAt) > STALE_MS2 ? { ...entry, enabled: false, content: "" } : entry;
       }));
     });
   }
 };
-
-// src/shared/source-hash.ts
-async function sourceMessagesHash(messages2) {
-  const value = JSON.stringify(messages2.map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content })));
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-// src/extension/summary/preprocess-core.ts
-function expression(rule, forceGlobal = false) {
-  let flags = [...new Set(rule.flags)].join("");
-  if (forceGlobal && !flags.includes("g")) flags += "g";
-  return new RegExp(rule.pattern, flags);
-}
-function extract(text, rule) {
-  const matches = [...text.matchAll(expression(rule, true))];
-  const parts = matches.flatMap((match) => {
-    if (match.length <= 1) return match[0] ? [match[0].trim()] : [];
-    return match.slice(1).filter(Boolean).map((value) => value.trim());
-  });
-  return parts.filter(Boolean).join("\n");
-}
-function applySummaryPreprocess(messages2, rules) {
-  const ordered = [...rules].filter((rule) => rule.enabled).sort((left, right) => left.order - right.order || left.id.localeCompare(right.id));
-  return messages2.flatMap((message3) => {
-    if (message3.role !== "user" && message3.role !== "assistant") return [message3];
-    let content = message3.content;
-    for (const rule of ordered) {
-      if (!rule.roles.includes(message3.role)) continue;
-      if (rule.type === "extract") content = extract(content, rule);
-      else if (rule.type === "remove") content = content.replace(expression(rule), "");
-      else content = content.replace(expression(rule), rule.replacement);
-    }
-    content = content.trim();
-    return content ? [{ ...message3, content }] : [];
-  });
-}
-
-// src/extension/summary/preprocess.ts
-function preprocessSummaryMessages(messages2, rules, timeoutMs = 2e3) {
-  if (rules.every((rule) => !rule.enabled)) return Promise.resolve(structuredClone(messages2));
-  if (typeof Worker === "undefined") return Promise.resolve(applySummaryPreprocess(messages2, rules));
-  const worker = new Worker(new URL("./summary-regex-worker.js", import.meta.url), { type: "module" });
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      worker.terminate();
-      reject(new Error("\u6D88\u606F\u6E05\u6D17\u89C4\u5219\u6267\u884C\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u6B63\u5219\u8868\u8FBE\u5F0F\u3002"));
-    }, timeoutMs);
-    worker.addEventListener("message", (event) => {
-      clearTimeout(timeout);
-      worker.terminate();
-      if (event.data.ok && event.data.messages) resolve(event.data.messages);
-      else reject(new Error(event.data.error ?? "\u6D88\u606F\u6E05\u6D17\u5931\u8D25\u3002"));
-    }, { once: true });
-    worker.addEventListener("error", (event) => {
-      clearTimeout(timeout);
-      worker.terminate();
-      reject(new Error(event.message || "\u6D88\u606F\u6E05\u6D17 Worker \u5931\u8D25\u3002"));
-    }, { once: true });
-    worker.postMessage({ messages: messages2, rules });
-  });
-}
-
-// src/extension/chat/message-write-coordinator.ts
-var MessageWriteCoordinator = class {
-  chain = Promise.resolve();
-  run(operation) {
-    const result = this.chain.then(operation, operation);
-    this.chain = result.then(() => void 0, () => void 0);
-    return result;
-  }
-};
-var messageWriteCoordinator = new MessageWriteCoordinator();
 
 // src/extension/status/status-snapshots.ts
 function helper4() {
@@ -28198,24 +28684,24 @@ function helper4() {
   }
   return api;
 }
-function statusMessageId(message3, index) {
-  return String(message3.message_id ?? message3.id ?? index);
+function statusMessageId(message, index) {
+  return String(message.message_id ?? message.id ?? index);
 }
-function statusSwipeId(message3) {
-  const value = Number(message3.swipe_id ?? 0);
+function statusSwipeId(message) {
+  const value = Number(message.swipe_id ?? 0);
   return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 function parseSnapshot(value, namespaceId) {
   const parsed = statusSnapshotSchema.safeParse(value);
   return parsed.success && parsed.data.namespaceId === namespaceId ? parsed.data : null;
 }
-function rawSwipeVariables(message3, swipeId) {
-  const variables = message3.variables;
+function rawSwipeVariables(message, swipeId) {
+  const variables = message.variables;
   if (Array.isArray(variables)) return variables[swipeId] ?? null;
   if (variables && typeof variables === "object") {
     return variables[swipeId] ?? null;
   }
-  const swipeData = Array.isArray(message3.swipes_data) ? message3.swipes_data[swipeId] : void 0;
+  const swipeData = Array.isArray(message.swipes_data) ? message.swipes_data[swipeId] : void 0;
   const nested = swipeData?.variables;
   return nested && typeof nested === "object" ? nested : null;
 }
@@ -28226,20 +28712,20 @@ var StatusSnapshotStore = class {
   }
   history(namespaceId) {
     const messages2 = SillyTavern.getContext().chat;
-    const records = /* @__PURE__ */ new Map();
-    for (const [messageIndex, message3] of messages2.entries()) {
-      const messageId = statusMessageId(message3, messageIndex);
-      const selectedSwipe = statusSwipeId(message3);
+    const records2 = /* @__PURE__ */ new Map();
+    for (const [messageIndex, message] of messages2.entries()) {
+      const messageId = statusMessageId(message, messageIndex);
+      const selectedSwipe = statusSwipeId(message);
       const swipeCount = Math.max(
         1,
-        Array.isArray(message3.swipes) ? message3.swipes.length : 0,
-        Array.isArray(message3.variables) ? message3.variables.length : 0
+        Array.isArray(message.swipes) ? message.swipes.length : 0,
+        Array.isArray(message.variables) ? message.variables.length : 0
       );
       for (let swipeId = 0; swipeId < swipeCount; swipeId += 1) {
-        const variables = swipeId === selectedSwipe ? helper4().getVariables({ type: "message", message_id: messageIndex }) : rawSwipeVariables(message3, swipeId);
+        const variables = swipeId === selectedSwipe ? helper4().getVariables({ type: "message", message_id: messageIndex }) : rawSwipeVariables(message, swipeId);
         const snapshot = parseSnapshot(variables?.echoes_status, namespaceId);
         if (!snapshot) continue;
-        records.set(snapshot.snapshotId, {
+        records2.set(snapshot.snapshotId, {
           messageIndex,
           messageId,
           swipeId,
@@ -28248,19 +28734,19 @@ var StatusSnapshotStore = class {
         });
       }
     }
-    return [...records.values()].sort((left, right) => left.messageIndex - right.messageIndex || left.swipeId - right.swipeId);
+    return [...records2.values()].sort((left, right) => left.messageIndex - right.messageIndex || left.swipeId - right.swipeId);
   }
   latestBefore(messageIndex, namespaceId) {
     const messages2 = SillyTavern.getContext().chat;
     for (let index = Math.min(messageIndex - 1, messages2.length - 1); index >= 0; index -= 1) {
-      const message3 = messages2[index];
-      if (message3.is_user === true || message3.role === "user") continue;
+      const message = messages2[index];
+      if (message.is_user === true || message.role === "user") continue;
       const snapshot = this.selected(index, namespaceId);
       if (snapshot) {
         return {
           messageIndex: index,
-          messageId: statusMessageId(message3, index),
-          swipeId: statusSwipeId(message3),
+          messageId: statusMessageId(message, index),
+          swipeId: statusSwipeId(message),
           selected: true,
           snapshot
         };
@@ -28274,8 +28760,8 @@ var StatusSnapshotStore = class {
   async write(options) {
     await messageWriteCoordinator.run(async () => {
       const context = SillyTavern.getContext();
-      const message3 = context.chat[options.messageIndex];
-      if (context.chatId !== options.lockedChatId || !message3 || statusMessageId(message3, options.messageIndex) !== options.messageId || statusSwipeId(message3) !== options.swipeId) {
+      const message = context.chat[options.messageIndex];
+      if (context.chatId !== options.lockedChatId || !message || statusMessageId(message, options.messageIndex) !== options.messageId || statusSwipeId(message) !== options.swipeId) {
         throw new Error("The target chat or swipe changed before the status snapshot could be saved.");
       }
       const parsed = statusSnapshotSchema.parse(options.snapshot);
@@ -28289,13 +28775,13 @@ var StatusSnapshotStore = class {
 
 // src/extension/status/status-request.ts
 function currentStatusMessages() {
-  return SillyTavern.getContext().chat.flatMap((message3, messageIndex) => {
-    const content = String(message3.mes ?? message3.message ?? "").trim();
+  return SillyTavern.getContext().chat.flatMap((message, messageIndex) => {
+    const content = String(message.mes ?? message.message ?? "").trim();
     if (!content) return [];
     return [{
-      id: statusMessageId(message3, messageIndex),
+      id: statusMessageId(message, messageIndex),
       messageIndex,
-      role: message3.is_user === true || message3.role === "user" ? "user" : "assistant",
+      role: message.is_user === true || message.role === "user" ? "user" : "assistant",
       content
     }];
   });
@@ -28306,10 +28792,10 @@ async function statusSourceHash(messages2) {
 function renderStatusYaml(state) {
   return stringify3(state, { lineWidth: 0 }).trim() || "{}";
 }
-function macro2(value, charName, userName) {
+function macro3(value, charName, userName) {
   return value.replaceAll("{{char}}", charName).replaceAll("{{user}}", userName);
 }
-function characterCardContent(character, charName) {
+function characterCardContent2(character, charName) {
   const sections = [
     ["Name", charName],
     ["Description", character.description],
@@ -28323,13 +28809,13 @@ ${value}`] : [];
   return sections.join("\n\n");
 }
 function currentChatText() {
-  return SillyTavern.getContext().chat.flatMap((message3) => {
-    if (message3.is_hidden === true) return [];
-    const content = String(message3.mes ?? message3.message ?? "").trim();
+  return SillyTavern.getContext().chat.flatMap((message) => {
+    if (message.is_hidden === true) return [];
+    const content = String(message.mes ?? message.message ?? "").trim();
     return content ? [content] : [];
   });
 }
-async function activatedWorldbookContent() {
+async function activatedWorldbookContent2() {
   const context = SillyTavern.getContext();
   if (typeof context.getWorldInfoPrompt !== "function") {
     throw new Error("SillyTavern does not expose the worldbook activation API required by this status prompt.");
@@ -28343,8 +28829,8 @@ async function activatedWorldbookContent() {
   const helper6 = window.TavernHelper;
   const worldbookName = helper6?.getChatWorldbookName("current");
   if (content && helper6 && worldbookName) {
-    const entries2 = await helper6.getWorldbook(worldbookName);
-    for (const entry of entries2) {
+    const entries = await helper6.getWorldbook(worldbookName);
+    for (const entry of entries) {
       const kind = String(entry.extra?.echoes?.kind ?? "");
       if ((kind === "status_injection" || kind === "retrieval_injection") && entry.content) {
         content = content.replaceAll(entry.content, "");
@@ -28358,11 +28844,11 @@ async function itemContent2(item, state, messages2) {
   const character = context.characters?.[context.characterId ?? -1] ?? {};
   const charName = String(character.name ?? "Character");
   const userName = String(context.powerUserSettings?.persona_name ?? context.name1 ?? "User");
-  if (item.kind === "custom") return macro2(item.content, charName, userName);
+  if (item.kind === "custom") return macro3(item.content, charName, userName);
   if (item.kind === "character") {
-    return characterCardContent(character, charName);
+    return characterCardContent2(character, charName);
   }
-  if (item.kind === "worldbook") return activatedWorldbookContent();
+  if (item.kind === "worldbook") return activatedWorldbookContent2();
   if (item.kind === "persona") {
     const description = String(context.powerUserSettings?.persona_description ?? "").trim();
     return description ? `${userName}:
@@ -28370,15 +28856,15 @@ ${description}` : "";
   }
   if (item.kind === "current_state") return `Current complete state:
 ${renderStatusYaml(state)}`;
-  return messages2.map((message3) => {
-    const name = message3.role === "user" ? "Game Master / World" : charName;
-    return `[${message3.id}] ${name}: ${message3.content}`;
+  return messages2.map((message) => {
+    const name = message.role === "user" ? "Game Master / World" : charName;
+    return `[${message.id}] ${name}: ${message.content}`;
   }).join("\n\n");
 }
 async function prepareStatusRequest(options) {
   const all = currentStatusMessages();
-  const baseIndex = options.baseSnapshot ? all.find((message3) => message3.id === options.baseSnapshot.targetMessageId)?.messageIndex ?? -1 : -1;
-  const selected = all.filter((message3) => message3.messageIndex > baseIndex && message3.messageIndex <= options.targetMessageIndex).map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content }));
+  const baseIndex = options.baseSnapshot ? all.find((message) => message.id === options.baseSnapshot.targetMessageId)?.messageIndex ?? -1 : -1;
+  const selected = all.filter((message) => message.messageIndex > baseIndex && message.messageIndex <= options.targetMessageIndex).map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content }));
   if (selected.length === 0 || selected.length > 500) {
     throw new Error("Status updates require between 1 and 500 incremental messages.");
   }
@@ -28404,19 +28890,19 @@ async function prepareStatusRequest(options) {
 }
 
 // src/extension/status/status-coordinator.ts
-var TERMINAL_STATES4 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
+var TERMINAL_STATES3 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
 var MAIN_GENERATION_TYPES = /* @__PURE__ */ new Set(["chat", "normal", "continue", "regenerate", "swipe", "impersonate"]);
 function sleep2(durationMs) {
   return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
-async function waitForJob2(job) {
+async function waitForJob3(job) {
   const deadline = Date.now() + 2 * 60 * 6e4;
   let current = job;
-  while (!TERMINAL_STATES4.has(current.status) && Date.now() < deadline) {
+  while (!TERMINAL_STATES3.has(current.status) && Date.now() < deadline) {
     await sleep2(600);
     current = await echoesApi.getJob(current.id);
   }
-  if (!TERMINAL_STATES4.has(current.status)) throw new Error("Waiting for the status task timed out.");
+  if (!TERMINAL_STATES3.has(current.status)) throw new Error("Waiting for the status task timed out.");
   if (current.status !== "succeeded" || !current.result) {
     throw new Error(current.error?.message ?? current.message);
   }
@@ -28437,8 +28923,8 @@ function snapshotId(namespaceId, messageIndex, swipeId) {
 function lastAssistantIndex() {
   const chat = SillyTavern.getContext().chat;
   for (let index = chat.length - 1; index >= 0; index -= 1) {
-    const message3 = chat[index];
-    if (message3.is_user !== true && message3.role !== "user" && String(message3.mes ?? message3.message ?? "").trim()) return index;
+    const message = chat[index];
+    if (message.is_user !== true && message.role !== "user" && String(message.mes ?? message.message ?? "").trim()) return index;
   }
   return -1;
 }
@@ -28495,10 +28981,10 @@ var StatusCoordinator = class {
     const candidate = statusStateSchema.parse(rawState);
     const baseState = previous?.state ?? state.catalog.profile.initialState;
     validateStatusState(candidate, baseState, state.catalog.profile.validation);
-    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const now3 = (/* @__PURE__ */ new Date()).toISOString();
     const existing = this.snapshots.selected(targetIndex, state.catalog.namespaceId);
     const previousIndex = previous ? previousRecord.messageIndex : -1;
-    const sourceMessages = currentStatusMessages().filter((message3) => message3.messageIndex > previousIndex && message3.messageIndex <= targetIndex).map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content }));
+    const sourceMessages = currentStatusMessages().filter((message) => message.messageIndex > previousIndex && message.messageIndex <= targetIndex).map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content }));
     const snapshot = {
       formatVersion: 1,
       namespaceId: state.catalog.namespaceId,
@@ -28507,14 +28993,14 @@ var StatusCoordinator = class {
       targetSwipeId,
       ...previous ? { parentSnapshotId: previous.snapshotId } : {},
       baseStateHash: await statusStateHash(baseState),
-      sourceMessageIds: sourceMessages.map((message3) => message3.id),
+      sourceMessageIds: sourceMessages.map((message) => message.id),
       sourceHash: await statusSourceHash(sourceMessages),
       state: candidate,
       stateHash: await statusStateHash(candidate),
       revision: (existing?.revision ?? 0) + 1,
       origin,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now
+      createdAt: existing?.createdAt ?? now3,
+      updatedAt: now3
     };
     await this.snapshots.write({
       lockedChatId: state.catalog.chatId,
@@ -28633,7 +29119,7 @@ ${yaml}`;
       baseSnapshot: previous,
       targetMessageIndex: targetIndex
     });
-    traceContext.sourceMessageIds = prepared.originalMessages.map((message3) => message3.id);
+    traceContext.sourceMessageIds = prepared.originalMessages.map((message) => message.id);
     const existing = this.snapshots.selected(targetIndex, state.catalog.namespaceId);
     if (existing?.sourceHash === prepared.sourceHash && existing.targetMessageId === targetMessageId && existing.targetSwipeId === targetSwipeId) {
       this.setTrace({
@@ -28641,7 +29127,7 @@ ${yaml}`;
         namespaceId: state.catalog.namespaceId,
         targetMessageId,
         targetSwipeId,
-        sourceMessageIds: prepared.originalMessages.map((message3) => message3.id),
+        sourceMessageIds: prepared.originalMessages.map((message) => message.id),
         startedAt,
         completedAt: (/* @__PURE__ */ new Date()).toISOString(),
         outcome: "unchanged",
@@ -28675,7 +29161,7 @@ ${yaml}`;
         ...resumeAfterEndpointId ? { resumeAfterEndpointId } : {}
       };
       const job = await echoesApi.startStatusUpdate(request);
-      result = (await waitForJob2(job)).result;
+      result = (await waitForJob3(job)).result;
       if (!result.decisionRequired) break;
       if (!await decideAmbiguous(result.decisionRequired)) {
         this.setTrace({
@@ -28683,7 +29169,7 @@ ${yaml}`;
           namespaceId: state.catalog.namespaceId,
           targetMessageId,
           targetSwipeId,
-          sourceMessageIds: prepared.originalMessages.map((message3) => message3.id),
+          sourceMessageIds: prepared.originalMessages.map((message) => message.id),
           startedAt,
           completedAt: (/* @__PURE__ */ new Date()).toISOString(),
           outcome: "decision_required",
@@ -28699,7 +29185,7 @@ ${yaml}`;
     const recomputed = applyStatusOperations({
       baseState,
       operations: result.operations,
-      evidenceMessageIds: prepared.originalMessages.map((message3) => message3.id),
+      evidenceMessageIds: prepared.originalMessages.map((message) => message.id),
       validation: state.catalog.profile.validation
     });
     const recomputedHash = await statusStateHash(recomputed);
@@ -28712,7 +29198,7 @@ ${yaml}`;
         namespaceId: state.catalog.namespaceId,
         targetMessageId,
         targetSwipeId,
-        sourceMessageIds: prepared.originalMessages.map((message3) => message3.id),
+        sourceMessageIds: prepared.originalMessages.map((message) => message.id),
         startedAt,
         completedAt: (/* @__PURE__ */ new Date()).toISOString(),
         outcome: "discarded",
@@ -28745,7 +29231,7 @@ ${yaml}`;
         namespaceId: state.catalog.namespaceId,
         targetMessageId,
         targetSwipeId,
-        sourceMessageIds: prepared.originalMessages.map((message3) => message3.id),
+        sourceMessageIds: prepared.originalMessages.map((message) => message.id),
         startedAt,
         completedAt: (/* @__PURE__ */ new Date()).toISOString(),
         outcome: "discarded",
@@ -28755,7 +29241,7 @@ ${yaml}`;
       });
       return null;
     }
-    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const now3 = (/* @__PURE__ */ new Date()).toISOString();
     const snapshot = {
       formatVersion: 1,
       namespaceId: state.catalog.namespaceId,
@@ -28764,14 +29250,14 @@ ${yaml}`;
       targetSwipeId,
       ...previous ? { parentSnapshotId: previous.snapshotId } : {},
       baseStateHash,
-      sourceMessageIds: prepared.originalMessages.map((message3) => message3.id),
+      sourceMessageIds: prepared.originalMessages.map((message) => message.id),
       sourceHash: prepared.sourceHash,
       state: recomputed,
       stateHash: recomputedHash,
       revision: (existing?.revision ?? 0) + 1,
       origin,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now
+      createdAt: existing?.createdAt ?? now3,
+      updatedAt: now3
     };
     await this.snapshots.write({
       lockedChatId: state.catalog.chatId,
@@ -28811,7 +29297,7 @@ var RecallRunSupersededError = class extends Error {
     this.name = "RecallRunSupersededError";
   }
 };
-var TERMINAL_STATES5 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
+var TERMINAL_STATES4 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
 var GENERATION_TYPES = /* @__PURE__ */ new Set(["chat", "normal", "continue", "regenerate", "swipe", "impersonate"]);
 var DISABLED_BRANCHES = {
   vector: { state: "disabled", durationMs: 0, attempts: [] },
@@ -28851,14 +29337,14 @@ ${memories}`;
 function sleep3(durationMs) {
   return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
-async function waitForJob3(initial, maxWaitMs) {
+async function waitForJob4(initial, maxWaitMs) {
   let job = initial;
   const deadline = Date.now() + maxWaitMs;
-  while (!TERMINAL_STATES5.has(job.status) && Date.now() < deadline) {
+  while (!TERMINAL_STATES4.has(job.status) && Date.now() < deadline) {
     await sleep3(400);
     job = await echoesApi.getJob(job.id);
   }
-  if (!TERMINAL_STATES5.has(job.status)) {
+  if (!TERMINAL_STATES4.has(job.status)) {
     await echoesApi.cancelJob(job.id).catch(() => void 0);
     return null;
   }
@@ -28868,9 +29354,9 @@ async function waitForJob3(initial, maxWaitMs) {
   return job;
 }
 function openDecisionDialog(options) {
-  const dialog = document.createElement("dialog");
-  dialog.className = "echoes-dialog echoes-recall-decision";
-  dialog.innerHTML = `
+  const dialog2 = document.createElement("dialog");
+  dialog2.className = "echoes-dialog echoes-recall-decision";
+  dialog2.innerHTML = `
     <form method="dialog">
       <header class="echoes-dialog-header"><h2>\u53EC\u56DE\u8BF7\u6C42\u7ED3\u679C\u4E0D\u786E\u5B9A</h2></header>
       <div class="echoes-dialog-body"><p data-message></p></div>
@@ -28882,25 +29368,25 @@ function openDecisionDialog(options) {
         </button>
       </footer>
     </form>`;
-  dialog.querySelector("[data-message]").textContent = options.message;
-  dialog.querySelector("[data-decision=degraded]").textContent = options.degradedLabel ?? "\u4F7F\u7528\u5DF2\u6709 BM25/RRF \u7ED3\u679C";
-  const continueButton = dialog.querySelector("[data-decision=continue]");
+  dialog2.querySelector("[data-message]").textContent = options.message;
+  dialog2.querySelector("[data-decision=degraded]").textContent = options.degradedLabel ?? "\u4F7F\u7528\u5DF2\u6709 BM25/RRF \u7ED3\u679C";
+  const continueButton = dialog2.querySelector("[data-decision=continue]");
   continueButton.disabled = !options.canContinue;
-  document.body.append(dialog);
+  document.body.append(dialog2);
   return new Promise((resolve) => {
     const finish = (decision) => {
-      dialog.close();
+      dialog2.close();
       resolve(decision);
     };
-    dialog.querySelectorAll("[data-decision]").forEach((button3) => {
-      button3.addEventListener("click", () => finish(button3.dataset.decision));
+    dialog2.querySelectorAll("[data-decision]").forEach((button2) => {
+      button2.addEventListener("click", () => finish(button2.dataset.decision));
     });
-    dialog.addEventListener("cancel", (event) => {
+    dialog2.addEventListener("cancel", (event) => {
       event.preventDefault();
       finish("degraded");
     }, { once: true });
-    dialog.addEventListener("close", () => dialog.remove(), { once: true });
-    dialog.showModal();
+    dialog2.addEventListener("close", () => dialog2.remove(), { once: true });
+    dialog2.showModal();
   });
 }
 function generationIdentity() {
@@ -28967,14 +29453,14 @@ var RecallCoordinator = class {
       if (sequence2 !== this.runSequence) return;
       await this.clear();
       if (this.runSequence !== sequence2 + 1) return;
-      const message3 = error51 instanceof Error ? error51.message : String(error51);
+      const message = error51 instanceof Error ? error51.message : String(error51);
       const decision = await openDecisionDialog({
-        message: message3,
+        message,
         canContinue: false,
         degradedLabel: "\u65E0\u8BB0\u5FC6\u7EE7\u7EED"
       });
       if (decision === "abort") abort?.();
-      else toastr.warning(message3, "Echoes \u53EC\u56DE\u5DF2\u964D\u7EA7");
+      else toastr.warning(message, "Echoes \u53EC\u56DE\u5DF2\u964D\u7EA7");
     }
   }
   async preview(chat = SillyTavern.getContext().chat) {
@@ -29050,8 +29536,8 @@ var RecallCoordinator = class {
       collectionStats = await echoesApi.listRetrievalCollections();
     } catch (error51) {
       if (recentSlices.length === 0) throw error51;
-      const message3 = error51 instanceof Error ? error51.message : String(error51);
-      toastr.warning(message3, "Echoes \u8BED\u4E49\u53EC\u56DE\u5931\u8D25");
+      const message = error51 instanceof Error ? error51.message : String(error51);
+      toastr.warning(message, "Echoes \u8BED\u4E49\u53EC\u56DE\u5931\u8D25");
       return this.finalizeRecall({
         current,
         sequence: sequence2,
@@ -29061,15 +29547,15 @@ var RecallCoordinator = class {
         query: prepared.query,
         sources: [],
         branches: {
-          vector: { state: "failed", durationMs: 0, attempts: [], message: message3 },
-          bm25: { state: "failed", durationMs: 0, attempts: [], message: message3 },
+          vector: { state: "failed", durationMs: 0, attempts: [], message },
+          bm25: { state: "failed", durationMs: 0, attempts: [], message },
           rerank: { state: "disabled", durationMs: 0, attempts: [] }
         },
         rawReturned: 0,
         semanticHits: [],
         semanticSliceById: /* @__PURE__ */ new Map(),
         recentSlices,
-        message: message3
+        message
       });
     }
     const collectionMap = new Map(collectionStats.map((item) => [item.collection.id, item.collection]));
@@ -29188,13 +29674,13 @@ var RecallCoordinator = class {
         throw new RecallRunSupersededError();
       }
       trackJob(job.id);
-      completed = await waitForJob3(job, recall.injection.maxWaitMs);
+      completed = await waitForJob4(job, recall.injection.maxWaitMs);
     } catch (error51) {
       clearTrackedJob();
       if (error51 instanceof RecallRunSupersededError || isSuperseded()) throw new RecallRunSupersededError();
       if (recentSlices.length === 0) throw error51;
-      const message3 = error51 instanceof Error ? error51.message : String(error51);
-      toastr.warning(message3, "Echoes \u8BED\u4E49\u53EC\u56DE\u5931\u8D25");
+      const message = error51 instanceof Error ? error51.message : String(error51);
+      toastr.warning(message, "Echoes \u8BED\u4E49\u53EC\u56DE\u5931\u8D25");
       return this.finalizeRecall({
         current,
         sequence: sequence2,
@@ -29204,15 +29690,15 @@ var RecallCoordinator = class {
         query: prepared.query,
         sources: resolved.traces,
         branches: {
-          vector: { state: "failed", durationMs: 0, attempts: [], message: message3 },
-          bm25: { state: "failed", durationMs: 0, attempts: [], message: message3 },
+          vector: { state: "failed", durationMs: 0, attempts: [], message },
+          bm25: { state: "failed", durationMs: 0, attempts: [], message },
           rerank: { state: "disabled", durationMs: 0, attempts: [] }
         },
         rawReturned: 0,
         semanticHits: [],
         semanticSliceById: /* @__PURE__ */ new Map(),
         recentSlices,
-        message: message3
+        message
       });
     }
     if (isSuperseded()) throw new RecallRunSupersededError();
@@ -29284,13 +29770,13 @@ var RecallCoordinator = class {
           throw new RecallRunSupersededError();
         }
         trackJob(job.id);
-        completed = await waitForJob3(job, recall.injection.maxWaitMs);
+        completed = await waitForJob4(job, recall.injection.maxWaitMs);
         if (!completed) break;
         result = completed.result;
       } catch (error51) {
         if (error51 instanceof RecallRunSupersededError || isSuperseded()) throw new RecallRunSupersededError();
-        const message3 = error51 instanceof Error ? error51.message : String(error51);
-        toastr.warning(message3, "Echoes \u53EC\u56DE\u7EED\u63A5\u5931\u8D25");
+        const message = error51 instanceof Error ? error51.message : String(error51);
+        toastr.warning(message, "Echoes \u53EC\u56DE\u7EED\u63A5\u5931\u8D25");
         break;
       }
     }
@@ -29470,3264 +29956,1886 @@ function installRecallInterceptor() {
   };
 }
 
-// src/extension/ui/recall-panel.ts
-function actionButton(icon, title, action) {
-  const button3 = document.createElement("button");
-  button3.type = "button";
-  button3.className = "echoes-icon-button";
-  button3.title = title;
-  button3.setAttribute("aria-label", title);
-  button3.dataset.recallAction = action;
-  button3.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
-  return button3;
-}
-function queryIdentity() {
-  const context = SillyTavern.getContext();
-  const character = context.characters?.[context.characterId ?? -1] ?? {};
-  return {
-    characterName: String(character.name ?? "Character"),
-    characterDescription: String(character.description ?? ""),
-    userName: String(context.powerUserSettings?.persona_name ?? context.name1 ?? "User"),
-    personaDescription: String(context.powerUserSettings?.persona_description ?? "")
-  };
-}
-function compatibilityLabel(source) {
-  if (!source) return "\u672A\u68C0\u67E5";
-  if (source.mode === "vector_bm25") return "\u5411\u91CF + BM25";
-  if (source.mode === "bm25_only") return "\u4EC5 BM25";
-  return source.message ?? "\u4E0D\u53EF\u7528";
-}
-function boundedNumber(input, minimum, maximum, label, integer2 = true) {
-  const parsed = Number(input.value);
-  if (!Number.isFinite(parsed)) throw new Error(`${label}\u5FC5\u987B\u662F\u6709\u6548\u6570\u5B57\u3002`);
-  const value = Math.max(minimum, Math.min(maximum, integer2 ? Math.round(parsed) : parsed));
-  input.value = String(value);
-  return value;
-}
-var RecallPanel = class {
-  constructor(root) {
-    this.root = root;
-    this.bindEvents();
-  }
-  root;
-  current = null;
-  available = [];
-  sourceTraces = [];
-  draggedNamespace = null;
-  renderSequence = 0;
-  run(operation) {
-    void Promise.resolve().then(operation).catch((error51) => {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "Echoes \u53EC\u56DE");
-    });
-  }
-  async render() {
-    if (!this.root.classList.contains("echoes-recall-view")) return;
-    const sequence2 = ++this.renderSequence;
-    const chatId = SillyTavern.getContext().chatId;
-    const host = this.root.querySelector(".echoes-grid-host");
-    host.innerHTML = '<div class="echoes-grid-message">\u6B63\u5728\u8BFB\u53D6\u53EC\u56DE\u914D\u7F6E...</div>';
-    try {
-      const overview = await recallCoordinator.sourceOverview();
-      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-recall-view") || SillyTavern.getContext().chatId !== chatId || overview.current.catalog.chatId !== chatId) return;
-      this.current = overview.current;
-      this.available = overview.available;
-      this.sourceTraces = overview.sources;
-      this.renderSidebar();
-      this.renderContent();
-    } catch (error51) {
-      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-recall-view") || SillyTavern.getContext().chatId !== chatId) return;
-      const note = document.createElement("div");
-      note.className = "echoes-grid-message error";
-      note.textContent = error51 instanceof Error ? error51.message : String(error51);
-      host.replaceChildren(note);
-    }
-  }
-  renderSidebar() {
-    const heading = this.root.querySelector(".echoes-sidebar-heading > span");
-    const actions = this.root.querySelector(".echoes-sidebar-actions");
-    const list = this.root.querySelector(".echoes-table-list");
-    heading.textContent = "\u53EC\u56DE\u6765\u6E90";
-    actions.replaceChildren(actionButton("plus", "\u9644\u52A0\u804A\u5929", "attach-source"));
-    list.replaceChildren();
-    for (const source of [...this.sourceTraces].sort((left, right) => left.order - right.order)) {
-      const item = document.createElement("div");
-      item.className = "echoes-recall-source-nav";
-      const icon = document.createElement("i");
-      icon.className = `fa-solid fa-${source.mode === "unavailable" ? "triangle-exclamation" : "database"}`;
-      const text = document.createElement("span");
-      text.textContent = source.chatId;
-      text.title = source.worldbookName;
-      const badge = document.createElement("small");
-      badge.textContent = source.mode === "vector_bm25" ? "\u6DF7\u5408" : source.mode === "bm25_only" ? "BM25" : "\u5F02\u5E38";
-      item.append(icon, text, badge);
-      list.append(item);
-    }
-  }
-  bindEvents() {
-    this.root.addEventListener("click", (event) => {
-      const target = event.target.closest("[data-recall-action]");
-      if (!target) return;
-      const action = target.dataset.recallAction;
-      if (action === "refresh") this.run(() => this.render());
-      else if (action === "preview") this.run(() => this.preview());
-      else if (action === "attach-source") this.run(() => this.attachSource());
-      else if (action === "remove-source") this.run(() => this.removeSource(target.dataset.namespaceId ?? ""));
-      else if (action === "source-up") this.run(() => this.moveSource(target.dataset.namespaceId ?? "", -1));
-      else if (action === "source-down") this.run(() => this.moveSource(target.dataset.namespaceId ?? "", 1));
-      else if (action === "prompt-up") this.run(() => this.movePrompt(Number(target.dataset.index), -1));
-      else if (action === "prompt-down") this.run(() => this.movePrompt(Number(target.dataset.index), 1));
-      else if (action === "prompt-delete") this.run(() => this.deletePrompt(Number(target.dataset.index)));
-      else if (action === "prompt-add") this.run(() => this.addPrompt());
-      else if (action === "query-preview") this.run(() => this.previewQuery());
-    });
-    this.root.addEventListener("change", (event) => {
-      const target = event.target;
-      if (target.matches("[data-recall-enabled]")) this.run(() => this.saveSourceConfiguration());
-      else if (target.matches("[data-source-weight]")) this.run(() => this.saveSourceConfiguration());
-      else if (target.matches("[data-source-enabled]")) this.run(() => this.saveSourceConfiguration());
-      else if (target.matches("[data-recall-setting]")) this.run(() => this.saveRecallSettings());
-      else if (target.matches("[data-recall-prompt]")) this.run(() => this.savePromptSettings());
-    });
-    this.root.addEventListener("dragstart", (event) => {
-      const source = event.target.closest("[data-source-namespace]");
-      this.draggedNamespace = source?.dataset.sourceNamespace ?? null;
-    });
-    this.root.addEventListener("dragover", (event) => {
-      if (event.target.closest("[data-source-namespace]")) event.preventDefault();
-    });
-    this.root.addEventListener("drop", (event) => {
-      const target = event.target.closest("[data-source-namespace]");
-      if (!target || !this.draggedNamespace) return;
-      const sourceNamespace = this.draggedNamespace;
-      event.preventDefault();
-      this.run(() => this.dropSource(sourceNamespace, target.dataset.sourceNamespace ?? ""));
-      this.draggedNamespace = null;
-    });
-  }
-  renderContent() {
-    if (!this.current) return;
-    const settings = getSettings();
-    const recall = settings.retrieval.recall;
-    const host = this.root.querySelector(".echoes-grid-host");
-    const page = document.createElement("div");
-    page.className = "echoes-recall-page";
-    page.innerHTML = `
-      <section class="echoes-recall-controls">
-        <label class="echoes-check">
-          <input type="checkbox" data-recall-enabled>
-          \u603B\u7ED3\u53EC\u56DE\u603B\u5F00\u5173
-        </label>
-        <label>\u6700\u7EC8 Top K
-          <input type="number" min="1" max="100" data-recall-setting="finalTopK">
-        </label>
-        <label>Vector K
-          <input type="number" min="1" max="200" data-recall-setting="vectorTopK">
-        </label>
-        <label>BM25 K
-          <input type="number" min="1" max="200" data-recall-setting="bm25TopK">
-        </label>
-        <label>Rerank K
-          <input type="number" min="1" max="100" data-recall-setting="rerankTopK">
-        </label>
-        <label class="echoes-check"><input type="checkbox" data-recall-setting="vectorEnabled">\u5411\u91CF</label>
-        <label class="echoes-check"><input type="checkbox" data-recall-setting="bm25Enabled">BM25</label>
-        <label class="echoes-check"><input type="checkbox" data-recall-setting="rerankEnabled">Rerank</label>
-        <div class="echoes-api-binding-inline"><span>Rerank \u7EC4<strong data-recall-rerank-binding></strong></span><button type="button" class="menu_button" data-action="switch-view" data-view="api"><i class="fa-solid fa-plug"></i> API\u914D\u7F6E</button></div>
-        <button type="button" class="menu_button" data-recall-action="preview">
-          <i class="fa-solid fa-flask"></i> \u68C0\u7D22\u9884\u89C8
-        </button>
-      </section>
-      <section>
-        <div class="echoes-section-heading">
-          <h2>\u6765\u6E90\u6392\u5E8F\u4E0E\u6743\u91CD</h2>
-          <button type="button" class="menu_button" data-recall-action="attach-source">
-            <i class="fa-solid fa-plus"></i> \u9644\u52A0\u804A\u5929
-          </button>
-        </div>
-        <div class="echoes-recall-sources" data-recall-sources></div>
-      </section>
-      <section>
-        <div class="echoes-section-heading">
-          <h2>\u67E5\u8BE2\u9884\u8BBE</h2>
-          <div>
-            <button type="button" class="menu_button" data-recall-action="query-preview">
-              <i class="fa-solid fa-eye"></i> \u9884\u89C8\u67E5\u8BE2\u8BCD
-            </button>
-            <button type="button" class="menu_button" data-recall-action="prompt-add">
-              <i class="fa-solid fa-plus"></i> \u6DFB\u52A0\u81EA\u5B9A\u4E49\u9879
-            </button>
-          </div>
-        </div>
-        <div class="echoes-recall-prompts" data-recall-prompts></div>
-      </section>
-      <section>
-        <div class="echoes-section-heading"><h2>\u6CE8\u5165\u4F4D\u7F6E</h2></div>
-        <div class="echoes-recall-injection">
-          <label>\u4F4D\u7F6E<select data-recall-setting="position">
-            <option value="before_character">\u89D2\u8272\u5B9A\u4E49\u524D</option>
-            <option value="after_character">\u89D2\u8272\u5B9A\u4E49\u540E</option>
-            <option value="at_depth">@D</option>
-          </select></label>
-          <label>Role<select data-recall-setting="role">
-            <option value="system">system</option>
-            <option value="user">user</option>
-            <option value="assistant">assistant</option>
-          </select></label>
-          <label>Depth<input type="number" min="0" max="100" data-recall-setting="depth"></label>
-          <label>Order<input type="number" min="-10000" max="10000" data-recall-setting="order"></label>
-          <label>\u7B49\u5F85\u79D2\u6570<input type="number" min="1" max="300" data-recall-setting="maxWaitSeconds"></label>
-          <label class="echoes-recall-template">\u6A21\u677F
-            <textarea rows="5" data-recall-setting="template"></textarea>
-          </label>
-        </div>
-      </section>
-      <section>
-        <div class="echoes-section-heading"><h2>\u6700\u8FD1\u4E00\u6B21\u8BCA\u65AD</h2></div>
-        <div class="echoes-recall-trace-summary" data-recall-trace-summary></div>
-        <pre class="echoes-recall-trace" data-recall-trace></pre>
-      </section>`;
-    page.querySelector("[data-recall-enabled]").checked = this.current.catalog.recallEnabled;
-    for (const key of ["vectorEnabled", "bm25Enabled", "rerankEnabled"]) {
-      page.querySelector(`[data-recall-setting=${key}]`).checked = recall[key];
-    }
-    for (const key of ["finalTopK", "vectorTopK", "bm25TopK", "rerankTopK"]) {
-      page.querySelector(`[data-recall-setting=${key}]`).value = String(recall[key]);
-    }
-    const rerankSet = settings.retrieval.rerankSets.find((set3) => set3.id === recall.rerankSetId);
-    page.querySelector("[data-recall-rerank-binding]").textContent = rerankSet?.name ?? (recall.rerankEnabled ? "\u672A\u914D\u7F6E" : "\u672A\u542F\u7528");
-    page.querySelector("[data-recall-setting=position]").value = recall.injection.position;
-    page.querySelector("[data-recall-setting=role]").value = recall.injection.role;
-    page.querySelector("[data-recall-setting=depth]").value = String(recall.injection.depth);
-    page.querySelector("[data-recall-setting=order]").value = String(recall.injection.order);
-    page.querySelector("[data-recall-setting=maxWaitSeconds]").value = String(Math.round(recall.injection.maxWaitMs / 1e3));
-    page.querySelector("[data-recall-setting=template]").value = recall.injection.template;
-    const trace = recallCoordinator.trace;
-    const traceSummary = page.querySelector("[data-recall-trace-summary]");
-    for (const [label, value] of [
-      ["\u56FA\u5B9A\u8FD1\u671F\u6279\u6B21", trace ? String(trace.recentBatchIds.length) : "-"],
-      ["\u56FA\u5B9A\u8FD1\u671F\u5207\u7247", trace ? String(trace.recentSliceCount) : "-"],
-      ["\u8BED\u4E49 Top K", trace ? String(trace.semanticReturned) : "-"],
-      ["\u6700\u7EC8\u6CE8\u5165", trace ? String(trace.injected) : "-"]
-    ]) {
-      const item = document.createElement("div");
-      const name = document.createElement("span");
-      name.textContent = label;
-      const strong = document.createElement("strong");
-      strong.textContent = value;
-      item.append(name, strong);
-      traceSummary.append(item);
-    }
-    page.querySelector("[data-recall-trace]").textContent = trace ? JSON.stringify(trace, null, 2) : "\u5C1A\u65E0\u53EC\u56DE\u8BB0\u5F55\u3002";
-    host.replaceChildren(page);
-    this.renderSources();
-    this.renderPrompts();
-  }
-  renderSources() {
-    if (!this.current) return;
-    const host = this.root.querySelector("[data-recall-sources]");
-    const attachedByNamespace = new Map(
-      this.current.catalog.attachedRecallSources.map((source) => [source.namespaceId, source])
+// src/extension/workbench/summary.ts
+async function summaryView(ctx) {
+  const coordinator = ctx.summary;
+  const state = await coordinator.load();
+  const page = el("div", "ew-page-content");
+  const settings = getSettings();
+  if (ctx.route === "summary/rules") {
+    const f = fields([
+      {
+        key: "count",
+        label: "\u81EA\u52A8\u603B\u7ED3\u6D88\u606F\u9608\u503C",
+        type: "number",
+        min: 2,
+        max: 500,
+        value: settings.summary.messageCount
+      }
+    ]);
+    page.append(
+      saveForm(f, (v) => {
+        const s = getSettings();
+        s.summary.messageCount = v.count;
+        saveSettings(s);
+      }),
+      actions(
+        button(
+          "\u5411\u91CF\u5316\u8C03\u7528\u914D\u7F6E",
+          "arrow-up-right-from-square",
+          () => ctx.navigate("api/workflows")
+        )
+      )
     );
-    const sources = [...this.sourceTraces].sort((left, right) => left.order - right.order);
-    host.replaceChildren();
-    sources.forEach((source, index) => {
-      const attached = attachedByNamespace.get(source.namespaceId);
-      const row = document.createElement("article");
-      row.className = "echoes-recall-source-row";
-      row.draggable = true;
-      row.dataset.sourceNamespace = source.namespaceId;
-      const handle = document.createElement("i");
-      handle.className = "fa-solid fa-grip-vertical echoes-drag-handle";
-      const meta3 = document.createElement("div");
-      meta3.className = "echoes-recall-source-meta";
-      const title = document.createElement("strong");
-      title.textContent = attached ? source.chatId : `${source.chatId}\uFF08\u5F53\u524D\uFF09`;
-      const detail = document.createElement("small");
-      detail.textContent = `${source.worldbookName} \xB7 ${compatibilityLabel(source)}`;
-      meta3.append(title, detail);
-      const weight = document.createElement("label");
-      weight.textContent = "\u6743\u91CD ";
-      const weightInput = document.createElement("input");
-      weightInput.type = "number";
-      weightInput.min = "0.1";
-      weightInput.max = "10";
-      weightInput.step = "0.1";
-      weightInput.value = String(source.weight);
-      weightInput.dataset.sourceWeight = source.namespaceId;
-      weight.append(weightInput);
-      const controls = document.createElement("div");
-      controls.className = "echoes-prompt-controls";
-      if (attached) {
-        const toggle = document.createElement("label");
-        toggle.className = "echoes-switch";
-        const input = document.createElement("input");
-        input.type = "checkbox";
-        input.checked = attached.enabled;
-        input.dataset.sourceEnabled = source.namespaceId;
-        toggle.append(input, document.createElement("span"));
-        controls.append(toggle);
-      }
-      const up = actionButton("arrow-up", "\u4E0A\u79FB", "source-up");
-      up.dataset.namespaceId = source.namespaceId;
-      up.disabled = index === 0;
-      const down = actionButton("arrow-down", "\u4E0B\u79FB", "source-down");
-      down.dataset.namespaceId = source.namespaceId;
-      down.disabled = index === sources.length - 1;
-      controls.append(up, down);
-      if (attached) {
-        const remove = actionButton("trash", "\u79FB\u9664\u6765\u6E90", "remove-source");
-        remove.dataset.namespaceId = source.namespaceId;
-        controls.append(remove);
-      }
-      row.append(handle, meta3, weight, controls);
-      host.append(row);
-    });
+    return page;
   }
-  renderPrompts() {
-    const settings = getSettings();
-    const items = settings.retrieval.recall.queryPreset.items;
-    const host = this.root.querySelector("[data-recall-prompts]");
-    host.replaceChildren();
-    items.forEach((item, index) => {
-      const row = document.createElement("article");
-      row.className = "echoes-recall-prompt-row";
-      row.innerHTML = `
-        <label class="echoes-check"><input type="checkbox" data-recall-prompt="enabled" data-index="${index}"></label>
-        <input type="text" data-recall-prompt="title" data-index="${index}">
-        <small></small>
-        <div data-value></div>
-        <div class="echoes-prompt-controls"></div>`;
-      const enabled = row.querySelector("[data-recall-prompt=enabled]");
-      enabled.checked = item.enabled;
-      enabled.setAttribute("aria-label", `\u542F\u7528\u67E5\u8BE2\u9879\uFF1A${item.title}`);
-      const title = row.querySelector("[data-recall-prompt=title]");
-      title.value = item.title;
-      title.setAttribute("aria-label", "\u67E5\u8BE2\u9879\u540D\u79F0");
-      row.querySelector("small").textContent = item.kind;
-      const valueHost = row.querySelector("[data-value]");
-      if (item.kind === "recent_messages") {
-        const count = document.createElement("input");
-        count.type = "number";
-        count.min = "0";
-        count.max = "100";
-        count.value = String(item.count);
-        count.dataset.recallPrompt = "count";
-        count.dataset.index = String(index);
-        valueHost.append(count);
-      } else if (item.kind === "custom") {
-        const content = document.createElement("textarea");
-        content.rows = 2;
-        content.value = item.content;
-        content.dataset.recallPrompt = "content";
-        content.dataset.index = String(index);
-        valueHost.append(content);
-      }
-      const controls = row.querySelector(".echoes-prompt-controls");
-      const up = actionButton("arrow-up", "\u4E0A\u79FB", "prompt-up");
-      up.dataset.index = String(index);
-      up.disabled = index === 0;
-      const down = actionButton("arrow-down", "\u4E0B\u79FB", "prompt-down");
-      down.dataset.index = String(index);
-      down.disabled = index === items.length - 1;
-      const remove = actionButton("trash", "\u5220\u9664", "prompt-delete");
-      remove.dataset.index = String(index);
-      controls.append(up, down, remove);
-      host.append(row);
-    });
+  if (ctx.route === "summary/prompts") {
+    page.append(
+      orderedEditor(
+        ctx,
+        "\u63D0\u793A\u8BCD",
+        settings.summary.promptPreset.items,
+        promptDescription,
+        promptEditor("summary"),
+        (items) => {
+          const s = getSettings();
+          s.summary.promptPreset = {
+            ...s.summary.promptPreset,
+            items,
+            updatedAt: now()
+          };
+          saveSettings(s);
+        }
+      ),
+      button("\u9884\u89C8\u5F85\u603B\u7ED3\u8BF7\u6C42", "eye", () => ctx.navigate("summary/tasks"))
+    );
+    return page;
   }
-  async attachSource() {
-    if (!this.current) return;
-    const locked = this.current;
-    const lockedChatId = locked.catalog.chatId;
-    const attached = new Set(locked.catalog.attachedRecallSources.map((source) => source.namespaceId));
-    const options = this.available.filter((source) => source.catalog.namespaceId !== locked.catalog.namespaceId && !attached.has(source.catalog.namespaceId));
-    const picker = dialogShell("\u9644\u52A0\u804A\u5929\u603B\u7ED3\u6E90", { className: "echoes-preview-dialog", closeOnly: true });
-    const body = picker.querySelector(".echoes-dialog-body");
-    if (options.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "echoes-empty-state";
-      empty.innerHTML = '<i class="fa-solid fa-link-slash" aria-hidden="true"></i><strong>\u6CA1\u6709\u53EF\u9644\u52A0\u7684\u804A\u5929\u603B\u7ED3</strong><span>\u5176\u4ED6\u804A\u5929\u9700\u8981\u5148\u751F\u6210\u603B\u7ED3\uFF0C\u4E14\u4E0D\u80FD\u5DF2\u7ECF\u9644\u52A0\u5230\u5F53\u524D\u804A\u5929\u3002</span>';
-      body.append(empty);
-      picker.showModal();
+  if (ctx.route === "summary/cleaning") {
+    page.append(
+      orderedEditor(
+        ctx,
+        "\u89C4\u5219",
+        settings.summary.preprocessRules,
+        (r) => [r.name, r.type],
+        ruleEditor,
+        (items) => {
+          const s = getSettings();
+          s.summary.preprocessRules = items.map((r, i) => ({ ...r, order: i }));
+          saveSettings(s);
+        }
+      )
+    );
+    return page;
+  }
+  if (ctx.route === "summary/recall") return recallView(ctx, state);
+  if (ctx.route === "summary/tasks") {
+    const messages2 = currentChatMessages();
+    const checkpoint = messages2.findIndex(
+      (m) => m.id === state.catalog.lastCommittedMessageId
+    );
+    const f = fields(
+      [
+        {
+          key: "start",
+          label: "\u8D77\u59CB\u6D88\u606F\u5E8F\u53F7",
+          type: "number",
+          min: 0,
+          max: Math.max(0, messages2.length - 1),
+          value: Math.min(checkpoint + 1, Math.max(0, messages2.length - 1)),
+          required: true
+        },
+        {
+          key: "end",
+          label: "\u7ED3\u675F\u6D88\u606F\u5E8F\u53F7",
+          type: "number",
+          min: 0,
+          max: Math.max(0, messages2.length - 1),
+          value: Math.max(0, messages2.length - 1),
+          required: true
+        }
+      ],
+      false
+    );
+    page.append(
+      el(
+        "div",
+        "ew-metrics",
+        metric("\u804A\u5929\u6D88\u606F", messages2.length),
+        metric("\u5DF2\u5904\u7406\u81F3", checkpoint < 0 ? "\u5C1A\u672A\u5904\u7406" : checkpoint),
+        metric("\u4E0B\u4E00\u6279\u6B21", state.catalog.nextBatchNumber)
+      ),
+      section(
+        "\u624B\u52A8\u751F\u6210",
+        f.node,
+        actions(
+          button("\u9884\u89C8\u8F93\u5165", "eye", async () => {
+            const v = f.values();
+            ctx.guard();
+            const request = await coordinator.previewManual(v.start, v.end);
+            dialog("\u603B\u7ED3\u8F93\u5165\u9884\u89C8", detail("\u6700\u7EC8\u63D0\u793A\u8BCD\u4E0E\u6D88\u606F", request));
+          }),
+          button(
+            "\u751F\u6210\u603B\u7ED3",
+            "play",
+            async () => {
+              const v = f.values();
+              ctx.guard();
+              await ctx.run(
+                "\u603B\u7ED3 " + v.start + "\u2013" + v.end,
+                () => coordinator.runManual(v.start, v.end),
+                () => coordinator.stop()
+              );
+              await ctx.refresh();
+            },
+            "primary"
+          ),
+          button("\u505C\u6B62\u603B\u7ED3", "stop", () => coordinator.stop(), "danger")
+        )
+      ),
+      section(
+        "\u81EA\u52A8\u8FD0\u884C",
+        actions(
+          el(
+            "label",
+            "ew-toggle",
+            check2("\u81EA\u52A8\u603B\u7ED3", state.catalog.autoRun, async (v) => {
+              ctx.guard();
+              await ctx.run(
+                "\u66F4\u65B0\u81EA\u52A8\u603B\u7ED3\u8BBE\u7F6E",
+                () => coordinator.setAutoRun(v)
+              );
+              if (v)
+                void ctx.run(
+                  "\u81EA\u52A8\u603B\u7ED3",
+                  () => coordinator.runAutomatic(),
+                  () => coordinator.stop()
+                ).catch(notifyError);
+            }),
+            "\u81EA\u52A8\u603B\u7ED3"
+          ),
+          button(
+            "\u68C0\u67E5\u5F85\u5904\u7406\u6D88\u606F",
+            "rotate",
+            () => ctx.run(
+              "\u81EA\u52A8\u603B\u7ED3",
+              () => coordinator.runAutomatic(),
+              () => coordinator.stop()
+            ).then(() => ctx.refresh())
+          )
+        )
+      )
+    );
+    const batch = fields([
+      {
+        key: "number",
+        label: "\u4E0B\u4E00\u6279\u6B21\u7F16\u53F7",
+        type: "number",
+        min: 1,
+        value: state.catalog.nextBatchNumber,
+        required: true
+      }
+    ]);
+    page.append(
+      section(
+        "\u6279\u6B21\u7F16\u53F7",
+        saveForm(
+          batch,
+          async (v) => {
+            ctx.guard();
+            await coordinator.setNextBatchNumber(v.number);
+          },
+          "\u8BBE\u7F6E\u7F16\u53F7"
+        )
+      )
+    );
+    return page;
+  }
+  if (ctx.route === "summary/hiding") {
+    const status = await coordinator.compression.inspect(state);
+    const c = state.catalog.compression;
+    const f = fields([
+      { key: "enabled", label: "\u81EA\u52A8\u9690\u85CF", type: "checkbox", value: c.enabled },
+      {
+        key: "keepRecentMessages",
+        label: "\u4FDD\u7559\u6700\u8FD1\u539F\u6D88\u606F\u6570",
+        type: "number",
+        min: 0,
+        max: 1e3,
+        value: c.keepRecentMessages
+      },
+      {
+        key: "recentBatchCount",
+        label: "\u56FA\u5B9A\u8FD1\u671F\u603B\u7ED3\u6279\u6B21\u6570",
+        type: "number",
+        min: 0,
+        max: 100,
+        value: c.recentBatchCount
+      },
+      {
+        key: "deletionPolicy",
+        label: "\u5220\u9664\u603B\u7ED3\u65F6",
+        type: "select",
+        value: c.deletionPolicy,
+        options: [
+          ["restore_first", "\u5148\u6062\u590D\u5BF9\u5E94\u539F\u6D88\u606F"],
+          ["confirm_restore", "\u6BCF\u6B21\u786E\u8BA4\u5904\u7406\u65B9\u5F0F"],
+          ["keep_hidden", "\u4FDD\u7559\u9690\u85CF\u72B6\u6001"]
+        ]
+      }
+    ]);
+    page.append(
+      el(
+        "div",
+        "ew-metrics",
+        metric("\u5DF2\u9690\u85CF\u539F\u6D88\u606F", status.hidden),
+        metric("\u56FA\u5B9A\u53EF\u89C1", status.pinned),
+        metric("\u53EF\u9690\u85CF", status.compressible),
+        metric("\u53EC\u56DE", state.catalog.recallEnabled ? "\u5DF2\u542F\u7528" : "\u672A\u542F\u7528")
+      ),
+      ...!status.indexSafe ? [el("p", "warning", "\u90E8\u5206\u6279\u6B21\u7684\u68C0\u7D22\u7D22\u5F15\u4E0D\u5B8C\u6574\u3002")] : [],
+      section(
+        "\u9690\u85CF\u7B56\u7565",
+        saveForm(f, async (v) => {
+          ctx.guard();
+          await coordinator.saveCompression(v);
+        }),
+        actions(
+          button("\u91CD\u65B0\u5E94\u7528\u9690\u85CF", "arrows-rotate", async () => {
+            ctx.guard();
+            await coordinator.compression.reconcile();
+            await ctx.refresh();
+          }),
+          button(
+            "\u53EC\u56DE\u8BBE\u7F6E",
+            "arrow-up-right-from-square",
+            () => ctx.navigate("summary/recall")
+          )
+        )
+      )
+    );
+    const range = fields([
+      {
+        key: "start",
+        label: "\u8D77\u59CB\u697C\u5C42",
+        type: "number",
+        min: 0,
+        value: 0,
+        required: true
+      },
+      {
+        key: "end",
+        label: "\u7ED3\u675F\u697C\u5C42",
+        type: "number",
+        min: 0,
+        value: Math.max(0, SillyTavern.getContext().chat.length - 1),
+        required: true
+      }
+    ]);
+    page.append(
+      section(
+        "\u6062\u590D\u539F\u6D88\u606F",
+        range.node,
+        actions(
+          button("\u6062\u590D\u9009\u5B9A\u8303\u56F4", "eye", async () => {
+            const v = range.values();
+            ctx.guard();
+            await coordinator.compression.restoreRange(state, v.start, v.end);
+            await ctx.refresh();
+          }),
+          button("\u6062\u590D\u5168\u90E8\u539F\u6D88\u606F", "eye", async () => {
+            if (confirm("\u6062\u590D\u6240\u6709\u7531 Echoes \u9690\u85CF\u7684\u539F\u6D88\u606F\uFF1F")) {
+              ctx.guard();
+              await coordinator.compression.restoreAll(state);
+              await ctx.refresh();
+            }
+          })
+        )
+      )
+    );
+    return page;
+  }
+  const ui = local(ctx, "summary-list", () => ({
+    query: "",
+    status: "all",
+    selected: /* @__PURE__ */ new Set(),
+    expanded: /* @__PURE__ */ new Set(),
+    page: 0
+  }));
+  const ids = new Set(state.slices.map((s) => s.id));
+  for (const selected of ui.selected)
+    if (!ids.has(selected)) ui.selected.delete(selected);
+  const groups = [...new Set(state.slices.map((s) => s.batch.id))].map((batchId) => state.slices.filter((s) => s.batch.id === batchId)).sort((a, b) => b[0].batch.batchNumber - a[0].batch.batchNumber);
+  let compression2;
+  try {
+    compression2 = await coordinator.compression.inspect(state);
+  } catch {
+  }
+  const host = el("div");
+  const selection = el("div", "ew-selection");
+  const edit = (slice) => editDialog(
+    "\u7F16\u8F91\u5207\u7247 " + slice.batch.batchNumber + "." + slice.sliceNumber,
+    [
+      {
+        key: "timestamp",
+        label: "\u72EC\u7ACB\u65F6\u95F4\u6233",
+        value: slice.timestamp,
+        required: true
+      },
+      { key: "title", label: "\u6807\u9898", value: slice.title, required: true },
+      {
+        key: "tags",
+        label: "\u6807\u7B7E\uFF08\u6BCF\u884C\u4E00\u9879\uFF09",
+        type: "textarea",
+        value: slice.tags.join("\n"),
+        rows: 3
+      },
+      {
+        key: "content",
+        label: "\u6B63\u6587",
+        type: "textarea",
+        value: slice.content,
+        rows: 20,
+        required: true
+      }
+    ],
+    async (v) => {
+      ctx.guard();
+      await ctx.run(
+        "\u4FDD\u5B58\u5E76\u540C\u6B65\u5207\u7247",
+        () => coordinator.editSlice(slice.id, {
+          timestamp: v.timestamp,
+          title: v.title,
+          content: v.content,
+          tags: v.tags.split("\n").map((x) => x.trim()).filter(Boolean)
+        })
+      );
+      await ctx.refresh();
+    }
+  );
+  const operate = async (action, slices) => {
+    ctx.guard();
+    if (!slices.length) return;
+    const batches = [
+      ...new Map(slices.map((s) => [s.batch.id, s.batch])).values()
+    ].sort((a, b) => a.batchNumber - b.batchNumber);
+    const batchIds = batches.map((b) => b.id);
+    if (action === "delete") {
+      if (!confirm(
+        "\u5220\u9664 " + slices.length + " \u4E2A\u5207\u7247\uFF0C\u6D89\u53CA " + batches.length + " \u4E2A\u6279\u6B21\uFF1F"
+      ))
+        return;
+      const policy = state.catalog.compression.deletionPolicy;
+      if (policy === "restore_first" || policy === "confirm_restore" && confirm("\u540C\u65F6\u6062\u590D\u8FD9\u4E9B\u6279\u6B21\u7684\u539F\u6D88\u606F\uFF1F")) {
+        ctx.guard();
+        await coordinator.compression.restoreBatch(state, batchIds);
+      }
+      ctx.guard();
+      await ctx.run(
+        "\u5220\u9664\u603B\u7ED3\u5207\u7247",
+        () => coordinator.deleteSlices(slices.map((s) => s.id))
+      );
+      ui.selected.clear();
+    } else if (action === "reset") {
+      const start = batches[0].batchNumber;
+      const affected = state.slices.filter(
+        (s) => s.batch.source?.kind !== "imported" && s.batch.batchNumber >= start
+      );
+      if (!confirm(
+        "\u4ECE\u6279\u6B21 " + start + " \u91CD\u7F6E\uFF0C\u5C06\u6E05\u9664\u540E\u7EED " + affected.length + " \u4E2A\u751F\u6210\u5207\u7247\u5E76\u6062\u590D\u5BF9\u5E94\u539F\u6D88\u606F\u3002\u7EE7\u7EED\uFF1F"
+      ))
+        return;
+      ctx.guard();
+      await coordinator.compression.restoreBatch(state, [
+        ...new Set(affected.map((s) => s.batch.id))
+      ]);
+      ctx.guard();
+      await coordinator.resetFrom(start);
+      ui.selected.clear();
+    } else if (action === "rebuild") {
+      if (batches.some((b) => b.source?.kind === "imported"))
+        throw new Error("\u5BFC\u5165\u6279\u6B21\u6CA1\u6709\u539F\u804A\u5929\u6D88\u606F\uFF0C\u4E0D\u80FD\u91CD\u65B0\u603B\u7ED3\u3002");
+      if (!confirm("\u91CD\u65B0\u603B\u7ED3 " + batches.length + " \u4E2A\u6279\u6B21\u4F1A\u8C03\u7528\u751F\u6210\u6A21\u578B\uFF0C\u7EE7\u7EED\uFF1F"))
+        return;
+      let stopped = false;
+      await ctx.run(
+        "\u6279\u91CF\u91CD\u65B0\u603B\u7ED3",
+        async () => {
+          for (const b of batches) {
+            if (stopped) break;
+            ctx.guard();
+            await coordinator.rebuildBatch(b.batchNumber);
+          }
+        },
+        async () => {
+          stopped = true;
+          await coordinator.stop();
+        }
+      );
+    } else if (action === "restore") {
+      await coordinator.compression.restoreBatch(state, batchIds);
+    } else if (action === "hide") {
+      await coordinator.compression.recompressBatch(state, batchIds);
+    }
+    await ctx.refresh();
+  };
+  const drawSelection = () => {
+    const selected = state.slices.filter((s) => ui.selected.has(s.id));
+    selection.hidden = !selected.length;
+    selection.replaceChildren(
+      el(
+        "strong",
+        "",
+        "\u5DF2\u9009 " + selected.length + " \u4E2A\u5207\u7247 \xB7 " + new Set(selected.map((s) => s.batch.id)).size + " \u4E2A\u6279\u6B21"
+      ),
+      actions(
+        button("\u91CD\u65B0\u603B\u7ED3\u6279\u6B21", "rotate", () => operate("rebuild", selected)),
+        button("\u6062\u590D\u539F\u6D88\u606F", "eye", () => operate("restore", selected)),
+        button("\u91CD\u65B0\u9690\u85CF", "eye-slash", () => operate("hide", selected)),
+        button(
+          "\u4ECE\u6700\u65E9\u6279\u6B21\u91CD\u7F6E",
+          "rotate-left",
+          () => operate("reset", selected)
+        ),
+        button(
+          "\u5220\u9664\u5207\u7247",
+          "trash",
+          () => operate("delete", selected),
+          "danger"
+        ),
+        tool("\u53D6\u6D88\u9009\u62E9", "xmark", () => {
+          ui.selected.clear();
+          draw();
+        })
+      )
+    );
+  };
+  const draw = () => {
+    drawSelection();
+    host.replaceChildren();
+    const visible = groups.map(
+      (slices) => slices.filter(
+        (s) => (ui.status === "all" || s.batch.state === ui.status) && [s.title, s.content, s.timestamp, ...s.tags].join(" ").toLowerCase().includes(ui.query.toLowerCase())
+      )
+    ).filter((s) => s.length);
+    const totalPages = Math.max(1, Math.ceil(visible.length / 20));
+    ui.page = Math.min(ui.page, totalPages - 1);
+    if (!visible.length) {
+      host.append(
+        empty(
+          "\u6CA1\u6709\u5339\u914D\u7684\u603B\u7ED3\u8BB0\u5F55",
+          button("\u751F\u6210\u603B\u7ED3", "plus", () => ctx.navigate("summary/tasks"))
+        )
+      );
       return;
     }
-    const select = document.createElement("select");
-    select.setAttribute("aria-label", "\u9009\u62E9\u8981\u9644\u52A0\u7684\u804A\u5929\u603B\u7ED3\u6E90");
-    for (const source of options) {
-      const option = document.createElement("option");
-      option.value = source.catalog.namespaceId;
-      option.textContent = `${source.catalog.chatId} \xB7 ${source.worldbookName}`;
-      select.append(option);
+    for (const slices of visible.slice(ui.page * 20, (ui.page + 1) * 20)) {
+      const b = slices[0].batch;
+      const all = state.slices.filter((s) => s.batch.id === b.id);
+      const c = compression2?.batches.find((x) => x.batchId === b.id);
+      const head = el(
+        "div",
+        "ew-batch-head",
+        actions(
+          check2(
+            "\u9009\u62E9\u6279\u6B21 " + b.batchNumber,
+            slices.every((s) => ui.selected.has(s.id)),
+            (v) => {
+              slices.forEach(
+                (s) => v ? ui.selected.add(s.id) : ui.selected.delete(s.id)
+              );
+              draw();
+            }
+          ),
+          button(
+            "\u6279\u6B21 " + b.batchNumber,
+            ui.expanded.has(b.id) ? "chevron-down" : "chevron-right",
+            () => {
+              ui.expanded.has(b.id) ? ui.expanded.delete(b.id) : ui.expanded.add(b.id);
+              draw();
+            }
+          ),
+          badge(all.length + " \u4E2A\u5207\u7247"),
+          el("span", "ew-muted", b.startMessageId + " \u2013 " + b.endMessageId)
+        ),
+        actions(
+          badge(
+            "\u5411\u91CF\u5C31\u7EEA " + all.filter((s) => s.batch.state === "ready").length + " / " + all.length
+          ),
+          el(
+            "span",
+            "ew-muted",
+            c ? "\u5DF2\u9690\u85CF " + c.hidden + " / " + c.covered + " \u6761\u539F\u6D88\u606F" : "\u9690\u85CF\u72B6\u6001\u4E0D\u53EF\u7528"
+          ),
+          tool("\u91CD\u65B0\u603B\u7ED3\u6B64\u6279\u6B21", "rotate", () => operate("rebuild", all)),
+          tool("\u6062\u590D\u6B64\u6279\u6B21\u539F\u6D88\u606F", "eye", () => operate("restore", all))
+        )
+      );
+      const group = el("section", "ew-batch", head);
+      if (ui.expanded.has(b.id) || ui.query)
+        group.append(
+          table(
+            ["\u9009\u62E9", "\u5207\u7247", "\u6545\u4E8B\u65F6\u95F4", "\u6807\u9898", "\u5411\u91CF\u72B6\u6001", "\u64CD\u4F5C"],
+            slices.map((s) => [
+              check2("\u9009\u62E9\u5207\u7247 " + s.sliceNumber, ui.selected.has(s.id), (v) => {
+                v ? ui.selected.add(s.id) : ui.selected.delete(s.id);
+                drawSelection();
+              }),
+              b.batchNumber + "." + s.sliceNumber,
+              s.timestamp,
+              s.title,
+              stateBadge(s.batch.state),
+              actions(
+                tool("\u7F16\u8F91\u5207\u7247", "pen", () => edit(s)),
+                tool(
+                  "\u5220\u9664\u5207\u7247",
+                  "trash",
+                  () => operate("delete", [s]),
+                  "danger"
+                )
+              )
+            ])
+          )
+        );
+      host.append(group);
     }
-    const add = document.createElement("button");
-    add.type = "button";
-    add.className = "menu_button echoes-primary";
-    add.textContent = "\u9644\u52A0";
-    body.append(select, add);
-    add.addEventListener("click", () => this.run(async () => {
-      if (this.current !== locked || SillyTavern.getContext().chatId !== lockedChatId || window.TavernHelper?.getChatWorldbookName("current") !== locked.worldbookName) {
-        throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u672C\u6B21\u9644\u52A0\u672A\u4FDD\u5B58\u3002\u8BF7\u5728\u76EE\u6807\u804A\u5929\u4E2D\u91CD\u65B0\u6253\u5F00\u9009\u62E9\u5668\u3002");
-      }
-      const source = options.find((candidate) => candidate.catalog.namespaceId === select.value);
-      if (!source) return;
-      locked.catalog.attachedRecallSources.push({
-        chatId: source.catalog.chatId,
-        namespaceId: source.catalog.namespaceId,
-        worldbookName: source.worldbookName,
-        enabled: true,
-        weight: 1,
-        order: Math.max(-1, ...this.sourceTraces.map((item) => item.order)) + 1
-      });
-      await this.saveSourceConfiguration();
-      picker.close();
-    }));
-    picker.showModal();
-  }
-  async removeSource(namespaceId) {
-    if (!this.current) return;
-    this.current.catalog.attachedRecallSources = this.current.catalog.attachedRecallSources.filter((source) => source.namespaceId !== namespaceId);
-    await this.saveSourceConfiguration();
-  }
-  async saveSourceConfiguration() {
-    if (!this.current) return;
-    const enabled = this.root.querySelector("[data-recall-enabled]")?.checked ?? this.current.catalog.recallEnabled;
-    const weightInputs = new Map(
-      [...this.root.querySelectorAll("[data-source-weight]")].map((input) => [input.dataset.sourceWeight, boundedNumber(input, 0.1, 10, "\u6765\u6E90\u6743\u91CD", false)])
+    host.append(
+      actions(
+        button("\u4E0A\u4E00\u9875", "chevron-left", () => {
+          ui.page = Math.max(0, ui.page - 1);
+          draw();
+        }),
+        el("span", "ew-muted", ui.page + 1 + " / " + totalPages + " \u9875"),
+        button("\u4E0B\u4E00\u9875", "chevron-right", () => {
+          ui.page = Math.min(totalPages - 1, ui.page + 1);
+          draw();
+        })
+      )
     );
-    const enabledInputs = new Map(
-      [...this.root.querySelectorAll("[data-source-enabled]")].map((input) => [input.dataset.sourceEnabled, input.checked])
-    );
-    const currentWeight = weightInputs.get(this.current.catalog.namespaceId) ?? this.current.catalog.recallSourceWeight;
-    const attached = this.current.catalog.attachedRecallSources.map((source) => ({
-      ...source,
-      weight: weightInputs.get(source.namespaceId) ?? source.weight,
-      enabled: enabledInputs.get(source.namespaceId) ?? source.enabled
-    }));
-    this.current = await recallCoordinator.summaryStore.saveRecallConfiguration(
-      this.current.worldbookName,
+  };
+  const filter = fields(
+    [
       {
-        enabled,
-        weight: Math.max(0.1, Math.min(10, currentWeight)),
-        order: this.current.catalog.recallSourceOrder,
-        attachedSources: attached
+        key: "state",
+        label: "\u5411\u91CF\u72B6\u6001",
+        type: "select",
+        value: ui.status,
+        options: [
+          ["all", "\u5168\u90E8"],
+          ["ready", "\u5C31\u7EEA"],
+          ["pending", "\u5F85\u540C\u6B65"],
+          ["failed", "\u5931\u8D25"],
+          ["ambiguous", "\u5F85\u786E\u8BA4"],
+          ["stale", "\u6E90\u6D88\u606F\u53D8\u5316"]
+        ]
       }
-    );
-    if (!enabled) await recallCoordinator.clear();
-    await this.render();
-  }
-  async moveSource(namespaceId, direction) {
-    const ordered = [...this.sourceTraces].sort((left, right) => left.order - right.order);
-    const index = ordered.findIndex((source) => source.namespaceId === namespaceId);
-    const target = index + direction;
-    if (index < 0 || target < 0 || target >= ordered.length) return;
-    [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
-    await this.saveSourceOrder(ordered.map((source) => source.namespaceId));
-  }
-  async dropSource(sourceNamespace, targetNamespace) {
-    const ordered = [...this.sourceTraces].sort((left, right) => left.order - right.order).map((source) => source.namespaceId);
-    const from = ordered.indexOf(sourceNamespace);
-    const to = ordered.indexOf(targetNamespace);
-    if (from < 0 || to < 0 || from === to) return;
-    const [moved] = ordered.splice(from, 1);
-    ordered.splice(to, 0, moved);
-    await this.saveSourceOrder(ordered);
-  }
-  async saveSourceOrder(namespaces) {
-    if (!this.current) return;
-    const currentNamespace = this.current.catalog.namespaceId;
-    this.current.catalog.recallSourceOrder = namespaces.indexOf(currentNamespace);
-    this.current.catalog.attachedRecallSources = this.current.catalog.attachedRecallSources.map((source) => ({
-      ...source,
-      order: namespaces.indexOf(source.namespaceId)
-    }));
-    await this.saveSourceConfiguration();
-  }
-  saveRecallSettings() {
-    const settings = getSettings();
-    const recall = settings.retrieval.recall;
-    const input = (key) => this.root.querySelector(
-      `[data-recall-setting=${key}]`
-    );
-    recall.vectorEnabled = input("vectorEnabled").checked;
-    recall.bm25Enabled = input("bm25Enabled").checked;
-    recall.rerankEnabled = input("rerankEnabled").checked;
-    recall.finalTopK = boundedNumber(input("finalTopK"), 1, 100, "\u6700\u7EC8 Top K");
-    recall.vectorTopK = boundedNumber(input("vectorTopK"), 1, 200, "Vector K");
-    recall.bm25TopK = boundedNumber(input("bm25TopK"), 1, 200, "BM25 K");
-    recall.rerankTopK = boundedNumber(input("rerankTopK"), 1, 100, "Rerank K");
-    recall.injection.position = input("position").value;
-    recall.injection.role = input("role").value;
-    recall.injection.depth = boundedNumber(input("depth"), 0, 100, "\u6CE8\u5165\u6DF1\u5EA6");
-    recall.injection.order = boundedNumber(input("order"), -1e4, 1e4, "\u6CE8\u5165\u987A\u5E8F");
-    recall.injection.maxWaitMs = boundedNumber(input("maxWaitSeconds"), 1, 300, "\u6700\u957F\u7B49\u5F85\u79D2\u6570") * 1e3;
-    recall.injection.template = input("template").value || "{{memories}}";
-    saveSettings(settings);
-  }
-  savePromptSettings() {
-    const settings = getSettings();
-    const items = settings.retrieval.recall.queryPreset.items;
-    this.root.querySelectorAll("[data-recall-prompt]").forEach((input) => {
-      const item = items[Number(input.dataset.index)];
-      if (!item) return;
-      if (input.dataset.recallPrompt === "enabled") item.enabled = input.checked;
-      else if (input.dataset.recallPrompt === "title") item.title = input.value.trim() || item.title;
-      else if (input.dataset.recallPrompt === "count" && item.kind === "recent_messages") {
-        item.count = boundedNumber(input, 0, 100, "\u6B64\u524D\u6D88\u606F\u6570\u91CF");
-      } else if (input.dataset.recallPrompt === "content" && item.kind === "custom") {
-        item.content = input.value;
-      }
-    });
-    settings.retrieval.recall.queryPreset.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-    saveSettings(settings);
-  }
-  movePrompt(index, direction) {
-    const settings = getSettings();
-    const items = settings.retrieval.recall.queryPreset.items;
-    const target = index + direction;
-    if (!items[index] || target < 0 || target >= items.length) return;
-    [items[index], items[target]] = [items[target], items[index]];
-    settings.retrieval.recall.queryPreset.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-    saveSettings(settings);
-    this.renderContent();
-  }
-  deletePrompt(index) {
-    const settings = getSettings();
-    settings.retrieval.recall.queryPreset.items.splice(index, 1);
-    settings.retrieval.recall.queryPreset.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-    saveSettings(settings);
-    this.renderContent();
-  }
-  async addPrompt() {
-    const picker = dialogShell("\u6DFB\u52A0\u53EC\u56DE\u67E5\u8BE2\u9879", { className: "echoes-preview-dialog", closeOnly: true });
-    const body = picker.querySelector(".echoes-dialog-body");
-    body.innerHTML = `
-      <div class="echoes-form-grid">
-        <label>\u7C7B\u578B<select name="kind">
-          <option value="current_message">\u5F53\u524D\u6D88\u606F</option>
-          <option value="recent_messages">\u6B64\u524D\u6D88\u606F</option>
-          <option value="character">\u89D2\u8272\u8BBE\u5B9A</option>
-          <option value="persona">\u7528\u6237\u8BBE\u5B9A</option>
-          <option value="custom">\u81EA\u5B9A\u4E49\u6587\u672C</option>
-        </select></label>
-        <label>\u6807\u9898<input name="title" type="text" value="\u5F53\u524D\u6D88\u606F"></label>
-        <label data-count>\u6D88\u606F\u6570\u91CF<input name="count" type="number" min="0" max="100" value="4"></label>
-        <label class="echoes-form-span" data-content>\u81EA\u5B9A\u4E49\u6587\u672C
-          <textarea name="content" rows="5"></textarea>
-        </label>
-      </div>
-      <button type="button" class="menu_button echoes-primary" data-add>\u6DFB\u52A0</button>`;
-    const kind = body.querySelector("[name=kind]");
-    const title = body.querySelector("[name=title]");
-    const countHost = body.querySelector("[data-count]");
-    const contentHost = body.querySelector("[data-content]");
-    const titles = {
-      current_message: "\u5F53\u524D\u6D88\u606F",
-      recent_messages: "\u6B64\u524D\u6D88\u606F",
-      character: "\u89D2\u8272\u8BBE\u5B9A",
-      persona: "\u7528\u6237\u8BBE\u5B9A",
-      custom: "\u81EA\u5B9A\u4E49\u67E5\u8BE2\u6587\u672C"
-    };
-    const refresh = () => {
-      const selected = kind.value;
-      title.value = titles[selected];
-      countHost.classList.toggle("echoes-hidden", selected !== "recent_messages");
-      contentHost.classList.toggle("echoes-hidden", selected !== "custom");
-    };
-    kind.addEventListener("change", refresh);
-    refresh();
-    body.querySelector("[data-add]").addEventListener("click", () => this.run(() => {
-      const selected = kind.value;
-      const base = {
-        id: newRecallPromptItemId(),
-        title: title.value.trim() || titles[selected],
-        enabled: true
-      };
-      let item;
-      if (selected === "recent_messages") {
-        item = {
-          ...base,
-          kind: selected,
-          count: boundedNumber(body.querySelector("[name=count]"), 0, 100, "\u6B64\u524D\u6D88\u606F\u6570\u91CF")
-        };
-      } else if (selected === "custom") {
-        item = {
-          ...base,
-          kind: selected,
-          content: body.querySelector("[name=content]").value
-        };
-      } else {
-        item = { ...base, kind: selected };
-      }
-      const settings = getSettings();
-      settings.retrieval.recall.queryPreset.items.push(item);
-      settings.retrieval.recall.queryPreset.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-      saveSettings(settings);
-      picker.close();
-      this.renderContent();
-    }));
-    picker.showModal();
-  }
-  previewQuery() {
-    this.savePromptSettings();
-    const settings = getSettings();
-    const prepared = prepareRecallQuery({
-      chat: SillyTavern.getContext().chat,
-      preset: settings.retrieval.recall.queryPreset,
-      ...queryIdentity()
-    });
-    const preview = dialogShell("\u53EC\u56DE\u67E5\u8BE2\u8BCD\u9884\u89C8", { className: "echoes-preview-dialog", closeOnly: true });
-    const pre = document.createElement("pre");
-    pre.textContent = prepared.query || "\u67E5\u8BE2\u8BCD\u4E3A\u7A7A\u3002";
-    preview.querySelector(".echoes-dialog-body").append(pre);
-    preview.showModal();
-  }
-  async preview() {
-    try {
-      const result = await recallCoordinator.preview();
-      const preview = dialogShell("\u53EC\u56DE\u7ED3\u679C\u9884\u89C8", { className: "echoes-preview-dialog", closeOnly: true });
-      const pre = document.createElement("pre");
-      const recentBatches = /* @__PURE__ */ new Map();
-      for (const slice of result.recentSlices) {
-        const current = recentBatches.get(slice.batch.id) ?? [];
-        current.push(slice);
-        recentBatches.set(slice.batch.id, current);
-      }
-      pre.textContent = [
-        `Query:
-${result.trace.query}`,
-        "",
-        `\u56FA\u5B9A\u8FD1\u671F\u603B\u7ED3\uFF08\u4E0D\u5360\u8BED\u4E49 Top K\uFF0C\u5171 ${result.recentSlices.length} \u4E2A\u5207\u7247\uFF09`,
-        ...[...recentBatches.values()].length > 0 ? [...recentBatches.values()].flatMap((slices) => [
-          `\u6279\u6B21 ${slices[0].batch.batchNumber}`,
-          ...slices.map((slice) => `- [${slice.title}] ${slice.content}`)
-        ]) : ["\u65E0"],
-        "",
-        `\u8BED\u4E49 Top K\uFF08${result.hits.length} \u6761\uFF09`,
-        ...result.hits.map((hit, index) => `${index + 1}. ${hit.document.text}
-RRF=${hit.rrfScore} rerank=${hit.rerankScore ?? "-"} weighted=${hit.weightedScore ?? "-"}`),
-        ...result.hits.length === 0 ? ["\u65E0"] : []
-      ].join("\n");
-      preview.querySelector(".echoes-dialog-body").append(pre);
-      preview.showModal();
-      this.renderContent();
-    } catch (error51) {
-      if (error51 instanceof Error && error51.name === "RecallRunSupersededError") return;
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u53EC\u56DE\u9884\u89C8\u5931\u8D25");
-    }
-  }
-};
-
-// src/extension/summary/summary-coordinator.ts
-init_client();
-
-// src/extension/summary/summary-request.ts
-var SUMMARY_OUTPUT_PROTOCOL = `\u8F93\u51FA\u5FC5\u987B\u662F\u4E00\u4E2A JSON \u5BF9\u8C61\uFF1A
-{"summaries":[{"timestamp":"YYYY\u3001YYYY-MM\u3001YYYY-MM-DD\u3001YYYY-MM-DDTHH \u6216 unknown","title":"\u7B80\u77ED\u6807\u9898","content":"\u72EC\u7ACB\u5B8C\u6574\u7684\u4E2D\u6587\u4E8B\u5B9E\u603B\u7ED3","tags":["\u5B9E\u4F53\u6216\u60C5\u8282\u5173\u952E\u8BCD"]}]}
-\u6BCF\u4E2A\u5207\u7247\u5FC5\u987B\u6709\u72EC\u7ACB\u65F6\u95F4\u6233\u3002\u751F\u6210 1 \u81F3 50 \u4E2A\u5207\u7247\uFF0C\u4E0D\u8981\u8F93\u51FA Markdown \u4EE3\u7801\u56F4\u680F\u6216 JSON \u4E4B\u5916\u7684\u6587\u5B57\u3002`;
-function currentChatMessages() {
-  const seen = /* @__PURE__ */ new Set();
-  return SillyTavern.getContext().chat.flatMap((message3, index) => {
-    const content = String(message3.mes ?? message3.message ?? "").trim();
-    if (!content) return [];
-    const rawId = String(message3.message_id ?? message3.id ?? index);
-    const id2 = seen.has(rawId) ? `${rawId}:${index}` : rawId;
-    seen.add(id2);
-    return [{
-      id: id2,
-      role: message3.is_user === true || message3.role === "user" ? "user" : "assistant",
-      content
-    }];
-  });
-}
-async function summarySourceHash(messages2) {
-  return sourceMessagesHash(messages2);
-}
-async function automaticSummaryBatch(messages2, catalog, messageCount) {
-  const checkpointIndex = catalog.lastCommittedMessageId ? messages2.findIndex((message3) => message3.id === catalog.lastCommittedMessageId) : -1;
-  if (catalog.lastCommittedMessageId && checkpointIndex < 0) return null;
-  const start = checkpointIndex + 1;
-  const threshold = Math.max(2, Math.min(500, Math.floor(messageCount)));
-  if (messages2.length - start < threshold) return null;
-  const boundary = Math.min(messages2.length - 1, start + threshold - 1);
-  let end = -1;
-  for (let index = boundary; index >= start; index -= 1) {
-    if (messages2[index]?.role !== "assistant") continue;
-    if (!messages2.slice(index + 1).some((message3) => message3.role === "user")) continue;
-    end = index;
-    break;
-  }
-  if (end < start) return null;
-  const selected = messages2.slice(start, end + 1);
-  const batchNumber = catalog.nextBatchNumber;
-  return {
-    messages: selected,
-    batch: {
-      id: `summary_batch_${batchNumber}`,
-      batchNumber,
-      startMessageId: selected[0].id,
-      endMessageId: selected.at(-1).id,
-      messageIds: selected.map((message3) => message3.id),
-      sourceHash: await summarySourceHash(selected)
-    }
-  };
-}
-async function manualSummaryBatch(messages2, catalog, startIndex, endIndex, existingBatch) {
-  if (!Number.isInteger(startIndex) || !Number.isInteger(endIndex) || startIndex < 0 || endIndex < startIndex) {
-    throw new Error("\u624B\u52A8\u603B\u7ED3\u6D88\u606F\u8303\u56F4\u65E0\u6548\u3002");
-  }
-  const selected = messages2.slice(startIndex, endIndex + 1);
-  if (selected.length === 0 || selected.length > 500) throw new Error("\u624B\u52A8\u603B\u7ED3\u8303\u56F4\u5FC5\u987B\u5305\u542B 1 \u81F3 500 \u6761\u6D88\u606F\u3002");
-  const batchNumber = existingBatch?.batchNumber ?? catalog.nextBatchNumber;
-  return {
-    messages: selected,
-    batch: {
-      id: existingBatch?.id ?? `summary_batch_${batchNumber}`,
-      batchNumber,
-      startMessageId: selected[0].id,
-      endMessageId: selected.at(-1).id,
-      messageIds: selected.map((message3) => message3.id),
-      sourceHash: await summarySourceHash(selected)
-    }
-  };
-}
-function macro3(value, charName, userName) {
-  return value.replaceAll("{{char}}", charName).replaceAll("{{user}}", userName);
-}
-function characterCardContent2(character, charName) {
-  return [
-    ["Name", charName],
-    ["Description", character.description],
-    ["Personality", character.personality],
-    ["Scenario", character.scenario]
-  ].flatMap(([title, raw]) => {
-    const value = String(raw ?? "").trim();
-    return value ? [`${title}:
-${value}`] : [];
-  }).join("\n\n");
-}
-async function activatedWorldbookContent2(messages2) {
-  const context = SillyTavern.getContext();
-  if (typeof context.getWorldInfoPrompt !== "function") {
-    throw new Error("SillyTavern does not expose the worldbook activation API required by this summary prompt.");
-  }
-  const result = await context.getWorldInfoPrompt(
-    messages2.map((message3) => message3.content),
-    Math.max(1, Math.floor(context.maxContext ?? 2e5)),
-    true
+    ],
+    false
   );
-  let content = String(result.worldInfoString ?? "").trim();
-  const helper6 = window.TavernHelper;
-  const worldbookName = helper6?.getChatWorldbookName("current");
-  if (content && helper6 && worldbookName) {
-    const entries2 = await helper6.getWorldbook(worldbookName);
-    for (const entry of entries2) {
-      const kind = String(entry.extra?.echoes?.kind ?? "");
-      if ((kind === "status_injection" || kind === "retrieval_injection") && entry.content) {
-        content = content.replaceAll(entry.content, "");
-      }
-    }
-  }
-  return content.trim();
-}
-function renderPreviousSlice(slice) {
-  return `[${slice.timestamp}] [${slice.title}]
-${slice.content}`;
-}
-function previousSummaryContent(item, slices) {
-  if (item.count === 0) return "";
-  if ((item.unit ?? "slices") === "slices") {
-    return slices.slice(-item.count).map(renderPreviousSlice).join("\n\n");
-  }
-  const batchIds = [...new Map(slices.map((slice) => [slice.batch.id, slice.batch])).values()].sort((left, right) => left.batchNumber - right.batchNumber).slice(-item.count).map((batch) => batch.id);
-  const selected = new Set(batchIds);
-  const grouped = /* @__PURE__ */ new Map();
-  for (const slice of slices) {
-    if (!selected.has(slice.batch.id)) continue;
-    const batch = grouped.get(slice.batch.id) ?? [];
-    batch.push(slice);
-    grouped.set(slice.batch.id, batch);
-  }
-  return [...grouped.values()].map((batch) => {
-    const ordered = [...batch].sort((left, right) => left.sliceNumber - right.sliceNumber);
-    return `[Summary batch ${ordered[0].batch.batchNumber}]
-${ordered.map(renderPreviousSlice).join("\n\n")}`;
-  }).join("\n\n");
-}
-async function dynamicContent(item, cleanedMessages, previousSlices) {
-  const context = SillyTavern.getContext();
-  const character = context.characters?.[context.characterId ?? -1] ?? {};
-  const charName = String(character.name ?? "Character");
-  const userName = String(context.powerUserSettings?.persona_name ?? context.name1 ?? "User");
-  if (item.kind === "custom") return macro3(item.content, charName, userName);
-  if (item.kind === "character") return characterCardContent2(character, charName);
-  if (item.kind === "worldbook") return activatedWorldbookContent2(cleanedMessages);
-  if (item.kind === "persona") {
-    const description = String(context.powerUserSettings?.persona_description ?? "").trim();
-    return description ? `${userName}:
-${description}` : "";
-  }
-  if (item.kind === "previous_summaries") return previousSummaryContent(item, previousSlices);
-  return cleanedMessages.map((message3) => {
-    const name = message3.role === "user" ? "Game Master / World" : charName;
-    return `[${message3.id}] ${name}: ${message3.content}`;
-  }).join("\n\n");
-}
-async function prepareSummaryRequest(options) {
-  const cleanedMessages = await preprocessSummaryMessages(options.messages, options.settings.summary.preprocessRules);
-  if (cleanedMessages.length === 0) throw new Error("\u6D88\u606F\u6E05\u6D17\u540E\u6CA1\u6709\u53EF\u603B\u7ED3\u5185\u5BB9\u3002");
-  if (!options.settings.summary.promptPreset.items.some((item) => item.enabled && item.kind === "messages")) {
-    throw new Error("\u603B\u7ED3\u9884\u8BBE\u81F3\u5C11\u9700\u8981\u4E00\u4E2A\u542F\u7528\u7684\u5F85\u603B\u7ED3\u6D88\u606F\u9879\u3002");
-  }
-  const previousSlices = options.state.slices.filter((slice) => slice.batch.batchNumber < options.batch.batchNumber && slice.batch.state !== "stale");
-  const promptBlocks = [];
-  for (const item of options.settings.summary.promptPreset.items) {
-    if (!item.enabled) continue;
-    const content = (await dynamicContent(item, cleanedMessages, previousSlices)).trim();
-    if (content) promptBlocks.push({ id: item.id, title: item.title, role: item.role, content });
-  }
-  return {
-    batch: options.batch,
-    originalMessages: structuredClone(options.messages),
-    cleanedMessages,
-    promptBlocks,
-    promptMessages: promptBlocks.map(({ role: role2, content }) => ({ role: role2, content }))
-  };
-}
-async function firstStaleBatchNumber(state, messages2) {
-  const byId = new Map(messages2.map((message3) => [message3.id, message3]));
-  const batches = [...new Map(state.slices.map((slice) => [slice.batch.id, slice.batch])).values()].sort((left, right) => left.batchNumber - right.batchNumber);
-  for (const batch of batches) {
-    if (batch.source?.kind === "imported") continue;
-    if (batch.state === "stale") return batch.batchNumber;
-    const current = batch.messageIds.map((id2) => byId.get(id2));
-    if (current.some((message3) => !message3)) return batch.batchNumber;
-    if (await summarySourceHash(current) !== batch.sourceHash) return batch.batchNumber;
-  }
-  return null;
-}
-
-// src/extension/summary/compression-coordinator.ts
-init_client();
-function requiredHelper2() {
-  if (!window.TavernHelper || typeof window.TavernHelper.getChatMessages !== "function" || typeof window.TavernHelper.setChatMessages !== "function") {
-    throw new Error("Echoes requires TavernHelper chat message APIs for compression.");
-  }
-  return window.TavernHelper;
-}
-function chatMessages(raw) {
-  return raw.flatMap((message3) => {
-    const content = String(message3.message ?? "").trim();
-    if (!content || message3.role !== "user" && message3.role !== "assistant") return [];
-    return [{
-      id: String(message3.message_id),
-      role: message3.role,
-      content
-    }];
+  filter.controls.get("state").addEventListener("change", () => {
+    ui.status = filter.controls.get("state").value;
+    ui.page = 0;
+    draw();
   });
-}
-function marker(message3) {
-  const parsed = messageCompressionMarkerSchema.safeParse(
-    message3.extra?.echoes?.compression
+  page.append(
+    el(
+      "div",
+      "ew-toolbar",
+      searchBox(
+        ui.query,
+        (v) => {
+          ui.query = v;
+          ui.page = 0;
+          draw();
+        },
+        "\u641C\u7D22\u6807\u9898\u3001\u6B63\u6587\u6216\u65F6\u95F4"
+      ),
+      actions(
+        filter.node,
+        button(
+          "\u4FEE\u590D\u7D22\u5F15",
+          "screwdriver-wrench",
+          () => ctx.run("\u4FEE\u590D\u603B\u7ED3\u7D22\u5F15", () => coordinator.repairIndex()).then(() => ctx.refresh())
+        ),
+        button(
+          "\u751F\u6210\u603B\u7ED3",
+          "plus",
+          () => ctx.navigate("summary/tasks"),
+          "primary"
+        )
+      )
+    ),
+    actions(
+      button("\u9009\u62E9\u7B5B\u9009\u7ED3\u679C", "check-double", () => {
+        state.slices.filter(
+          (s) => (ui.status === "all" || s.batch.state === ui.status) && [s.title, s.content, s.timestamp, ...s.tags].join(" ").toLowerCase().includes(ui.query.toLowerCase())
+        ).forEach((s) => ui.selected.add(s.id));
+        draw();
+      })
+    ),
+    selection,
+    host
   );
-  return parsed.success ? parsed.data : null;
+  draw();
+  return page;
 }
-function withMarker(message3, value) {
-  return {
-    ...message3.extra ?? {},
-    echoes: {
-      ...message3.extra?.echoes ?? {},
-      compression: value
+async function recallView(ctx, state) {
+  const page = el("div", "ew-page-content");
+  const settings = getSettings();
+  const r = settings.retrieval.recall;
+  const f = fields([
+    {
+      key: "enabled",
+      label: "\u5F53\u524D\u804A\u5929\u603B\u7ED3\u53EC\u56DE",
+      type: "checkbox",
+      value: state.catalog.recallEnabled
+    },
+    {
+      key: "vectorEnabled",
+      label: "\u5411\u91CF\u68C0\u7D22",
+      type: "checkbox",
+      value: r.vectorEnabled
+    },
+    {
+      key: "bm25Enabled",
+      label: "BM25 \u6587\u672C\u68C0\u7D22",
+      type: "checkbox",
+      value: r.bm25Enabled
+    },
+    {
+      key: "rerankEnabled",
+      label: "\u7ED3\u679C\u91CD\u6392\u5E8F",
+      type: "checkbox",
+      value: r.rerankEnabled
+    },
+    ...["vectorTopK", "bm25TopK", "rerankTopK", "finalTopK"].map(
+      (key) => ({
+        key,
+        label: {
+          vectorTopK: "\u5411\u91CF\u5019\u9009\u6570",
+          bm25TopK: "BM25 \u5019\u9009\u6570",
+          rerankTopK: "\u91CD\u6392\u5E8F\u5019\u9009\u6570",
+          finalTopK: "\u6700\u7EC8\u7ED3\u679C\u6570"
+        }[key],
+        type: "number",
+        min: 1,
+        max: key === "vectorTopK" || key === "bm25TopK" ? 200 : 100,
+        value: r[key]
+      })
+    )
+  ]);
+  page.append(
+    section(
+      "\u53EC\u56DE\u7B56\u7565",
+      saveForm(f, async (v) => {
+        ctx.guard();
+        const s = getSettings();
+        for (const k of [
+          "vectorEnabled",
+          "bm25Enabled",
+          "rerankEnabled",
+          "vectorTopK",
+          "bm25TopK",
+          "rerankTopK",
+          "finalTopK"
+        ])
+          s.retrieval.recall[k] = v[k];
+        saveSettings(s);
+        await ctx.summary.setRecallEnabled(v.enabled);
+      }),
+      button("\u68C0\u7D22\u9884\u89C8", "flask", async () => {
+        ctx.guard();
+        const result = await ctx.run(
+          "\u53EC\u56DE\u9884\u89C8",
+          () => recallCoordinator.preview()
+        );
+        dialog("\u53EC\u56DE\u7ED3\u679C", detail("\u67E5\u8BE2\u3001\u547D\u4E2D\u4E0E\u6CE8\u5165\u6587\u672C", result));
+      })
+    )
+  );
+  let sources = structuredClone(state.catalog.attachedRecallSources);
+  const sourceHost = el("div");
+  const saveSources = async () => {
+    ctx.guard();
+    const fresh = await ctx.summary.load();
+    await ctx.summary.store.saveRecallConfiguration(fresh.worldbookName, {
+      enabled: fresh.catalog.recallEnabled,
+      weight: fresh.catalog.recallSourceWeight,
+      order: fresh.catalog.recallSourceOrder,
+      attachedSources: sources
+    });
+  };
+  const draw = () => sourceHost.replaceChildren(
+    table(
+      ["\u6765\u6E90\u804A\u5929", "\u6743\u91CD", "\u542F\u7528", "\u64CD\u4F5C"],
+      sources.map((s, i) => [
+        s.chatId,
+        s.weight,
+        check2("\u542F\u7528 " + s.chatId, s.enabled, (v) => {
+          s.enabled = v;
+          sourceHost.dataset.dirty = "true";
+        }),
+        actions(
+          tool(
+            "\u8BBE\u7F6E\u6743\u91CD",
+            "sliders",
+            () => editDialog(
+              "\u6765\u6E90\u6743\u91CD",
+              [
+                {
+                  key: "weight",
+                  label: "\u6743\u91CD",
+                  type: "number",
+                  value: s.weight,
+                  min: 0,
+                  max: 100,
+                  step: 0.1
+                }
+              ],
+              (v) => {
+                s.weight = v.weight;
+                sourceHost.dataset.dirty = "true";
+                draw();
+              }
+            )
+          ),
+          tool("\u4E0A\u79FB\u6765\u6E90", "arrow-up", () => {
+            if (i) {
+              [sources[i - 1], sources[i]] = [sources[i], sources[i - 1]];
+              sources = sources.map((x, n) => ({ ...x, order: n }));
+              sourceHost.dataset.dirty = "true";
+              draw();
+            }
+          }),
+          tool(
+            "\u79FB\u9664\u6765\u6E90",
+            "trash",
+            () => {
+              sources.splice(i, 1);
+              sourceHost.dataset.dirty = "true";
+              draw();
+            },
+            "danger"
+          )
+        )
+      ])
+    )
+  );
+  draw();
+  const current = fields([
+    {
+      key: "weight",
+      label: "\u5F53\u524D\u804A\u5929\u6743\u91CD",
+      type: "number",
+      min: 0,
+      max: 100,
+      step: 0.1,
+      value: state.catalog.recallSourceWeight
+    },
+    {
+      key: "order",
+      label: "\u5F53\u524D\u804A\u5929\u987A\u5E8F",
+      type: "number",
+      min: 0,
+      value: state.catalog.recallSourceOrder
     }
-  };
-}
-function nextMarker(message3, namespaceId, batchId, changes) {
-  const current = marker(message3);
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  return {
-    version: 1,
-    stableId: current?.stableId ?? `echoes_message_${crypto.randomUUID().replaceAll("-", "")}`,
-    namespaceId,
-    batchId,
-    hiddenByEchoes: current?.hiddenByEchoes ?? false,
-    pinnedVisible: current?.pinnedVisible ?? false,
-    updatedAt: now,
-    ...changes
-  };
-}
-function uniqueBatches2(slices) {
-  return [...new Map(slices.map((slice) => [slice.batch.id, slice.batch])).values()];
-}
-var CompressionCoordinator = class {
-  constructor(store = new SummaryWorldbookStore()) {
-    this.store = store;
-  }
-  store;
-  writing = false;
-  get isWriting() {
-    return this.writing;
-  }
-  inspect(state) {
-    return this.serialize(async () => this.statusFromSnapshot(await this.snapshot(state)));
-  }
-  reconcile(state) {
-    return this.serialize(async () => {
-      let snapshot = await this.snapshot(state);
-      if (await this.reconcileExternalUnhides(snapshot)) {
-        snapshot = await this.snapshot(snapshot.state);
-      }
-      if (!snapshot.state.catalog.recallEnabled || !snapshot.state.catalog.compression.enabled) {
-        return this.statusFromSnapshot(snapshot);
-      }
-      const safeEnd = this.safeCoverageEnd(snapshot.plan.chain, snapshot.safeBatchIds);
-      const targetEnd = Math.min(snapshot.plan.hideThroughIndex, safeEnd);
-      const messageIndexById = new Map(snapshot.messages.map((message3, index) => [message3.id, index]));
-      const updates = [];
-      for (const message3 of snapshot.raw) {
-        const id2 = String(message3.message_id);
-        const index = messageIndexById.get(id2);
-        if (index === void 0) continue;
-        const item = marker(message3);
-        const currentOwned = item?.namespaceId === snapshot.state.catalog.namespaceId;
-        const targetBatchId = snapshot.plan.batchByMessageId.get(id2);
-        const shouldHide = index <= targetEnd && Boolean(targetBatchId) && snapshot.safeBatchIds.has(targetBatchId) && !(currentOwned && item.pinnedVisible);
-        const shouldRestoreForCutoff = index > targetEnd && index <= safeEnd;
-        if (shouldHide && !message3.is_hidden) {
-          const compression2 = nextMarker(
-            message3,
-            snapshot.state.catalog.namespaceId,
-            targetBatchId,
-            {
-              hiddenByEchoes: true,
-              pinnedVisible: false,
-              hiddenAt: (/* @__PURE__ */ new Date()).toISOString()
+  ]);
+  page.append(
+    section(
+      "\u6765\u6E90\u6392\u5E8F\u4E0E\u6743\u91CD",
+      saveForm(current, async (v) => {
+        ctx.guard();
+        const fresh = await ctx.summary.load();
+        await ctx.summary.store.saveRecallConfiguration(fresh.worldbookName, {
+          enabled: fresh.catalog.recallEnabled,
+          weight: v.weight,
+          order: v.order,
+          attachedSources: fresh.catalog.attachedRecallSources
+        });
+      }),
+      sourceHost,
+      actions(
+        button("\u9644\u52A0\u804A\u5929", "plus", async () => {
+          const available = (await ctx.summary.store.listAvailableSources()).filter(
+            (s) => s.catalog.namespaceId !== state.catalog.namespaceId && !sources.some((x) => x.namespaceId === s.catalog.namespaceId)
+          );
+          if (!available.length) throw new Error("\u6CA1\u6709\u53EF\u9644\u52A0\u7684\u5176\u4ED6\u804A\u5929\u603B\u7ED3\u3002");
+          editDialog(
+            "\u9644\u52A0\u53EC\u56DE\u6765\u6E90",
+            [
+              {
+                key: "source",
+                label: "\u804A\u5929",
+                type: "select",
+                options: available.map((s) => [
+                  s.catalog.namespaceId,
+                  s.catalog.chatId
+                ])
+              }
+            ],
+            (v) => {
+              const s = available.find(
+                (s2) => s2.catalog.namespaceId === v.source
+              );
+              sources.push({
+                chatId: s.catalog.chatId,
+                namespaceId: s.catalog.namespaceId,
+                worldbookName: s.worldbookName,
+                enabled: true,
+                weight: 1,
+                order: sources.length
+              });
+              sourceHost.dataset.dirty = "true";
+              draw();
             }
           );
-          updates.push({
-            message_id: message3.message_id,
-            is_hidden: true,
-            extra: withMarker(message3, compression2)
-          });
-        } else if (shouldRestoreForCutoff && message3.is_hidden && currentOwned && item.hiddenByEchoes && snapshot.plan.coveredMessageIds.has(id2) && snapshot.plan.chain.some((coverage) => coverage.batch.id === item.batchId)) {
-          const compression2 = nextMarker(
-            message3,
-            snapshot.state.catalog.namespaceId,
-            item.batchId,
-            { hiddenByEchoes: false }
-          );
-          updates.push({
-            message_id: message3.message_id,
-            is_hidden: false,
-            extra: withMarker(message3, compression2)
-          });
+        }),
+        button(
+          "\u4FDD\u5B58\u6765\u6E90",
+          "floppy-disk",
+          async () => {
+            await saveSources();
+            delete sourceHost.dataset.dirty;
+          },
+          "primary"
+        )
+      )
+    )
+  );
+  page.append(
+    section(
+      "\u67E5\u8BE2\u7F16\u6392",
+      orderedEditor(
+        ctx,
+        "\u67E5\u8BE2\u9879",
+        r.queryPreset.items,
+        promptDescription,
+        promptEditor("query"),
+        (items) => {
+          const s = getSettings();
+          s.retrieval.recall.queryPreset = {
+            ...s.retrieval.recall.queryPreset,
+            items,
+            updatedAt: now()
+          };
+          saveSettings(s);
         }
-      }
-      await this.apply(snapshot.state, updates);
-      return this.statusFromSnapshot(await this.snapshot(snapshot.state));
-    });
-  }
-  restoreBatch(state, batchIds, pinVisible = true) {
-    return this.restore(state, (message3, item, plan) => {
-      const batchId = item?.batchId ?? plan.batchByMessageId.get(String(message3.message_id));
-      return Boolean(batchId && batchIds.includes(batchId));
-    }, pinVisible);
-  }
-  restoreRange(state, startMessageId, endMessageId, pinVisible = true) {
-    const start = Math.min(startMessageId, endMessageId);
-    const end = Math.max(startMessageId, endMessageId);
-    return this.restore(
-      state,
-      (message3) => message3.message_id >= start && message3.message_id <= end,
-      pinVisible
+      )
+    )
+  );
+  const injection = fields(injectionFields(r.injection));
+  page.append(
+    section(
+      "\u6CE8\u5165\u8BBE\u7F6E",
+      saveForm(injection, (v) => {
+        const s = getSettings();
+        s.retrieval.recall.injection = v;
+        saveSettings(s);
+      })
+    )
+  );
+  return page;
+}
+
+// src/extension/workbench/diff.ts
+function record2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function equal(left, right) {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right))
+    return left.length === right.length && left.every((value, index) => equal(value, right[index]));
+  if (record2(left) && record2(right)) {
+    const keys = Object.keys(left);
+    return keys.length === Object.keys(right).length && keys.every(
+      (key) => Object.hasOwn(right, key) && equal(left[key], right[key])
     );
   }
-  restoreAll(state, pinVisible = true) {
-    return this.restore(state, (_message, item) => Boolean(item?.hiddenByEchoes), pinVisible, true);
+  return false;
+}
+function fieldDifferences(before, after, path = []) {
+  if (equal(before, after)) return [];
+  if (record2(before) && record2(after)) {
+    return [
+      .../* @__PURE__ */ new Set([...Object.keys(before), ...Object.keys(after)])
+    ].flatMap(
+      (key) => fieldDifferences(before[key], after[key], [...path, key])
+    );
   }
-  recompressBatch(state, batchIds) {
-    return this.serialize(async () => {
-      const snapshot = await this.snapshot(state);
-      const updates = [];
-      for (const message3 of snapshot.raw) {
-        const item = marker(message3);
-        const batchId = item?.batchId ?? snapshot.plan.batchByMessageId.get(String(message3.message_id));
-        if (!batchId || !batchIds.includes(batchId) || !item?.pinnedVisible) continue;
-        const compression2 = nextMarker(
-          message3,
-          state.catalog.namespaceId,
-          batchId,
-          { pinnedVisible: false }
-        );
-        updates.push({ message_id: message3.message_id, extra: withMarker(message3, compression2) });
+  return [{ path, before, after }];
+}
+function displayValue(value) {
+  if (value === void 0) return "\uFF08\u4E0D\u5B58\u5728\uFF09";
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+// src/extension/workbench/status.ts
+function tree(value) {
+  const host = el("div", "ew-tree");
+  if (!value || typeof value !== "object") {
+    host.append(el("p", "", String(value ?? "")));
+    return host;
+  }
+  for (const [key, v] of Object.entries(value)) {
+    if (v && typeof v === "object") {
+      const node = el("details", "", el("summary", "", key), tree(v));
+      node.open = true;
+      host.append(node);
+    } else
+      host.append(
+        el(
+          "div",
+          "ew-tree-value",
+          el("span", "ew-muted", key),
+          el("span", "", String(v ?? ""))
+        )
+      );
+  }
+  return host;
+}
+async function statusView(ctx) {
+  const state = await statusCoordinator.load();
+  const profile = state.catalog.profile;
+  const current = statusCoordinator.current(state);
+  const page = el("div", "ew-page-content");
+  const saveProfile = async (patch) => {
+    ctx.guard();
+    const fresh = await statusCoordinator.load();
+    await statusCoordinator.worldbook.saveConfiguration(state.worldbookName, {
+      profile: { ...fresh.catalog.profile, ...patch, updatedAt: now() }
+    });
+  };
+  if (ctx.route === "status/current") {
+    const value = current?.snapshot.state ?? profile.initialState;
+    const host = el("div");
+    const form = fields([
+      {
+        key: "yaml",
+        label: "\u5F53\u524D\u72B6\u6001 YAML",
+        type: "textarea",
+        value: renderStatusYaml(value),
+        rows: 22
       }
-      await this.apply(state, updates);
-      return this.reconcileUnlocked(state);
-    });
-  }
-  hiddenCountForBatches(state, batchIds) {
-    return this.serialize(async () => {
-      const snapshot = await this.snapshot(state);
-      return snapshot.raw.filter((message3) => {
-        const item = marker(message3);
-        return message3.is_hidden && item?.hiddenByEchoes && batchIds.includes(item.batchId);
-      }).length;
-    });
-  }
-  restore(state, matches, pinVisible, includeOtherNamespaces = false) {
-    return this.serialize(async () => {
-      const snapshot = await this.snapshot(state);
-      const updates = [];
-      for (const message3 of snapshot.raw) {
-        const item = marker(message3);
-        const batchId = item?.batchId ?? snapshot.plan.batchByMessageId.get(String(message3.message_id));
-        if (!batchId || !matches(message3, item, snapshot.plan)) continue;
-        if (item && !includeOtherNamespaces && item.namespaceId !== state.catalog.namespaceId) continue;
-        const owned = Boolean(item?.hiddenByEchoes);
-        const covered = snapshot.plan.coveredMessageIds.has(String(message3.message_id));
-        if (!owned && !covered) continue;
-        const compression2 = nextMarker(
-          message3,
-          state.catalog.namespaceId,
-          batchId,
-          {
-            hiddenByEchoes: false,
-            pinnedVisible: pinVisible
+    ]);
+    form.controls.get("yaml").classList.add("ew-editor");
+    const showTree = () => {
+      if (form.dirty() && !confirm("\u653E\u5F03\u672A\u4FDD\u5B58\u7684 YAML \u4FEE\u6539\uFF1F")) return;
+      form.controls.get("yaml").value = renderStatusYaml(value);
+      form.clean();
+      host.replaceChildren(tree(value));
+    };
+    const showYaml = () => host.replaceChildren(save);
+    const save = saveForm(
+      form,
+      async (v) => {
+        ctx.guard();
+        const parsed = statusCoordinator.parseYaml(v.yaml);
+        await statusCoordinator.saveManualState(parsed);
+        await ctx.refresh();
+      },
+      "\u6821\u9A8C\u5E76\u4FDD\u5B58"
+    );
+    page.append(
+      actions(
+        button("\u5B57\u6BB5\u89C6\u56FE", "list-tree", showTree),
+        button("YAML \u7F16\u8F91", "code", showYaml),
+        button(
+          "\u624B\u52A8\u540C\u6B65",
+          "arrows-rotate",
+          () => ctx.run("\u72B6\u6001\u8BB0\u5FC6\u540C\u6B65", () => statusCoordinator.synchronize()).then(() => ctx.refresh()),
+          "primary"
+        ),
+        button("\u6062\u590D\u521D\u59CB\u503C", "rotate-left", async () => {
+          if (confirm("\u5C06\u5F53\u524D\u72B6\u6001\u6062\u590D\u4E3A\u6A21\u677F\u521D\u59CB\u503C\uFF1F")) {
+            ctx.guard();
+            await statusCoordinator.saveManualState(profile.initialState);
+            await ctx.refresh();
           }
+        })
+      ),
+      current ? el(
+        "p",
+        "ew-muted",
+        "\u6765\u6E90\u6D88\u606F\uFF1A" + current.messageId + " \xB7 " + new Date(current.snapshot.updatedAt).toLocaleString()
+      ) : badge("\u4F7F\u7528\u521D\u59CB\u72B6\u6001"),
+      host
+    );
+    showTree();
+    return page;
+  }
+  if (ctx.route === "status/history") {
+    const history = statusCoordinator.history(state);
+    if (!history.length) return empty("\u6682\u65E0\u72B6\u6001\u5FEB\u7167");
+    page.append(
+      table(
+        ["\u6D88\u606F", "\u5206\u652F", "\u8BB0\u5F55\u65F6\u95F4", "\u6765\u6E90", "\u64CD\u4F5C"],
+        history.map((record3, i) => [
+          record3.messageId,
+          record3.swipeId,
+          new Date(record3.snapshot.updatedAt).toLocaleString(),
+          record3.snapshot.origin,
+          actions(
+            button(
+              "\u67E5\u770B\u5FEB\u7167",
+              "eye",
+              () => dialog(
+                "\u72B6\u6001\u5FEB\u7167",
+                el(
+                  "div",
+                  "ew-page-content",
+                  tree(record3.snapshot.state),
+                  detail("\u5FEB\u7167\u5143\u6570\u636E", record3.snapshot)
+                )
+              )
+            ),
+            button("\u6BD4\u8F83", "code-compare", () => {
+              const changes = fieldDifferences(
+                record3.snapshot.state,
+                current?.snapshot.state ?? profile.initialState
+              );
+              dialog(
+                "\u9009\u4E2D\u5FEB\u7167 \u2192 \u5F53\u524D\u72B6\u6001",
+                changes.length ? table(
+                  ["\u5B57\u6BB5\u8DEF\u5F84", "\u9009\u4E2D\u5FEB\u7167", "\u5F53\u524D\u72B6\u6001"],
+                  changes.map((c) => [
+                    c.path.join(" / "),
+                    displayValue(c.before),
+                    displayValue(c.after)
+                  ])
+                ) : empty("\u4E24\u4E2A\u72B6\u6001\u6CA1\u6709\u5DEE\u5F02")
+              );
+            }),
+            tool("\u6062\u590D\u6B64\u5FEB\u7167", "rotate-left", async () => {
+              if (confirm("\u6062\u590D\u9009\u4E2D\u5FEB\u7167\u4E3A\u5F53\u524D\u72B6\u6001\uFF1F")) {
+                ctx.guard();
+                await statusCoordinator.restoreSnapshot(record3.snapshot);
+                await ctx.refresh();
+              }
+            })
+          )
+        ])
+      )
+    );
+    return page;
+  }
+  if (ctx.route === "status/prompts") {
+    page.append(
+      section(
+        "\u63D0\u793A\u8BCD\u7F16\u6392",
+        orderedEditor(
+          ctx,
+          "\u63D0\u793A\u8BCD",
+          profile.promptPreset.items,
+          promptDescription,
+          promptEditor("status"),
+          (items) => saveProfile({
+            promptPreset: {
+              ...profile.promptPreset,
+              items,
+              updatedAt: now()
+            }
+          })
+        )
+      ),
+      section(
+        "\u6D88\u606F\u6E05\u6D17",
+        orderedEditor(
+          ctx,
+          "\u89C4\u5219",
+          profile.preprocessRules,
+          (r) => [r.name, r.type],
+          ruleEditor,
+          (items) => saveProfile({
+            preprocessRules: items.map((r, i) => ({ ...r, order: i }))
+          })
+        )
+      )
+    );
+    return page;
+  }
+  if (ctx.route === "status/injection") {
+    const f = fields([
+      {
+        key: "enabled",
+        label: "\u72B6\u6001\u6CE8\u5165",
+        type: "checkbox",
+        value: state.catalog.enabled
+      },
+      ...injectionFields(profile.injection)
+    ]);
+    page.append(
+      saveForm(f, async (v) => {
+        ctx.guard();
+        const { enabled, ...injection } = v;
+        const fresh = await statusCoordinator.load();
+        await statusCoordinator.worldbook.saveConfiguration(state.worldbookName, {
+          enabled,
+          profile: {
+            ...fresh.catalog.profile,
+            injection,
+            updatedAt: now()
+          }
+        });
+      })
+    );
+    page.append(
+      button("\u9884\u89C8\u6CE8\u5165\u5185\u5BB9", "eye", () => {
+        const yaml = renderStatusYaml(
+          current?.snapshot.state ?? profile.initialState
         );
-        updates.push({
-          message_id: message3.message_id,
-          ...owned && message3.is_hidden ? { is_hidden: false } : {},
-          extra: withMarker(message3, compression2)
-        });
-      }
-      await this.apply(state, updates);
-      return this.statusFromSnapshot(await this.snapshot(state));
-    });
-  }
-  async reconcileExternalUnhides(snapshot) {
-    const updates = [];
-    for (const message3 of snapshot.raw) {
-      const item = marker(message3);
-      if (!item || item.namespaceId !== snapshot.state.catalog.namespaceId || !item.hiddenByEchoes || message3.is_hidden) continue;
-      const compression2 = nextMarker(
-        message3,
-        item.namespaceId,
-        item.batchId,
-        { hiddenByEchoes: false, pinnedVisible: true }
-      );
-      updates.push({ message_id: message3.message_id, extra: withMarker(message3, compression2) });
-    }
-    await this.apply(snapshot.state, updates);
-    return updates.length > 0;
-  }
-  async reconcileUnlocked(state) {
-    const snapshot = await this.snapshot(state);
-    if (!state.catalog.recallEnabled || !state.catalog.compression.enabled) {
-      return this.statusFromSnapshot(snapshot);
-    }
-    const safeEnd = this.safeCoverageEnd(snapshot.plan.chain, snapshot.safeBatchIds);
-    const targetEnd = Math.min(snapshot.plan.hideThroughIndex, safeEnd);
-    const messageIndexById = new Map(snapshot.messages.map((message3, index) => [message3.id, index]));
-    const updates = [];
-    for (const message3 of snapshot.raw) {
-      const index = messageIndexById.get(String(message3.message_id));
-      if (index === void 0) continue;
-      const item = marker(message3);
-      const batchId = snapshot.plan.batchByMessageId.get(String(message3.message_id));
-      if (index > targetEnd || !batchId || !snapshot.safeBatchIds.has(batchId) || item?.pinnedVisible || message3.is_hidden) continue;
-      const compression2 = nextMarker(message3, state.catalog.namespaceId, batchId, {
-        hiddenByEchoes: true,
-        pinnedVisible: false,
-        hiddenAt: (/* @__PURE__ */ new Date()).toISOString()
-      });
-      updates.push({
-        message_id: message3.message_id,
-        is_hidden: true,
-        extra: withMarker(message3, compression2)
-      });
-    }
-    await this.apply(state, updates);
-    return this.statusFromSnapshot(await this.snapshot(state));
-  }
-  async snapshot(state) {
-    const current = state ?? await this.store.load();
-    this.assertCurrent(current);
-    const raw = requiredHelper2().getChatMessages("0-{{lastMessageId}}", {
-      include_swipes: false,
-      hide_state: "all"
-    });
-    const messages2 = chatMessages(raw);
-    const plan = compressionPlan(
-      messages2,
-      current.slices,
-      current.catalog.lastCommittedMessageId,
-      current.catalog.compression.keepRecentMessages
-    );
-    let safeBatchIds = /* @__PURE__ */ new Set();
-    let unsafeBatchIds = plan.chain.map((coverage) => coverage.batch.id);
-    try {
-      ({ safeBatchIds, unsafeBatchIds } = await this.indexSafety(current, plan.chain));
-    } catch {
-    }
-    return { raw, messages: messages2, state: current, plan, safeBatchIds, unsafeBatchIds };
-  }
-  async indexSafety(state, chain) {
-    const collectionId = state.catalog.retrievalCollectionId;
-    if (!collectionId) {
-      return {
-        safeBatchIds: /* @__PURE__ */ new Set(),
-        unsafeBatchIds: chain.map((coverage) => coverage.batch.id)
-      };
-    }
-    const expected = await Promise.all(chain.flatMap((coverage) => coverage.slices.map(async (slice) => ({
-      batchId: coverage.batch.id,
-      documentId: await summaryRetrievalDocumentId(collectionId, slice.id),
-      contentHash: await summaryRetrievalContentHash(slice)
-    }))));
-    const statuses = [];
-    for (let offset = 0; offset < expected.length; offset += 100) {
-      const page = expected.slice(offset, offset + 100);
-      const result = await echoesApi.retrievalDocumentStatus(page.map((item) => item.documentId));
-      statuses.push(...result.documents);
-    }
-    const byId = new Map(statuses.map((item) => [item.documentId, item]));
-    const safeBatchIds = /* @__PURE__ */ new Set();
-    const unsafeBatchIds = [];
-    for (const coverage of chain) {
-      const batchExpected = expected.filter((item) => item.batchId === coverage.batch.id);
-      const safe = batchExpected.length > 0 && batchExpected.every((item) => {
-        const status = byId.get(item.documentId);
-        return status?.collectionId === collectionId && status.contentHash === item.contentHash;
-      });
-      if (safe) safeBatchIds.add(coverage.batch.id);
-      else unsafeBatchIds.push(coverage.batch.id);
-    }
-    return { safeBatchIds, unsafeBatchIds };
-  }
-  safeCoverageEnd(chain, safeBatchIds) {
-    let end = -1;
-    for (const coverage of chain) {
-      if (!safeBatchIds.has(coverage.batch.id)) break;
-      end = coverage.endIndex;
-    }
-    return end;
-  }
-  statusFromSnapshot(snapshot) {
-    const active = snapshot.state.catalog.recallEnabled && snapshot.state.catalog.compression.enabled;
-    const batchStatus = snapshot.plan.chain.map((coverage) => {
-      const messageIds = new Set(coverage.batch.messageIds);
-      const messages2 = snapshot.raw.filter((message3) => messageIds.has(String(message3.message_id)));
-      return {
-        batchId: coverage.batch.id,
-        batchNumber: coverage.batch.batchNumber,
-        covered: messages2.length,
-        hidden: messages2.filter((message3) => {
-          const item = marker(message3);
-          return message3.is_hidden && item?.hiddenByEchoes;
-        }).length,
-        pinned: messages2.filter((message3) => marker(message3)?.pinnedVisible).length,
-        indexSafe: snapshot.safeBatchIds.has(coverage.batch.id)
-      };
-    });
-    const safeEnd = this.safeCoverageEnd(snapshot.plan.chain, snapshot.safeBatchIds);
-    const targetEnd = Math.min(snapshot.plan.hideThroughIndex, safeEnd);
-    const messageIndexById = new Map(snapshot.messages.map((message3, index) => [message3.id, index]));
-    const hidden = snapshot.raw.filter((message3) => {
-      const item = marker(message3);
-      return message3.is_hidden && item?.hiddenByEchoes;
-    }).length;
-    const pinned = snapshot.raw.filter((message3) => marker(message3)?.pinnedVisible).length;
-    const compressible = active ? snapshot.raw.filter((message3) => {
-      const index = messageIndexById.get(String(message3.message_id));
-      const item = marker(message3);
-      const batchId = snapshot.plan.batchByMessageId.get(String(message3.message_id));
-      return index !== void 0 && index <= targetEnd && Boolean(batchId) && !message3.is_hidden && !item?.pinnedVisible;
-    }).length : 0;
-    return {
-      active,
-      hidden,
-      pinned,
-      compressible,
-      indexSafe: snapshot.unsafeBatchIds.length === 0,
-      unsafeBatchIds: snapshot.unsafeBatchIds,
-      staleBatchNumbers: uniqueBatches2(snapshot.state.slices).filter((batch) => batch.state === "stale").map((batch) => batch.batchNumber),
-      batches: batchStatus,
-      messageCount: snapshot.messages.length,
-      ...targetEnd >= 0 ? { hideThroughMessageId: snapshot.messages[targetEnd]?.id } : {}
-    };
-  }
-  async apply(state, updates) {
-    if (updates.length === 0) return;
-    this.assertCurrent(state);
-    this.writing = true;
-    try {
-      await requiredHelper2().setChatMessages(updates, { refresh: "affected" });
-    } finally {
-      this.writing = false;
-    }
-    this.assertCurrent(state);
-  }
-  assertCurrent(state) {
-    if (SillyTavern.getContext().chatId !== state.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) {
-      throw new Error("The active chat changed while Echoes was updating compression.");
-    }
-  }
-  serialize(operation) {
-    return messageWriteCoordinator.run(operation);
-  }
-};
-var compressionCoordinator = new CompressionCoordinator();
-
-// src/extension/summary/summary-coordinator.ts
-var TERMINAL_STATES6 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
-function abortable(promise2, signal) {
-  if (!signal) return promise2;
-  return new Promise((resolve, reject) => {
-    const abort = () => reject(new DOMException("Summary stopped.", "AbortError"));
-    signal.addEventListener("abort", abort, { once: true });
-    void promise2.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
-    if (signal.aborted) abort();
-  });
-}
-async function hashIdentifier2(value) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-async function waitForJob4(job, signal) {
-  const deadline = Date.now() + 2 * 60 * 6e4;
-  let current = job;
-  while (!TERMINAL_STATES6.has(current.status) && Date.now() < deadline) {
-    await abortable(new Promise((resolve) => setTimeout(resolve, 1e3)), signal);
-    current = await abortable(echoesApi.getJob(current.id), signal);
-  }
-  if (!TERMINAL_STATES6.has(current.status)) throw new Error("\u7B49\u5F85\u540E\u53F0\u4EFB\u52A1\u8D85\u65F6\u3002");
-  if (current.status !== "succeeded" || !current.result) {
-    throw new Error(current.error?.message ?? current.message);
-  }
-  return current;
-}
-function defaultDecision(decision) {
-  if (!decision.nextEndpointId) return Promise.resolve(false);
-  return Promise.resolve(window.confirm(
-    `${decision.message}
-
-\u7EE7\u7EED\u4F1A\u5411\u4E0B\u4E00\u4E2A\u7AEF\u70B9\u521B\u5EFA\u65B0\u8BF7\u6C42\uFF0C\u5E76\u53EF\u80FD\u4EA7\u751F\u91CD\u590D\u8BA1\u8D39\u3002\u662F\u5426\u7EE7\u7EED\uFF1F`
-  ));
-}
-var SummaryCoordinator = class {
-  store = new SummaryWorldbookStore();
-  compression = new CompressionCoordinator(this.store);
-  activeRuns = /* @__PURE__ */ new Map();
-  rerunAutomatic = /* @__PURE__ */ new Set();
-  controls = /* @__PURE__ */ new Map();
-  pausedAutomatic = /* @__PURE__ */ new Set();
-  isRunning(chatId = SillyTavern.getContext().chatId) {
-    return Boolean(chatId && this.activeRuns.has(chatId));
-  }
-  startRun(chatId, work, decide) {
-    const control = new AbortController();
-    this.controls.set(chatId, control);
-    const operation = work(control.signal).catch((error51) => {
-      this.rerunAutomatic.delete(chatId);
-      if (control.signal.aborted) return null;
-      this.pausedAutomatic.add(chatId);
-      throw error51;
-    }).finally(() => {
-      if (this.controls.get(chatId) === control) this.controls.delete(chatId);
-      this.finishRun(chatId, operation, decide);
-    });
-    this.activeRuns.set(chatId, operation);
-    return operation;
-  }
-  async trackedJob(chatId, start, signal) {
-    signal.throwIfAborted();
-    let job;
-    let cancellationSent = false;
-    const cancel = () => {
-      if (!job || cancellationSent || TERMINAL_STATES6.has(job.status)) return;
-      cancellationSent = true;
-      void echoesApi.cancelJob(job.id).catch((error51) => {
-        console.error("[Echoes] Failed to cancel summary job.", error51);
-      });
-    };
-    signal.addEventListener("abort", cancel, { once: true });
-    try {
-      const accepted = start().then((value) => {
-        job = value;
-        if (signal.aborted) cancel();
-        return value;
-      });
-      return await waitForJob4(await abortable(accepted, signal), signal);
-    } finally {
-      signal.removeEventListener("abort", cancel);
-    }
-  }
-  async stop() {
-    return this.setAutoRun(false);
-  }
-  load() {
-    return this.store.load();
-  }
-  async checkIntegrity(currentState) {
-    const state = currentState ?? await this.load();
-    if (SillyTavern.getContext().chatId !== state.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) {
-      return state;
-    }
-    const stale = await firstStaleBatchNumber(state, currentChatMessages());
-    if (SillyTavern.getContext().chatId !== state.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) {
-      return state;
-    }
-    if (stale === null || state.slices.every((slice) => slice.batch.batchNumber < stale || slice.batch.state === "stale")) return state;
-    const activeBatches = [...new Map(state.slices.filter((slice) => slice.batch.state !== "stale" && slice.batch.source?.kind !== "imported").map((slice) => [slice.batch.id, slice.batch])).values()];
-    const checkpointBatchNumbers = activeBatches.filter((batch) => batch.endMessageId === state.catalog.lastCommittedMessageId).map((batch) => batch.batchNumber);
-    const latestCommittedBatchNumber = checkpointBatchNumbers.length > 0 ? Math.min(...checkpointBatchNumbers) : Math.max(0, ...activeBatches.map((batch) => batch.batchNumber));
-    if (stale === latestCommittedBatchNumber) {
-      const batchIds = [...new Set(state.slices.filter((slice) => slice.batch.batchNumber === stale).map((slice) => slice.batch.id))];
-      await this.compression.restoreBatch(state, batchIds, false);
-      const reset = await this.store.resetFrom(state.worldbookName, stale);
-      try {
-        return await this.syncSlices(reset, [], reset.catalog.pendingRetrievalDeletes);
-      } catch {
-        return this.store.inspect(reset.worldbookName);
-      }
-    }
-    const marked = await this.store.markStaleFrom(state.worldbookName, stale);
-    try {
-      return await this.syncSlices(marked, [], marked.catalog.pendingRetrievalDeletes);
-    } catch {
-      return this.store.inspect(marked.worldbookName);
-    }
-  }
-  async setAutoRun(enabled) {
-    const chatId = SillyTavern.getContext().chatId;
-    if (!chatId) throw new Error("Open a SillyTavern chat before changing summary automation.");
-    if (!enabled) {
-      this.pausedAutomatic.add(chatId);
-      this.rerunAutomatic.delete(chatId);
-      this.controls.get(chatId)?.abort();
-    }
-    const state = await this.load();
-    if (state.catalog.chatId !== chatId) throw new Error("The active chat changed.");
-    const updated = await this.store.setAutoRun(state.worldbookName, enabled);
-    if (enabled) this.pausedAutomatic.delete(chatId);
-    return updated;
-  }
-  async setRecallEnabled(enabled) {
-    const state = await this.load();
-    return this.store.saveRecallConfiguration(state.worldbookName, {
-      enabled,
-      weight: state.catalog.recallSourceWeight,
-      order: state.catalog.recallSourceOrder,
-      attachedSources: state.catalog.attachedRecallSources
-    });
-  }
-  async saveCompression(compression2) {
-    const state = await this.load();
-    const updated = await this.store.saveCompressionConfiguration(
-      state.worldbookName,
-      compression2
-    );
-    const status = await this.compression.reconcile(updated);
-    return { state: updated, status };
-  }
-  runAutomatic(decide = defaultDecision) {
-    const lockedChatId = SillyTavern.getContext().chatId;
-    if (!lockedChatId || this.pausedAutomatic.has(lockedChatId)) return Promise.resolve(null);
-    const existing = this.activeRuns.get(lockedChatId);
-    if (existing) {
-      this.rerunAutomatic.add(lockedChatId);
-      return existing;
-    }
-    return this.startRun(
-      lockedChatId,
-      (signal) => this.performAutomatic(lockedChatId, decide, signal),
-      decide
-    );
-  }
-  async performAutomatic(lockedChatId, decide, signal) {
-    if (SillyTavern.getContext().chatId !== lockedChatId) return null;
-    let state = await this.checkIntegrity();
-    if (state.catalog.chatId !== lockedChatId) {
-      throw new Error("The summary catalog does not belong to the locked chat.");
-    }
-    if (state.slices.some((slice) => slice.batch.state === "stale" && slice.batch.source?.kind !== "imported")) return state;
-    if (!state.catalog.autoRun) {
-      await this.compression.reconcile(state);
-      return state;
-    }
-    while (SillyTavern.getContext().chatId === lockedChatId) {
-      signal.throwIfAborted();
-      state = await this.store.inspect(state.worldbookName);
-      if (!state.catalog.autoRun || this.pausedAutomatic.has(lockedChatId)) break;
-      const candidate = await automaticSummaryBatch(
-        currentChatMessages(),
-        state.catalog,
-        getSettings().summary.messageCount
-      );
-      if (!candidate) break;
-      const next = await this.generate(
-        state,
-        candidate.batch,
-        candidate.messages,
-        decide,
-        true,
-        signal
-      );
-      if (!next) {
-        this.pausedAutomatic.add(lockedChatId);
-        this.rerunAutomatic.delete(lockedChatId);
-        break;
-      }
-      state = next;
-    }
-    await this.compression.reconcile(state);
-    return state;
-  }
-  runManual(startIndex, endIndex, decide = defaultDecision) {
-    const lockedChatId = SillyTavern.getContext().chatId;
-    if (!lockedChatId) return Promise.resolve(null);
-    if (this.activeRuns.has(lockedChatId)) {
-      return Promise.reject(new Error("This chat already has a summary task running."));
-    }
-    return this.startRun(
-      lockedChatId,
-      (signal) => this.performManual(lockedChatId, startIndex, endIndex, decide, signal),
-      defaultDecision
-    );
-  }
-  async performManual(lockedChatId, startIndex, endIndex, decide, signal) {
-    if (SillyTavern.getContext().chatId !== lockedChatId) return null;
-    const state = await this.checkIntegrity();
-    if (state.catalog.chatId !== lockedChatId) {
-      throw new Error("The summary catalog does not belong to the locked chat.");
-    }
-    const messages2 = currentChatMessages();
-    const candidate = await manualSummaryBatch(
-      messages2,
-      state.catalog,
-      startIndex,
-      endIndex
-    );
-    const checkpointIndex = state.catalog.lastCommittedMessageId ? messages2.findIndex((message3) => message3.id === state.catalog.lastCommittedMessageId) : -1;
-    const advancesCheckpoint = startIndex === checkpointIndex + 1;
-    return this.generate(
-      state,
-      candidate.batch,
-      candidate.messages,
-      decide,
-      advancesCheckpoint,
-      signal
-    );
-  }
-  rebuildBatch(batchNumber, decide = defaultDecision) {
-    const lockedChatId = SillyTavern.getContext().chatId;
-    if (!lockedChatId) return Promise.resolve(null);
-    if (this.activeRuns.has(lockedChatId)) {
-      return Promise.reject(new Error("This chat already has a summary task running."));
-    }
-    return this.startRun(
-      lockedChatId,
-      (signal) => this.performRebuild(lockedChatId, batchNumber, decide, signal),
-      defaultDecision
-    );
-  }
-  async performRebuild(lockedChatId, batchNumber, decide, signal) {
-    if (SillyTavern.getContext().chatId !== lockedChatId) return null;
-    const state = await this.load();
-    if (state.catalog.chatId !== lockedChatId) {
-      throw new Error("The summary catalog does not belong to the locked chat.");
-    }
-    const existing = state.slices.find((slice) => slice.batch.batchNumber === batchNumber)?.batch;
-    if (!existing) throw new Error("\u603B\u7ED3\u6279\u6B21\u4E0D\u5B58\u5728\u3002");
-    const messages2 = currentChatMessages();
-    const start = messages2.findIndex((message3) => message3.id === existing.startMessageId);
-    const end = messages2.findIndex((message3) => message3.id === existing.endMessageId);
-    if (start < 0 || end < start) throw new Error("\u539F\u6D88\u606F\u8303\u56F4\u5DF2\u4E0D\u5B58\u5728\uFF0C\u8BF7\u4ECE\u8BE5\u6279\u6B21\u91CD\u7F6E\u540E\u91CD\u65B0\u603B\u7ED3\u3002");
-    const candidate = await manualSummaryBatch(messages2, state.catalog, start, end, existing);
-    return this.generate(state, candidate.batch, candidate.messages, decide, false, signal);
-  }
-  async previewManual(startIndex, endIndex) {
-    const state = await this.load();
-    const candidate = await manualSummaryBatch(
-      currentChatMessages(),
-      state.catalog,
-      startIndex,
-      endIndex
-    );
-    return prepareSummaryRequest({
-      batch: candidate.batch,
-      messages: candidate.messages,
-      state,
-      settings: getSettings()
-    });
-  }
-  async editSlice(sliceId, candidate) {
-    const state = await this.load();
-    const updated = await this.store.saveSlice(state.worldbookName, sliceId, candidate);
-    const slice = updated.slices.find((item) => item.id === sliceId);
-    if (!slice) throw new Error("\u603B\u7ED3\u5207\u7247\u4E0D\u5B58\u5728\u3002");
-    const synced = await this.syncSlices(updated, [slice], updated.catalog.pendingRetrievalDeletes);
-    await this.compression.reconcile(synced);
-    return synced;
-  }
-  async deleteSlice(sliceId) {
-    return this.deleteSlices([sliceId]);
-  }
-  async deleteSlices(sliceIds) {
-    const state = await this.load();
-    const updated = await this.store.deleteSlices(state.worldbookName, sliceIds);
-    return this.syncSlices(updated, [], updated.catalog.pendingRetrievalDeletes);
-  }
-  async setNextBatchNumber(batchNumber) {
-    const state = await this.load();
-    return this.store.setNextBatchNumber(state.worldbookName, batchNumber);
-  }
-  async resetFrom(batchNumber) {
-    const state = await this.load();
-    const updated = await this.store.resetFrom(state.worldbookName, batchNumber);
-    return this.syncSlices(updated, [], updated.catalog.pendingRetrievalDeletes);
-  }
-  async repairIndex(decide = defaultDecision) {
-    const chatId = SillyTavern.getContext().chatId;
-    let state = await this.load();
-    if (chatId && state.catalog.chatId === chatId) this.pausedAutomatic.delete(chatId);
-    const configuredGroup = getSettings().retrieval.embeddingGroups.find((group) => group.id === getSettings().summary.embeddingGroupId);
-    const collectionSpaceChanged = Boolean(configuredGroup && state.catalog.retrievalEmbeddingSpaceId !== configuredGroup.embeddingSpaceId);
-    const active = state.slices.filter((slice) => slice.batch.state !== "stale" && (slice.batch.state !== "ready" || collectionSpaceChanged));
-    if (active.length === 0 && state.catalog.pendingRetrievalDeletes.length > 0) {
-      return this.syncSlices(state, [], state.catalog.pendingRetrievalDeletes, decide);
-    }
-    for (let offset = 0; offset < active.length; offset += 50) {
-      state = await this.syncSlices(
-        state,
-        active.slice(offset, offset + 50),
-        offset === 0 ? state.catalog.pendingRetrievalDeletes : [],
-        decide
-      );
-    }
-    await this.compression.reconcile(state);
-    return state;
-  }
-  async generate(state, batch, messages2, decide, advanceCheckpoint, signal) {
-    const settings = getSettings();
-    const workflow = settings.generationWorkflows.summary;
-    const group = settings.generationGroups.find((candidate) => candidate.id === workflow.groupId);
-    if (!group) throw new Error("\u8BF7\u5148\u914D\u7F6E\u603B\u7ED3\u751F\u6210\u7AEF\u70B9\u7EC4\u3002");
-    const prepared = await prepareSummaryRequest({ batch, messages: messages2, state, settings });
-    let resumeAfterEndpointId;
-    let result;
-    while (true) {
-      signal.throwIfAborted();
-      const request = {
-        chatId: state.catalog.chatId,
-        batch,
-        messages: prepared.originalMessages,
-        promptMessages: prepared.promptMessages,
-        generationGroup: group,
-        failoverPolicy: workflow.failoverPolicy,
-        ...resumeAfterEndpointId ? { resumeAfterEndpointId } : {}
-      };
-      result = (await this.trackedJob(
-        state.catalog.chatId,
-        () => echoesApi.startSummary(request),
-        signal
-      )).result;
-      if (!result.decisionRequired) break;
-      if (!await abortable(decide(result.decisionRequired), signal)) return null;
-      resumeAfterEndpointId = result.decisionRequired.failedEndpointId;
-    }
-    if (result.outcome !== "completed" || result.slices.length === 0) return null;
-    await this.assertCurrentSourceUnchanged(state, batch);
-    signal.throwIfAborted();
-    const existingBatch = state.slices.find((slice) => slice.batch.id === batch.id)?.batch;
-    const committed = await this.store.commitBatch({
-      worldbookName: state.worldbookName,
-      catalog: state.catalog,
-      batch,
-      candidates: result.slices,
-      advanceCheckpoint,
-      expectedCheckpoint: state.catalog.lastCommittedMessageId ?? null,
-      expectedNextBatchNumber: state.catalog.nextBatchNumber,
-      expectedBatchRevision: existingBatch?.revision ?? null,
-      signal
-    });
-    const slices = committed.slices.filter((slice) => slice.batch.id === batch.id);
-    const synced = await this.syncSlices(
-      committed,
-      slices,
-      committed.catalog.pendingRetrievalDeletes,
-      decide,
-      signal
-    );
-    signal.throwIfAborted();
-    await this.compression.reconcile(synced);
-    return synced;
-  }
-  async assertCurrentSourceUnchanged(state, batch) {
-    if (SillyTavern.getContext().chatId !== state.catalog.chatId) return;
-    const current = currentChatMessages();
-    const start = current.findIndex((message3) => message3.id === batch.startMessageId);
-    const end = current.findIndex((message3) => message3.id === batch.endMessageId);
-    const selected = start >= 0 && end >= start ? current.slice(start, end + 1) : [];
-    if (selected.length !== batch.messageIds.length || selected.some((message3, index) => message3.id !== batch.messageIds[index]) || await summarySourceHash(selected) !== batch.sourceHash) {
-      throw new Error("The summary source messages changed while the generation task was running.");
-    }
-  }
-  finishRun(chatId, operation, decide) {
-    if (this.activeRuns.get(chatId) === operation) this.activeRuns.delete(chatId);
-    if (!this.rerunAutomatic.delete(chatId) || this.pausedAutomatic.has(chatId) || SillyTavern.getContext().chatId !== chatId) return;
-    queueMicrotask(() => {
-      void this.runAutomatic(decide).catch((error51) => {
-        console.error("[Echoes] Deferred summary automation failed.", error51);
-      });
-    });
-  }
-  async syncSlices(initialState, slices, deletedSliceIds, decide = defaultDecision, signal) {
-    const settings = getSettings();
-    const embeddingGroup = settings.retrieval.embeddingGroups.find((group) => group.id === settings.summary.embeddingGroupId);
-    if (!embeddingGroup) {
-      let state2 = initialState;
-      if (state2.catalog.retrievalCollectionId) {
-        for (let offset = 0; offset < deletedSliceIds.length; offset += 1e3) {
-          const sliceIds = deletedSliceIds.slice(offset, offset + 1e3);
-          const deleteDocumentIds2 = await Promise.all(sliceIds.map((id2) => summaryRetrievalDocumentId(state2.catalog.retrievalCollectionId, id2)));
-          await (signal ? this.trackedJob(state2.catalog.chatId, () => echoesApi.syncRetrievalDocuments({
-            documents: [],
-            deleteDocumentIds: deleteDocumentIds2,
-            failoverPolicy: settings.retrieval.failoverPolicy
-          }), signal) : waitForJob4(await echoesApi.syncRetrievalDocuments({
-            documents: [],
-            deleteDocumentIds: deleteDocumentIds2,
-            failoverPolicy: settings.retrieval.failoverPolicy
-          })));
-          state2 = await this.store.clearPendingDeletes(state2.worldbookName, sliceIds);
-        }
-      }
-      const batches2 = [...new Set(slices.map((slice) => slice.batch.id))];
-      for (const batchId of batches2) state2 = await this.store.markBatchState(state2.worldbookName, batchId, "pending");
-      return state2;
-    }
-    const previousCollectionId = initialState.catalog.retrievalCollectionId;
-    let state = await this.ensureCollection(initialState, embeddingGroup.id);
-    const collectionId = state.catalog.retrievalCollectionId;
-    const collectionChanged = collectionId !== previousCollectionId;
-    const targetSlices = collectionChanged ? state.slices.filter((slice) => slice.batch.state !== "stale") : slices;
-    if (targetSlices.length > 100 || deletedSliceIds.length > 1e3) {
-      const batches2 = Math.max(
-        Math.ceil(targetSlices.length / 100),
-        Math.ceil(deletedSliceIds.length / 1e3)
-      );
-      for (let index = 0; index < batches2; index += 1) {
-        state = await this.syncSlices(
-          state,
-          targetSlices.slice(index * 100, (index + 1) * 100),
-          deletedSliceIds.slice(index * 1e3, (index + 1) * 1e3),
-          decide,
-          signal
+        const template = String(f.controls.get("template").value);
+        dialog(
+          "\u72B6\u6001\u6CE8\u5165\u9884\u89C8",
+          detail(
+            "\u6CE8\u5165\u6587\u672C",
+            template.includes("{{status}}") ? template.replaceAll("{{status}}", yaml) : template + "\n\n" + yaml
+          )
         );
-      }
-      return state;
-    }
-    const batches = [...new Set(targetSlices.map((slice) => slice.batch.id))];
-    const documents = await Promise.all(targetSlices.map((slice) => summaryRetrievalDocument(collectionId, slice, state.catalog.chatId)));
-    const deleteDocumentIds = await Promise.all(deletedSliceIds.map((id2) => summaryRetrievalDocumentId(collectionId, id2)));
-    let resumeAfterEndpointId;
-    let result;
-    try {
-      while (true) {
-        const start = () => echoesApi.syncRetrievalDocuments({
-          documents,
-          deleteDocumentIds,
-          embeddingGroup,
-          failoverPolicy: settings.retrieval.failoverPolicy,
-          embeddingBatchSize: settings.summary.embeddingBatchSize,
-          ...resumeAfterEndpointId ? { resumeAfterEndpointId } : {}
-        });
-        result = (await (signal ? this.trackedJob(state.catalog.chatId, start, signal) : waitForJob4(await start()))).result;
-        if (!result.decisionRequired) break;
-        if (!await abortable(decide(result.decisionRequired), signal)) break;
-        resumeAfterEndpointId = result.decisionRequired.failedEndpointId;
-      }
-    } catch (error51) {
-      if (signal?.aborted) throw error51;
-      for (const batchId of batches) state = await this.store.markBatchState(state.worldbookName, batchId, "failed");
-      throw error51;
-    }
-    if (documents.length > 0) {
-      const statuses = await echoesApi.retrievalDocumentStatus(documents.map((document2) => document2.documentId));
-      const stateByDocumentId = new Map(statuses.documents.map((document2) => [document2.documentId, document2.vectorState]));
-      const documentIdBySliceId = new Map(targetSlices.map((slice, index) => [slice.id, documents[index].documentId]));
-      for (const batchId of batches) {
-        const batchSlices = targetSlices.filter((slice) => slice.batch.id === batchId);
-        const vectorStates = batchSlices.map((slice) => stateByDocumentId.get(documentIdBySliceId.get(slice.id)));
-        const syncState = vectorStates.includes("ambiguous") ? "ambiguous" : vectorStates.includes("failed") ? "failed" : vectorStates.includes("pending") || vectorStates.includes(void 0) ? "pending" : "ready";
-        state = await this.store.markBatchState(state.worldbookName, batchId, syncState);
-        for (const slice of state.slices.filter((item) => item.batch.id === batchId && !documentIdBySliceId.has(item.id))) {
-          state = await this.store.markBatchState(
-            state.worldbookName,
-            batchId,
-            syncState,
-            [slice.id]
-          );
-        }
-      }
-    }
-    if (result.deleted >= 0 && deletedSliceIds.length > 0) {
-      state = await this.store.clearPendingDeletes(state.worldbookName, deletedSliceIds);
-    }
-    return state;
-  }
-  async ensureCollection(state, embeddingGroupId) {
-    const group = getSettings().retrieval.embeddingGroups.find((candidate) => candidate.id === embeddingGroupId);
-    if (state.catalog.retrievalCollectionId && state.catalog.retrievalEmbeddingSpaceId === group.embeddingSpaceId) {
-      return state;
-    }
-    const digest = await hashIdentifier2(`${state.catalog.namespaceId}\0${group.embeddingSpaceId}`);
-    const collectionId = `summary_${digest.slice(0, 48)}`;
-    const collections = await echoesApi.listRetrievalCollections();
-    if (!collections.some((item) => item.collection.id === collectionId)) {
-      try {
-        await echoesApi.createRetrievalCollection({
-          id: collectionId,
-          name: `\u804A\u5929\u603B\u7ED3 - ${state.catalog.chatId}`.slice(0, 120),
-          description: "Echoes \u6839\u636E\u804A\u5929\u4E16\u754C\u4E66\u91CD\u5EFA\u7684\u603B\u7ED3\u68C0\u7D22\u96C6\u5408\u3002",
-          embeddingSpaceId: group.embeddingSpaceId,
-          dimensions: group.dimensions
-        });
-      } catch (error51) {
-        const refreshed = await echoesApi.listRetrievalCollections();
-        if (!refreshed.some((item) => item.collection.id === collectionId)) throw error51;
-      }
-    }
-    return this.store.setRetrievalBinding(state.worldbookName, collectionId, group.embeddingSpaceId);
-  }
-};
-
-// src/extension/ui/summary-panel.ts
-function actionButton2(icon, title, action) {
-  const button3 = document.createElement("button");
-  button3.type = "button";
-  button3.className = "echoes-icon-button";
-  button3.title = title;
-  button3.setAttribute("aria-label", title);
-  button3.dataset.summaryAction = action;
-  button3.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
-  return button3;
-}
-function stateLabel(slice) {
-  return {
-    ready: "\u5C31\u7EEA",
-    pending: "\u5F85\u540C\u6B65",
-    failed: "\u5931\u8D25",
-    ambiguous: "\u4E0D\u786E\u5B9A",
-    stale: "\u5DF2\u5931\u6548"
-  }[slice.batch.state];
-}
-function coveredDeletionDialog(message3) {
-  const modal = dialogShell("\u603B\u7ED3\u8986\u76D6\u4E86\u9690\u85CF\u6D88\u606F");
-  modal.querySelector(".echoes-dialog-body").innerHTML = "<p data-message></p>";
-  modal.querySelector("[data-message]").textContent = message3;
-  modal.querySelector(".echoes-dialog-footer").innerHTML = `
-    <button type="button" class="menu_button" data-choice="cancel">\u53D6\u6D88</button>
-    <button type="button" class="menu_button" data-choice="keep">\u4FDD\u6301\u9690\u85CF\u5E76\u5220\u9664</button>
-    <button type="button" class="menu_button echoes-primary" data-choice="restore">\u6062\u590D\u540E\u5220\u9664</button>`;
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = (decision) => {
-      settled = true;
-      modal.close();
-      resolve(decision);
-    };
-    modal.querySelectorAll("[data-choice]").forEach((button3) => {
-      button3.addEventListener("click", () => finish(button3.dataset.choice));
-    });
-    modal.addEventListener("cancel", (event) => {
-      event.preventDefault();
-      finish("cancel");
-    }, { once: true });
-    modal.addEventListener("close", () => {
-      if (!settled) resolve("cancel");
-    }, { once: true });
-    modal.showModal();
-  });
-}
-var SummaryPanel = class {
-  constructor(root) {
-    this.root = root;
-    this.bindEvents();
-  }
-  root;
-  coordinator = new SummaryCoordinator();
-  state = null;
-  compressionStatus = null;
-  busy = false;
-  acknowledgedUnsafeKey = "";
-  renderSequence = 0;
-  mode = "memory";
-  selectedSliceIds = /* @__PURE__ */ new Set();
-  stopRequested = false;
-  async render(mode = this.mode) {
-    const viewClass = mode === "settings" ? "echoes-summary-generation-view" : "echoes-summary-view";
-    if (!this.root.classList.contains(viewClass)) return;
-    this.mode = mode;
-    const sequence2 = ++this.renderSequence;
-    const host = this.root.querySelector(".echoes-grid-host");
-    host.innerHTML = '<div class="echoes-grid-message">\u6B63\u5728\u8BFB\u53D6\u603B\u7ED3\u4E16\u754C\u4E66...</div>';
-    if (mode === "settings") {
-      if (!this.root.classList.contains("echoes-summary-generation-view")) return;
-      this.renderSettingsContent();
-      return;
-    }
-    const chatId = SillyTavern.getContext().chatId;
-    try {
-      const state = await this.coordinator.checkIntegrity();
-      const compressionStatus = await this.coordinator.compression.inspect(state);
-      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-summary-view") || SillyTavern.getContext().chatId !== chatId || state.catalog.chatId !== chatId) return;
-      this.state = state;
-      this.compressionStatus = compressionStatus;
-      this.renderSidebar();
-      this.renderMemoryContent();
-    } catch (error51) {
-      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-summary-view") || SillyTavern.getContext().chatId !== chatId) return;
-      this.compressionStatus = null;
-      host.innerHTML = "";
-      const note = document.createElement("div");
-      note.className = "echoes-grid-message error";
-      note.textContent = error51 instanceof Error ? error51.message : String(error51);
-      host.append(note);
-    }
-  }
-  async runAutomatic() {
-    const chatId = SillyTavern.getContext().chatId;
-    this.stopRequested = false;
-    this.busy = true;
-    this.setTaskNote("\u81EA\u52A8\u603B\u7ED3\u8FD0\u884C\u4E2D\uFF0C\u53EF\u968F\u65F6\u70B9\u51FB\u201C\u505C\u6B62\u603B\u7ED3\u201D\u3002");
-    try {
-      const state = await this.coordinator.runAutomatic();
-      if (state && SillyTavern.getContext().chatId === chatId && state.catalog.chatId === chatId) {
-        this.state = state;
-      }
-      if (this.root.classList.contains("echoes-summary-view")) await this.render("memory");
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u81EA\u52A8\u603B\u7ED3\u5931\u8D25");
-    } finally {
-      this.busy = false;
-      this.setTaskNote("");
-    }
-  }
-  renderSidebar() {
-    const heading = this.root.querySelector(".echoes-sidebar-heading > span");
-    const actions = this.root.querySelector(".echoes-sidebar-actions");
-    const list = this.root.querySelector(".echoes-table-list");
-    heading.textContent = "\u603B\u7ED3\u72B6\u6001";
-    actions.replaceChildren();
-    list.replaceChildren();
-    const counts = /* @__PURE__ */ new Map();
-    for (const slice of this.state?.slices ?? []) counts.set(slice.batch.state, (counts.get(slice.batch.state) ?? 0) + 1);
-    for (const [icon, label, value] of [
-      ["layer-group", "\u5207\u7247", this.state?.slices.length ?? 0],
-      ["circle-check", "\u5C31\u7EEA", counts.get("ready") ?? 0],
-      ["clock", "\u5F85\u540C\u6B65", counts.get("pending") ?? 0],
-      ["triangle-exclamation", "\u5931\u6548", counts.get("stale") ?? 0],
-      ["eye-slash", "\u5DF2\u9690\u85CF", this.compressionStatus?.hidden ?? 0]
-    ]) {
-      const item = document.createElement("div");
-      item.className = "echoes-summary-stat";
-      item.innerHTML = `<i class="fa-solid fa-${icon}"></i><span></span><strong>${value}</strong>`;
-      item.querySelector("span").textContent = label;
-      list.append(item);
-    }
-  }
-  renderMemoryContent() {
-    if (!this.state) return;
-    const host = this.root.querySelector(".echoes-grid-host");
-    host.innerHTML = `
-      <div class="echoes-summary-page">
-        <section class="echoes-summary-controls">
-          <div class="echoes-summary-control-row">
-            <label class="echoes-check"><input type="checkbox" data-summary-auto>\u81EA\u52A8\u603B\u7ED3</label>
-            <span class="echoes-inline-note">\u81EA\u52A8\u9608\u503C\u4E0E\u6A21\u578B\u7ED1\u5B9A\u5728\u201C\u603B\u7ED3\u8BB0\u5FC6\u8BBE\u7F6E\u201D\u548C\u201CAPI\u914D\u7F6E\u201D\u4E2D\u7BA1\u7406\u3002</span>
-            <button type="button" class="menu_button echoes-danger" data-summary-action="stop"><i class="fa-solid fa-stop"></i> \u505C\u6B62\u603B\u7ED3</button>
-          </div>
-          <form class="echoes-summary-manual" data-summary-manual>
-            <label>\u8D77\u59CB\u6D88\u606F<input type="number" name="start" min="0" required></label>
-            <label>\u7ED3\u675F\u6D88\u606F<input type="number" name="end" min="0" required></label>
-            <label>\u4E0B\u4E00\u6279\u6B21<input type="number" min="1" data-summary-next-batch required></label>
-            <button type="button" class="menu_button" data-summary-action="set-next-batch"><i class="fa-solid fa-hashtag"></i> \u8BBE\u7F6E\u7F16\u53F7</button>
-            <button type="button" class="menu_button" data-summary-action="preview"><i class="fa-solid fa-eye"></i> \u9884\u89C8</button>
-            <button type="submit" class="menu_button echoes-primary"><i class="fa-solid fa-wand-magic-sparkles"></i> \u603B\u7ED3</button>
-          </form>
-          <div class="echoes-summary-task" data-summary-task></div>
-        </section>
-        <section class="echoes-summary-section echoes-compression-section">
-          <header><h2>\u4E0A\u4E0B\u6587\u9690\u85CF</h2><button type="button" class="menu_button" data-summary-action="compression-reconcile" title="\u6309\u5F53\u524D\u8BBE\u7F6E\u91CD\u65B0\u8BA1\u7B97\u6D88\u606F\u7684\u9690\u85CF\u72B6\u6001"><i class="fa-solid fa-arrows-rotate"></i> \u91CD\u65B0\u5E94\u7528\u9690\u85CF</button></header>
-          <div class="echoes-summary-control-row echoes-compression-controls">
-            <label class="echoes-check"><input type="checkbox" data-compression-recall>\u603B\u7ED3\u53EC\u56DE\u603B\u5F00\u5173</label>
-            <label class="echoes-check"><input type="checkbox" data-compression-enabled>\u81EA\u52A8\u9690\u85CF</label>
-            <label>\u4FDD\u7559\u539F\u6D88\u606F X<input type="number" min="0" max="1000" data-compression-keep></label>
-            <label>\u56FA\u5B9A\u8FD1\u671F\u6279\u6B21 Y<input type="number" min="0" max="100" data-compression-recent></label>
-            <label>\u5220\u9664\u603B\u7ED3\u65F6<select data-compression-deletion>
-              <option value="restore_first">\u5148\u6062\u590D\u8986\u76D6\u6D88\u606F</option>
-              <option value="confirm_restore">\u6BCF\u6B21\u8BE2\u95EE</option>
-              <option value="keep_hidden">\u5220\u9664\u5E76\u4FDD\u6301\u9690\u85CF</option>
-            </select></label>
-          </div>
-          <div class="echoes-compression-stats" data-compression-stats></div>
-          <div class="echoes-summary-manual echoes-compression-actions">
-            <label>\u8D77\u59CB\u697C\u5C42<input type="number" min="0" data-compression-range-start></label>
-            <label>\u7ED3\u675F\u697C\u5C42<input type="number" min="0" data-compression-range-end></label>
-            <button type="button" class="menu_button" data-summary-action="restore-range"><i class="fa-solid fa-eye"></i> \u6062\u590D\u8303\u56F4</button>
-            <button type="button" class="menu_button" data-summary-action="restore-all"><i class="fa-solid fa-eye"></i> \u5168\u90E8\u6062\u590D</button>
-          </div>
-          <div class="echoes-compression-warning echoes-hidden" data-compression-warning></div>
-        </section>
-        <section class="echoes-summary-section"><header><h2>\u603B\u7ED3\u8BB0\u5F55</h2><div class="echoes-table-actions"><button type="button" class="menu_button" data-summary-action="bulk-menu"><i class="fa-solid fa-list-check"></i> \u6279\u91CF\u64CD\u4F5C</button><button type="button" class="menu_button" data-summary-action="repair"><i class="fa-solid fa-screwdriver-wrench"></i> \u4FEE\u590D\u7D22\u5F15</button></div></header><div data-summary-table></div></section>
-      </div>`;
-    host.querySelector("[data-summary-auto]").checked = this.state.catalog.autoRun;
-    host.querySelector("[data-compression-recall]").checked = this.state.catalog.recallEnabled;
-    const compression2 = this.state.catalog.compression;
-    const compressionEnabled = host.querySelector("[data-compression-enabled]");
-    compressionEnabled.checked = compression2.enabled;
-    compressionEnabled.disabled = !this.state.catalog.recallEnabled;
-    host.querySelector("[data-compression-keep]").value = String(compression2.keepRecentMessages);
-    host.querySelector("[data-compression-recent]").value = String(compression2.recentBatchCount);
-    host.querySelector("[data-compression-deletion]").value = compression2.deletionPolicy;
-    const end = Math.max(0, SillyTavern.getContext().chat.length - 1);
-    host.querySelector("[name=start]").value = "0";
-    host.querySelector("[name=end]").value = String(end);
-    host.querySelector("[data-summary-next-batch]").value = String(this.state.catalog.nextBatchNumber);
-    this.renderSummaryTable();
-    this.renderCompressionStatus();
-  }
-  renderSettingsContent() {
-    const settings = getSettings();
-    const workflow = settings.generationWorkflows.summary;
-    const generationGroup = settings.generationGroups.find((group) => group.id === workflow.groupId);
-    const embeddingGroup = settings.retrieval.embeddingGroups.find((group) => group.id === settings.summary.embeddingGroupId);
-    const host = this.root.querySelector(".echoes-grid-host");
-    host.innerHTML = `
-      <div class="echoes-summary-page echoes-summary-settings-page">
-        <section class="echoes-summary-section">
-          <header><div><h2>\u603B\u7ED3\u751F\u6210\u89C4\u5219</h2><small>\u6A21\u578B\u3001API\u3001\u51ED\u636E\u548C\u6545\u969C\u7B56\u7565\u7EDF\u4E00\u5728 API\u914D\u7F6E\u4E2D\u7BA1\u7406</small></div><button type="button" class="menu_button" data-action="switch-view" data-view="api"><i class="fa-solid fa-plug"></i> \u524D\u5F80 API\u914D\u7F6E</button></header>
-          <div class="echoes-workflow-summary">
-            <span>\u751F\u6210\u7AEF\u70B9\u7EC4<strong data-summary-binding-group></strong></span>
-            <span>\u6545\u969C\u7B56\u7565<strong data-summary-binding-policy></strong></span>
-            <span>Embedding \u7EC4<strong data-summary-binding-embedding></strong></span>
-            <label>\u81EA\u52A8\u603B\u7ED3\u6D88\u606F\u9608\u503C<input type="number" min="2" max="500" data-summary-count></label>
-            <label>\u5355\u6279\u5411\u91CF\u5316\u6570\u91CF<input type="number" min="1" max="100" data-summary-embedding-batch-size></label>
-          </div>
-        </section>
-        <section class="echoes-summary-section"><header><h2>\u603B\u7ED3\u63D0\u793A\u8BCD</h2><button type="button" class="menu_button" data-summary-action="add-prompt"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-summary-prompts></div></section>
-        <section class="echoes-summary-section"><header><h2>\u6D88\u606F\u6E05\u6D17</h2><button type="button" class="menu_button" data-summary-action="add-rule"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-summary-rules></div></section>
-      </div>`;
-    host.querySelector("[data-summary-binding-group]").textContent = generationGroup?.name ?? "\u672A\u914D\u7F6E";
-    host.querySelector("[data-summary-binding-policy]").textContent = {
-      confirm_ambiguous: "\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4",
-      always: "\u59CB\u7EC8\u81EA\u52A8\u5207\u6362",
-      definitive_only: "\u4EC5\u660E\u786E\u5931\u8D25\u5207\u6362"
-    }[workflow.failoverPolicy];
-    host.querySelector("[data-summary-binding-embedding]").textContent = embeddingGroup?.name ?? "\u4EC5\u540C\u6B65 BM25";
-    host.querySelector("[data-summary-count]").value = String(settings.summary.messageCount);
-    host.querySelector("[data-summary-embedding-batch-size]").value = String(settings.summary.embeddingBatchSize);
-    this.renderPrompts();
-    this.renderRules();
-  }
-  renderSummaryTable() {
-    const host = this.root.querySelector("[data-summary-table]");
-    const slices = this.state?.slices ?? [];
-    const currentIds = new Set(slices.map((slice) => slice.id));
-    for (const id2 of this.selectedSliceIds) {
-      if (!currentIds.has(id2)) this.selectedSliceIds.delete(id2);
-    }
-    if (slices.length === 0) {
-      host.innerHTML = '<div class="echoes-empty-note">\u6682\u65E0\u603B\u7ED3\u8BB0\u5F55\u3002</div>';
-      return;
-    }
-    const wrapper = document.createElement("div");
-    wrapper.className = "echoes-table-scroll";
-    const table = document.createElement("table");
-    table.className = "echoes-data-table echoes-summary-table";
-    table.innerHTML = '<thead><tr><th><input type="checkbox" data-summary-select-all aria-label="\u9009\u62E9\u5168\u90E8\u603B\u7ED3"></th><th>\u6279\u6B21</th><th>\u6D88\u606F\u8303\u56F4</th><th>\u65F6\u95F4</th><th>\u6807\u9898</th><th>\u72B6\u6001</th><th>\u9690\u85CF</th><th class="echoes-row-actions-heading">\u64CD\u4F5C</th></tr></thead>';
-    const body = document.createElement("tbody");
-    for (const slice of slices) {
-      const row = document.createElement("tr");
-      const selection = document.createElement("td");
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.dataset.summarySelect = slice.id;
-      checkbox.setAttribute("aria-label", `\u9009\u62E9\u603B\u7ED3 ${slice.batch.batchNumber}.${slice.sliceNumber}`);
-      checkbox.checked = this.selectedSliceIds.has(slice.id);
-      selection.append(checkbox);
-      row.append(selection);
-      const compression2 = this.compressionStatus?.batches.find((batch) => batch.batchId === slice.batch.id);
-      for (const value of [
-        `${slice.batch.batchNumber}.${slice.sliceNumber}`,
-        `${slice.batch.startMessageId} - ${slice.batch.endMessageId}`,
-        slice.timestamp,
-        slice.title,
-        stateLabel(slice),
-        compression2 ? `${compression2.hidden}/${compression2.covered}${compression2.pinned ? ` \xB7 \u56FA\u5B9A ${compression2.pinned}` : ""}${compression2.indexSafe ? "" : " \xB7 \u7D22\u5F15\u7F3A\u5931"}` : "\u672A\u8986\u76D6"
-      ]) {
-        const cell = document.createElement("td");
-        cell.textContent = value;
-        cell.title = value;
-        row.append(cell);
-      }
-      const actions = document.createElement("td");
-      actions.className = "echoes-row-actions";
-      const edit = actionButton2("pen", "\u7F16\u8F91\u5207\u7247", "edit-slice");
-      edit.dataset.sliceId = slice.id;
-      const menu = actionButton2("ellipsis", "\u66F4\u591A\u64CD\u4F5C", "slice-menu");
-      menu.dataset.sliceId = slice.id;
-      menu.dataset.batchId = slice.batch.id;
-      menu.dataset.batchNumber = String(slice.batch.batchNumber);
-      actions.append(edit, menu);
-      row.append(actions);
-      body.append(row);
-    }
-    table.append(body);
-    const selectAll = table.querySelector("[data-summary-select-all]");
-    selectAll.checked = slices.length > 0 && slices.every((slice) => this.selectedSliceIds.has(slice.id));
-    selectAll.indeterminate = !selectAll.checked && slices.some((slice) => this.selectedSliceIds.has(slice.id));
-    prepareResponsiveTable(table);
-    wrapper.append(table);
-    host.replaceChildren(wrapper);
-  }
-  renderCompressionStatus() {
-    const host = this.root.querySelector("[data-compression-stats]");
-    const warning = this.root.querySelector("[data-compression-warning]");
-    if (!host || !warning || !this.compressionStatus) return;
-    const status = this.compressionStatus;
-    host.replaceChildren();
-    for (const [label, value] of [
-      ["\u72B6\u6001", status.active ? "\u8FD0\u884C\u4E2D" : "\u5DF2\u6682\u505C"],
-      ["\u5DF2\u9690\u85CF", String(status.hidden)],
-      ["\u56FA\u5B9A\u53EF\u89C1", String(status.pinned)],
-      ["\u53EF\u9690\u85CF", String(status.compressible)],
-      ["\u9690\u85CF\u622A\u6B62", status.hideThroughMessageId ?? "\u65E0"],
-      ["\u7D22\u5F15", status.indexSafe ? "\u5B89\u5168" : "\u5B58\u5728\u7F3A\u53E3"]
-    ]) {
-      const item = document.createElement("div");
-      const name = document.createElement("span");
-      name.textContent = label;
-      const strong = document.createElement("strong");
-      strong.textContent = value;
-      item.append(name, strong);
-      host.append(item);
-    }
-    const messages2 = [];
-    const unsafeBatchKey = [...status.unsafeBatchIds].sort().join("\0");
-    const unsafeKey = unsafeBatchKey ? `${this.state?.catalog.namespaceId ?? ""}\0${unsafeBatchKey}` : "";
-    const showUnsafe = Boolean(unsafeBatchKey) && unsafeKey !== this.acknowledgedUnsafeKey;
-    if (showUnsafe) {
-      messages2.push(`\u6279\u6B21\u7D22\u5F15\u6587\u6863\u7F3A\u5931\uFF1A${status.unsafeBatchIds.join(", ")}`);
-    }
-    if (status.staleBatchNumbers.length > 0) {
-      messages2.push(`\u5B58\u5728\u8F83\u65E9\u5931\u6548\u6279\u6B21\uFF1A${status.staleBatchNumbers.join(", ")}\u3002\u81EA\u52A8\u603B\u7ED3\u548C\u65B0\u589E\u9690\u85CF\u5DF2\u505C\u6B62\u3002`);
-    }
-    warning.replaceChildren();
-    if (messages2.length > 0) {
-      const text = document.createElement("p");
-      text.textContent = messages2.join("\n");
-      warning.append(text);
-    }
-    if (showUnsafe) {
-      const controls = document.createElement("div");
-      controls.className = "echoes-compression-warning-actions";
-      for (const [label, action] of [
-        ["\u4FEE\u590D\u7D22\u5F15", "repair"],
-        ["\u6062\u590D\u5168\u90E8\u6D88\u606F", "restore-all"],
-        ["\u4FDD\u6301\u9690\u85CF", "compression-keep-hidden"]
-      ]) {
-        const button3 = document.createElement("button");
-        button3.type = "button";
-        button3.className = "menu_button";
-        button3.dataset.summaryAction = action;
-        button3.textContent = label;
-        controls.append(button3);
-      }
-      warning.append(controls);
-    }
-    warning.classList.toggle("echoes-hidden", messages2.length === 0);
-  }
-  renderPrompts() {
-    const host = this.root.querySelector("[data-summary-prompts]");
-    host.replaceChildren();
-    const items = getSettings().summary.promptPreset.items;
-    items.forEach((item, index) => {
-      const detail = item.kind === "previous_summaries" ? `${item.role.toUpperCase()} \xB7 ${item.kind} \xB7 ${item.count} ${(item.unit ?? "slices") === "batches" ? "\u6279" : "\u7247"}` : `${item.role.toUpperCase()} \xB7 ${item.kind}`;
-      const row = this.configRow(item.title, detail, item.enabled);
-      row.dataset.promptIndex = String(index);
-      const controls = row.querySelector("[data-controls]");
-      for (const [icon, title, action, disabled] of [
-        ["arrow-up", "\u4E0A\u79FB", "prompt-up", index === 0],
-        ["arrow-down", "\u4E0B\u79FB", "prompt-down", index === items.length - 1],
-        ["pen", "\u7F16\u8F91", "edit-prompt", false],
-        ["trash", "\u5220\u9664", "delete-prompt", false]
-      ]) {
-        const button3 = actionButton2(icon, title, action);
-        button3.dataset.index = String(index);
-        button3.disabled = disabled;
-        controls.append(button3);
-      }
-      row.querySelector("input").dataset.promptToggle = String(index);
-      host.append(row);
-    });
-  }
-  renderRules() {
-    const host = this.root.querySelector("[data-summary-rules]");
-    host.replaceChildren();
-    const rules = getSettings().summary.preprocessRules;
-    if (rules.length === 0) host.innerHTML = '<div class="echoes-empty-note">\u6682\u65E0\u6E05\u6D17\u89C4\u5219\u3002</div>';
-    rules.forEach((rule, index) => {
-      const row = this.configRow(rule.name, `${rule.type} \xB7 /${rule.pattern}/${rule.flags}`, rule.enabled);
-      const controls = row.querySelector("[data-controls]");
-      for (const [icon, title, action, disabled] of [
-        ["arrow-up", "\u4E0A\u79FB", "rule-up", index === 0],
-        ["arrow-down", "\u4E0B\u79FB", "rule-down", index === rules.length - 1],
-        ["pen", "\u7F16\u8F91", "edit-rule", false],
-        ["trash", "\u5220\u9664", "delete-rule", false]
-      ]) {
-        const button3 = actionButton2(icon, title, action);
-        button3.dataset.index = String(index);
-        button3.disabled = disabled;
-        controls.append(button3);
-      }
-      row.querySelector("input").dataset.ruleToggle = String(index);
-      host.append(row);
-    });
-  }
-  configRow(title, detail, enabled) {
-    const row = document.createElement("article");
-    row.className = "echoes-summary-config-row";
-    const text = document.createElement("div");
-    const strong = document.createElement("strong");
-    strong.textContent = title;
-    const small = document.createElement("small");
-    small.textContent = detail;
-    text.append(strong, small);
-    const toggle = document.createElement("label");
-    toggle.className = "echoes-switch";
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.setAttribute("aria-label", `\u542F\u7528${title}`);
-    input.checked = enabled;
-    toggle.append(input, document.createElement("span"));
-    const controls = document.createElement("div");
-    controls.dataset.controls = "true";
-    controls.className = "echoes-row-actions";
-    row.append(text, toggle, controls);
-    return row;
-  }
-  bindEvents() {
-    const reportError = (error51) => toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u603B\u7ED3\u64CD\u4F5C\u5931\u8D25");
-    this.root.addEventListener("click", (event) => {
-      const target = event.target.closest("[data-summary-action]");
-      if (!target) return;
-      void this.handleAction(target.dataset.summaryAction ?? "", target);
-    });
-    this.root.addEventListener("change", (event) => {
-      void this.handleChange(event.target).catch(reportError);
-    });
-    this.root.addEventListener("submit", (event) => {
-      const form = event.target;
-      if (!form.matches("[data-summary-manual]")) return;
-      event.preventDefault();
-      void this.runManual(form).catch(reportError);
-    });
-  }
-  async handleAction(action, target) {
-    try {
-      if (action === "refresh") await this.render();
-      else if (action === "stop") {
-        this.stopRequested = true;
-        this.setTaskNote("\u6B63\u5728\u505C\u6B62\u603B\u7ED3\u5E76\u5173\u95ED\u81EA\u52A8\u603B\u7ED3...");
-        await this.coordinator.stop();
-      } else if (action === "set-next-batch") await this.setNextBatchNumber();
-      else if (action === "bulk-menu") await this.openBulkMenu();
-      else if (action === "slice-menu") await this.openSliceMenu(target);
-      else if (action === "preview") await this.preview();
-      else if (action === "repair") await this.withBusy(() => this.coordinator.repairIndex());
-      else if (action === "add-prompt") await this.editPrompt();
-      else if (action === "edit-prompt") await this.editPrompt(Number(target.dataset.index));
-      else if (action === "delete-prompt") this.deletePrompt(Number(target.dataset.index));
-      else if (action === "prompt-up") this.movePrompt(Number(target.dataset.index), -1);
-      else if (action === "prompt-down") this.movePrompt(Number(target.dataset.index), 1);
-      else if (action === "add-rule") await this.editRule();
-      else if (action === "edit-rule") await this.editRule(Number(target.dataset.index));
-      else if (action === "delete-rule") this.deleteRule(Number(target.dataset.index));
-      else if (action === "rule-up") this.moveRule(Number(target.dataset.index), -1);
-      else if (action === "rule-down") this.moveRule(Number(target.dataset.index), 1);
-      else if (action === "edit-slice") await this.editSlice(target.dataset.sliceId ?? "");
-      else if (action === "delete-slice") await this.deleteSlice(target.dataset.sliceId ?? "");
-      else if (action === "rebuild-batch") await this.withBusy(
-        () => this.coordinator.rebuildBatch(Number(target.dataset.batchNumber)),
-        "\u6B63\u5728\u91CD\u5EFA\u603B\u7ED3\u6279\u6B21\uFF0C\u53EF\u968F\u65F6\u70B9\u51FB\u201C\u505C\u6B62\u603B\u7ED3\u201D\u3002"
-      );
-      else if (action === "reset-batch") await this.resetBatch(Number(target.dataset.batchNumber));
-      else if (action === "compression-reconcile") {
-        await this.withBusy(() => this.coordinator.compression.reconcile(this.state ?? void 0));
-      } else if (action === "compression-keep-hidden") {
-        const unsafeBatchKey = [...this.compressionStatus?.unsafeBatchIds ?? []].sort().join("\0");
-        this.acknowledgedUnsafeKey = unsafeBatchKey ? `${this.state?.catalog.namespaceId ?? ""}\0${unsafeBatchKey}` : "";
-      } else if (action === "restore-batch") {
-        if (this.state) {
-          await this.withBusy(() => this.coordinator.compression.restoreBatch(this.state, [target.dataset.batchId ?? ""]));
-        }
-      } else if (action === "recompress-batch") {
-        if (this.state) {
-          await this.withBusy(() => this.coordinator.compression.recompressBatch(this.state, [target.dataset.batchId ?? ""]));
-        }
-      } else if (action === "restore-range") await this.restoreRange();
-      else if (action === "restore-all") {
-        if (this.state && confirm("\u6062\u590D\u5F53\u524D\u804A\u5929\u4E2D\u5168\u90E8\u7531 Echoes \u9690\u85CF\u7684\u6D88\u606F\uFF1F")) {
-          await this.withBusy(() => this.coordinator.compression.restoreAll(this.state));
-        }
-      }
-      await this.render();
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u603B\u7ED3\u64CD\u4F5C\u5931\u8D25");
-    }
-  }
-  async handleChange(target) {
-    if (target.matches("[data-summary-select-all]")) {
-      if (target.checked) {
-        for (const slice of this.state?.slices ?? []) this.selectedSliceIds.add(slice.id);
-      } else {
-        this.selectedSliceIds.clear();
-      }
-      this.renderSummaryTable();
-      return;
-    }
-    if (target.dataset.summarySelect !== void 0) {
-      if (target.checked) this.selectedSliceIds.add(target.dataset.summarySelect);
-      else this.selectedSliceIds.delete(target.dataset.summarySelect);
-      return;
-    }
-    if (target.matches("[data-compression-recall]")) {
-      const enabled = target.checked;
-      const state = await this.coordinator.setRecallEnabled(enabled);
-      if (!enabled) await recallCoordinator.clear();
-      await this.coordinator.compression.reconcile(state);
-      await this.render();
-      return;
-    }
-    if (target.matches("[data-compression-enabled], [data-compression-keep], [data-compression-recent], [data-compression-deletion]")) {
-      const compression2 = summaryCompressionConfigSchema.parse({
-        enabled: this.root.querySelector("[data-compression-enabled]").checked,
-        keepRecentMessages: Number(this.root.querySelector("[data-compression-keep]").value),
-        recentBatchCount: Number(this.root.querySelector("[data-compression-recent]").value),
-        deletionPolicy: this.root.querySelector("[data-compression-deletion]").value
-      });
-      await this.coordinator.saveCompression(compression2);
-      await this.render();
-      return;
-    }
-    const settings = getSettings();
-    if (target.matches("[data-summary-auto]")) {
-      const enabled = target.checked;
-      if (!enabled) this.stopRequested = true;
-      await this.coordinator.setAutoRun(enabled);
-      if (enabled) {
-        this.stopRequested = false;
-        void this.runAutomatic();
-      } else this.setTaskNote("\u81EA\u52A8\u603B\u7ED3\u5DF2\u5173\u95ED\uFF0C\u5F53\u524D\u603B\u7ED3\u4EFB\u52A1\u5DF2\u6536\u5230\u505C\u6B62\u8BF7\u6C42\u3002");
-      return;
-    }
-    if (target.matches("[data-summary-count]")) settings.summary.messageCount = Math.max(2, Math.min(500, Number(target.value)));
-    else if (target.matches("[data-summary-embedding-batch-size]")) {
-      settings.summary.embeddingBatchSize = Math.max(1, Math.min(100, Number(target.value)));
-    } else if (target.dataset.promptToggle !== void 0) settings.summary.promptPreset.items[Number(target.dataset.promptToggle)].enabled = target.checked;
-    else if (target.dataset.ruleToggle !== void 0) settings.summary.preprocessRules[Number(target.dataset.ruleToggle)].enabled = target.checked;
-    else return;
-    saveSettings(settings);
-  }
-  async runManual(form) {
-    const data = new FormData(form);
-    this.stopRequested = false;
-    await this.withBusy(
-      () => this.coordinator.runManual(Number(data.get("start")), Number(data.get("end"))),
-      "\u624B\u52A8\u603B\u7ED3\u8FD0\u884C\u4E2D\uFF0C\u53EF\u968F\u65F6\u70B9\u51FB\u201C\u505C\u6B62\u603B\u7ED3\u201D\u3002"
+      })
     );
-    await this.render();
+    return page;
   }
-  async preview() {
-    const form = this.root.querySelector("[data-summary-manual]");
-    const data = new FormData(form);
-    const prepared = await this.coordinator.previewManual(Number(data.get("start")), Number(data.get("end")));
-    const modal = dialogShell("\u603B\u7ED3\u8BF7\u6C42\u9884\u89C8", { closeOnly: true });
-    const body = modal.querySelector(".echoes-dialog-body");
-    const previewBlocks = [
-      ["\u539F\u59CB\u6D88\u606F", JSON.stringify(prepared.originalMessages, null, 2)],
-      ["\u6E05\u6D17\u540E\u6D88\u606F", JSON.stringify(prepared.cleanedMessages, null, 2)],
-      ...prepared.promptBlocks.map((block) => [`${block.role.toUpperCase()} \xB7 ${block.title}`, block.content]),
-      ["\u8F93\u51FA\u534F\u8BAE", SUMMARY_OUTPUT_PROTOCOL]
+  if (ctx.route === "status/rules") {
+    const f = fields([
+      {
+        key: "auto",
+        label: "\u81EA\u52A8\u66F4\u65B0\u72B6\u6001",
+        type: "checkbox",
+        value: state.catalog.autoUpdate
+      },
+      {
+        key: "unknownFields",
+        label: "\u672A\u58F0\u660E\u5B57\u6BB5",
+        type: "select",
+        value: profile.validation.unknownFields,
+        options: [
+          ["allow", "\u5141\u8BB8"],
+          ["reject", "\u62D2\u7EDD"]
+        ]
+      }
+    ]);
+    page.append(
+      saveForm(f, async (v) => {
+        ctx.guard();
+        const fresh = await statusCoordinator.load();
+        await statusCoordinator.worldbook.saveConfiguration(state.worldbookName, {
+          autoUpdate: v.auto,
+          profile: {
+            ...fresh.catalog.profile,
+            validation: {
+              ...fresh.catalog.profile.validation,
+              unknownFields: v.unknownFields
+            },
+            updatedAt: now()
+          }
+        });
+      })
+    );
+    const rules = profile.validation.rules.map((r) => ({
+      ...r,
+      enabled: true
+    }));
+    page.append(
+      section(
+        "\u58F0\u660E\u5F0F\u6821\u9A8C",
+        orderedEditor(
+          ctx,
+          "\u6821\u9A8C\u89C4\u5219",
+          rules,
+          (r) => [r.name, r.path.join(".") + " \xB7 " + r.type],
+          (item, done) => editDialog(
+            "\u6821\u9A8C\u89C4\u5219",
+            [
+              {
+                key: "name",
+                label: "\u540D\u79F0",
+                value: item?.name,
+                required: true
+              },
+              {
+                key: "path",
+                label: "\u5B57\u6BB5\u8DEF\u5F84\uFF08\u70B9\u5206\u9694\uFF09",
+                value: item?.path.join("."),
+                required: true
+              },
+              {
+                key: "type",
+                label: "\u7C7B\u578B",
+                type: "select",
+                value: item?.type ?? "string",
+                options: [
+                  "string",
+                  "number",
+                  "boolean",
+                  "object",
+                  "array",
+                  "null"
+                ].map((x) => [x, x])
+              },
+              {
+                key: "required",
+                label: "\u5FC5\u987B\u5B58\u5728",
+                type: "checkbox",
+                value: item?.required ?? false
+              },
+              {
+                key: "enumValues",
+                label: "\u679A\u4E3E\u503C\uFF08JSON \u6570\u7EC4\uFF0C\u53EF\u7559\u7A7A\uFF09",
+                value: item?.enumValues ? JSON.stringify(item.enumValues) : ""
+              },
+              ...["minimum", "maximum", "maxDelta"].map((key) => ({
+                key,
+                label: {
+                  minimum: "\u6700\u5C0F\u503C",
+                  maximum: "\u6700\u5927\u503C",
+                  maxDelta: "\u5355\u6B21\u6700\u5927\u53D8\u5316"
+                }[key],
+                value: item?.[key] ?? ""
+              }))
+            ],
+            (v) => {
+              const r = {
+                id: item?.id ?? id("validation"),
+                name: v.name,
+                path: v.path.split("."),
+                type: v.type,
+                required: v.required,
+                enabled: true
+              };
+              for (const k of ["minimum", "maximum", "maxDelta"])
+                if (v[k] !== "") {
+                  r[k] = Number(v[k]);
+                  if (!Number.isFinite(r[k]))
+                    throw new Error("\u9650\u5236\u503C\u5FC5\u987B\u662F\u6570\u5B57\u3002");
+                }
+              if (v.enumValues.trim())
+                r.enumValues = JSON.parse(v.enumValues);
+              done(r);
+            }
+          ),
+          (items) => saveProfile({
+            validation: {
+              ...profile.validation,
+              rules: items.map(({ enabled, ...r }) => r)
+            }
+          }),
+          false
+        )
+      )
+    );
+    return page;
+  }
+  const initial = fields([
+    { key: "name", label: "\u5F53\u524D\u914D\u7F6E\u540D\u79F0", value: profile.name, required: true },
+    { key: "description", label: "\u8BF4\u660E", value: profile.description },
+    {
+      key: "initial",
+      label: "\u521D\u59CB\u72B6\u6001 YAML",
+      type: "textarea",
+      value: renderStatusYaml(profile.initialState),
+      rows: 14
+    }
+  ]);
+  page.append(
+    section(
+      "\u5F53\u524D\u804A\u5929\u914D\u7F6E",
+      saveForm(initial, async (v) => {
+        await saveProfile({
+          name: v.name,
+          description: v.description,
+          initialState: statusCoordinator.parseYaml(v.initial)
+        });
+      })
+    )
+  );
+  const settings = getSettings();
+  page.append(
+    section(
+      "\u5168\u5C40\u72B6\u6001\u6A21\u677F",
+      actions(
+        button(
+          "\u4FDD\u5B58\u5F53\u524D\u914D\u7F6E\u4E3A\u6A21\u677F",
+          "plus",
+          () => editDialog(
+            "\u65B0\u5EFA\u72B6\u6001\u6A21\u677F",
+            [
+              {
+                key: "name",
+                label: "\u6A21\u677F\u540D\u79F0",
+                value: profile.name,
+                required: true
+              }
+            ],
+            (v) => {
+              const s = getSettings();
+              s.statusTemplates.push({
+                id: id("status_template"),
+                name: v.name,
+                description: profile.description,
+                initialState: profile.initialState,
+                promptPreset: profile.promptPreset,
+                preprocessRules: profile.preprocessRules,
+                validation: profile.validation,
+                injection: profile.injection,
+                builtIn: false,
+                version: 1,
+                createdAt: now(),
+                updatedAt: now()
+              });
+              saveSettings(s);
+              void ctx.refresh();
+            }
+          )
+        )
+      ),
+      table(
+        ["\u6A21\u677F", "\u7528\u9014", "\u6765\u6E90", "\u64CD\u4F5C"],
+        settings.statusTemplates.map((t) => [
+          t.name,
+          t.description,
+          t.builtIn ? "\u5185\u7F6E" : "\u81EA\u5B9A\u4E49",
+          actions(
+            button("\u5E94\u7528", "check", async () => {
+              if (confirm("\u7528\u6B64\u6A21\u677F\u91CD\u5EFA\u5F53\u524D\u804A\u5929\u914D\u7F6E\uFF1F\u5F53\u524D\u72B6\u6001\u5FEB\u7167\u4FDD\u6301\u4E0D\u53D8\u3002")) {
+                ctx.guard();
+                await statusCoordinator.worldbook.saveConfiguration(
+                  state.worldbookName,
+                  { profile: instantiateStatusProfile(t) }
+                );
+                await ctx.refresh();
+              }
+            }),
+            ...!t.builtIn ? [
+              tool("\u4EE5\u5F53\u524D\u914D\u7F6E\u8986\u76D6\u6A21\u677F", "floppy-disk", async () => {
+                if (confirm("\u8986\u76D6\u6A21\u677F " + t.name + "\uFF1F")) {
+                  const s = getSettings();
+                  s.statusTemplates = s.statusTemplates.map(
+                    (x) => x.id === t.id ? {
+                      ...x,
+                      initialState: profile.initialState,
+                      promptPreset: profile.promptPreset,
+                      preprocessRules: profile.preprocessRules,
+                      validation: profile.validation,
+                      injection: profile.injection,
+                      version: x.version + 1,
+                      updatedAt: now()
+                    } : x
+                  );
+                  saveSettings(s);
+                  await ctx.refresh();
+                }
+              }),
+              tool(
+                "\u5220\u9664\u6A21\u677F",
+                "trash",
+                async () => {
+                  if (confirm("\u5220\u9664\u72B6\u6001\u6A21\u677F " + t.name + "\uFF1F")) {
+                    const s = getSettings();
+                    s.statusTemplates = s.statusTemplates.filter(
+                      (x) => x.id !== t.id
+                    );
+                    saveSettings(s);
+                    await ctx.refresh();
+                  }
+                },
+                "danger"
+              )
+            ] : []
+          )
+        ])
+      )
+    )
+  );
+  return page;
+}
+
+// src/extension/workbench/connections.ts
+init_client();
+var policies = [
+  ["confirm_ambiguous", "\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4"],
+  ["definitive_only", "\u4EC5\u660E\u786E\u5931\u8D25\u65F6\u5207\u6362"],
+  ["always", "\u81EA\u52A8\u5207\u6362"]
+];
+async function connectionsView(ctx) {
+  const page = el("div", "ew-page-content");
+  const settings = getSettings();
+  if (ctx.route === "api/workflows") {
+    const options = [
+      ["", "\u672A\u914D\u7F6E"],
+      ...settings.generationGroups.map(
+        (g) => [g.id, g.name]
+      )
     ];
-    for (const [title, value] of previewBlocks) {
-      const section = document.createElement("section");
-      section.className = "echoes-preview-block";
-      const header = document.createElement("header");
-      header.textContent = title;
-      const pre = document.createElement("pre");
-      pre.textContent = value;
-      section.append(header, pre);
-      body.append(section);
-    }
-    modal.showModal();
-  }
-  async withBusy(operation, runningMessage = "\u540E\u53F0\u4EFB\u52A1\u8FD0\u884C\u4E2D...") {
-    if (this.busy) throw new Error("\u5DF2\u6709\u603B\u7ED3\u4EFB\u52A1\u6B63\u5728\u8FD0\u884C\u3002");
-    this.busy = true;
-    const note = this.root.querySelector("[data-summary-task]");
-    if (note) note.textContent = runningMessage;
-    try {
-      return await operation();
-    } finally {
-      this.busy = false;
-      if (note) note.textContent = "";
-    }
-  }
-  setTaskNote(message3) {
-    const note = this.root.querySelector("[data-summary-task]");
-    if (note) note.textContent = message3;
-  }
-  selectedSlices() {
-    return (this.state?.slices ?? []).filter((slice) => this.selectedSliceIds.has(slice.id));
-  }
-  async setNextBatchNumber() {
-    const input = this.root.querySelector("[data-summary-next-batch]");
-    const batchNumber = Number(input?.value);
-    if (!Number.isInteger(batchNumber) || batchNumber < 1) {
-      throw new Error("\u4E0B\u4E00\u6279\u6B21\u7F16\u53F7\u5FC5\u987B\u662F\u5927\u4E8E 0 \u7684\u6574\u6570\u3002");
-    }
-    await this.withBusy(() => this.coordinator.setNextBatchNumber(batchNumber));
-  }
-  async openBulkMenu() {
-    const slices = this.selectedSlices();
-    if (slices.length === 0) {
-      toastr.warning("\u8BF7\u5148\u52FE\u9009\u81F3\u5C11\u4E00\u6761\u603B\u7ED3\u8BB0\u5F55\u3002", "\u6279\u91CF\u64CD\u4F5C");
-      return;
-    }
-    const batchCount = new Set(slices.map((slice) => slice.batch.id)).size;
-    const modal = dialogShell("\u6279\u91CF\u64CD\u4F5C", { closeOnly: true });
-    const body = modal.querySelector(".echoes-dialog-body");
-    body.innerHTML = `
-      <p>\u5DF2\u9009\u62E9 ${slices.length} \u6761\u8BB0\u5F55\uFF0C\u6D89\u53CA ${batchCount} \u4E2A\u6279\u6B21\u3002</p>
-      <div class="echoes-bulk-actions">
-        <button type="button" class="menu_button" data-bulk="rebuild"><i class="fa-solid fa-rotate"></i> \u91CD\u5EFA\u9009\u4E2D\u6279\u6B21</button>
-        <button type="button" class="menu_button" data-bulk="restore"><i class="fa-solid fa-eye"></i> \u6062\u590D\u9009\u4E2D\u6279\u6B21</button>
-        <button type="button" class="menu_button" data-bulk="recompress"><i class="fa-solid fa-eye-slash"></i> \u91CD\u65B0\u9690\u85CF\u9009\u4E2D\u6279\u6B21</button>
-        <button type="button" class="menu_button" data-bulk="reset"><i class="fa-solid fa-clock-rotate-left"></i> \u4ECE\u6700\u65E9\u9009\u4E2D\u6279\u6B21\u91CD\u7F6E</button>
-        <button type="button" class="menu_button echoes-danger" data-bulk="delete"><i class="fa-solid fa-trash"></i> \u5220\u9664\u9009\u4E2D\u8BB0\u5F55</button>
-      </div>`;
-    body.querySelectorAll("[data-bulk]").forEach((button3) => {
-      button3.addEventListener("click", () => {
-        modal.close();
-        void this.runBulkOperation(button3.dataset.bulk ?? "");
-      });
-    });
-    modal.showModal();
-  }
-  async openSliceMenu(target) {
-    const batchNumber = Number(target.dataset.batchNumber);
-    const modal = dialogShell(`\u6279\u6B21 ${batchNumber} \u64CD\u4F5C`, { closeOnly: true });
-    const body = modal.querySelector(".echoes-dialog-body");
-    body.innerHTML = '<div class="echoes-bulk-actions"></div>';
-    const actions = body.querySelector(".echoes-bulk-actions");
-    for (const [icon, label, action] of [
-      ["rotate", "\u91CD\u5EFA\u6279\u6B21", "rebuild-batch"],
-      ["eye", "\u6062\u590D\u6279\u6B21\u6D88\u606F", "restore-batch"],
-      ["eye-slash", "\u91CD\u65B0\u9690\u85CF\u6279\u6B21", "recompress-batch"],
-      ["clock-rotate-left", "\u4ECE\u6B64\u6279\u6B21\u91CD\u7F6E", "reset-batch"],
-      ["trash", "\u5220\u9664\u5207\u7247", "delete-slice"]
+    const spec = [];
+    for (const [key, label] of [
+      ["extraction", "\u7ED3\u6784\u5316\u8BB0\u5FC6\u63D0\u53D6"],
+      ["summary", "\u603B\u7ED3\u8BB0\u5FC6\u751F\u6210"],
+      ["status", "\u72B6\u6001\u8BB0\u5FC6\u66F4\u65B0"]
     ]) {
-      const button3 = document.createElement("button");
-      button3.type = "button";
-      button3.className = action === "delete-slice" ? "menu_button echoes-danger" : "menu_button";
-      button3.innerHTML = `<i class="fa-solid fa-${icon}"></i> ${label}`;
-      button3.addEventListener("click", () => {
-        modal.close();
-        void this.handleAction(action, target);
-      });
-      actions.append(button3);
-    }
-    modal.showModal();
-  }
-  async runBulkOperation(action) {
-    if (!this.state) return;
-    const slices = this.selectedSlices();
-    if (slices.length === 0) return;
-    const batchIds = [...new Set(slices.map((slice) => slice.batch.id))];
-    const batchNumbers = [...new Set(slices.map((slice) => slice.batch.batchNumber))].sort((left, right) => left - right);
-    if (action === "rebuild") {
-      if (!confirm(`\u91CD\u5EFA ${batchNumbers.length} \u4E2A\u6279\u6B21\u4F1A\u8C03\u7528\u526F API \u5E76\u4EA7\u751F\u8D39\u7528\u3002\u786E\u8BA4\u7EE7\u7EED\uFF1F`)) return;
-      this.stopRequested = false;
-      await this.withBusy(async () => {
-        for (const batchNumber of batchNumbers) {
-          if (this.stopRequested) break;
-          await this.coordinator.rebuildBatch(batchNumber);
+      spec.push(
+        {
+          key: key + "Group",
+          label: label + " \xB7 \u7AEF\u70B9\u7EC4",
+          type: "select",
+          value: settings.generationWorkflows[key].groupId,
+          options
+        },
+        {
+          key: key + "Policy",
+          label: label + " \xB7 \u6545\u969C\u7B56\u7565",
+          type: "select",
+          value: settings.generationWorkflows[key].failoverPolicy,
+          options: policies
         }
-      }, "\u6B63\u5728\u91CD\u5EFA\u9009\u4E2D\u6279\u6B21\uFF0C\u53EF\u968F\u65F6\u70B9\u51FB\u201C\u505C\u6B62\u603B\u7ED3\u201D\u3002");
-    } else if (action === "restore") {
-      await this.withBusy(() => this.coordinator.compression.restoreBatch(this.state, batchIds));
-    } else if (action === "recompress") {
-      await this.withBusy(() => this.coordinator.compression.recompressBatch(this.state, batchIds));
-    } else if (action === "reset") {
-      await this.resetBatch(batchNumbers[0]);
-    } else if (action === "delete") {
-      const decision = await this.deletionDecision(
-        batchIds,
-        `\u5220\u9664\u9009\u4E2D\u7684 ${slices.length} \u6761\u603B\u7ED3\u4F1A\u6539\u53D8\u9690\u85CF\u6D88\u606F\u6240\u4F9D\u8D56\u7684\u603B\u7ED3\u3002`,
-        `\u5220\u9664\u9009\u4E2D\u7684 ${slices.length} \u6761\u603B\u7ED3\u53CA\u5176\u68C0\u7D22\u6587\u6863\uFF1F`
       );
-      if (decision === "cancel") return;
-      if (decision === "restore") {
-        await this.withBusy(() => this.coordinator.compression.restoreBatch(this.state, batchIds));
-      }
-      await this.withBusy(() => this.coordinator.deleteSlices(slices.map((slice) => slice.id)));
-      this.selectedSliceIds.clear();
     }
-    await this.render();
-  }
-  async editSlice(sliceId) {
-    const current = this.state?.slices.find((slice) => slice.id === sliceId);
-    if (!current) return;
-    const modal = dialogShell("\u7F16\u8F91\u603B\u7ED3\u5207\u7247");
-    const body = modal.querySelector(".echoes-dialog-body");
-    body.innerHTML = '<div class="echoes-form-grid"><label>\u65F6\u95F4\u6233<input name="timestamp" placeholder="YYYY-MM-DDTHH" required></label><label>\u6807\u9898<input name="title" required></label><label class="echoes-form-span">\u6807\u7B7E<input name="tags"></label><label class="echoes-form-span">\u6B63\u6587<textarea name="content" rows="12" required></textarea></label></div>';
-    body.querySelector("[name=timestamp]").value = current.timestamp;
-    body.querySelector("[name=title]").value = current.title;
-    body.querySelector("[name=tags]").value = current.tags.join(", ");
-    body.querySelector("[name=content]").value = current.content;
-    await submitDialog(modal, async () => {
-      const candidate = summarySliceCandidateSchema.parse({
-        timestamp: body.querySelector("[name=timestamp]").value,
-        title: body.querySelector("[name=title]").value,
-        content: body.querySelector("[name=content]").value,
-        tags: body.querySelector("[name=tags]").value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean)
-      });
-      await this.withBusy(() => this.coordinator.editSlice(sliceId, candidate));
-    }, { errorTitle: "\u603B\u7ED3\u5207\u7247\u65E0\u6548" });
-  }
-  async deleteSlice(sliceId) {
-    const slice = this.state?.slices.find((candidate) => candidate.id === sliceId);
-    if (!slice || !this.state) return;
-    const decision = await this.deletionDecision(
-      [slice.batch.id],
-      `\u5220\u9664\u6279\u6B21 ${slice.batch.batchNumber} \u7684\u5207\u7247\u4F1A\u6539\u53D8\u9690\u85CF\u6D88\u606F\u6240\u4F9D\u8D56\u7684\u603B\u7ED3\u3002`,
-      "\u5220\u9664\u8BE5\u603B\u7ED3\u5207\u7247\u53CA\u5176\u68C0\u7D22\u6587\u6863\uFF1F"
+    const f = fields(spec);
+    page.append(
+      section(
+        "\u751F\u6210\u5DE5\u4F5C\u6D41",
+        saveForm(f, (v) => {
+          const s = getSettings();
+          for (const k of ["extraction", "summary", "status"])
+            s.generationWorkflows[k] = {
+              groupId: v[k + "Group"],
+              failoverPolicy: v[k + "Policy"]
+            };
+          saveSettings(s);
+        })
+      )
     );
-    if (decision === "cancel") return;
-    if (decision === "restore") {
-      await this.withBusy(() => this.coordinator.compression.restoreBatch(this.state, [slice.batch.id]));
-    }
-    await this.withBusy(() => this.coordinator.deleteSlice(sliceId));
-  }
-  async resetBatch(batchNumber) {
-    if (!this.state) return;
-    const batchIds = [...new Set(this.state.slices.filter((slice) => slice.batch.batchNumber >= batchNumber).map((slice) => slice.batch.id))];
-    const decision = await this.deletionDecision(
-      batchIds,
-      `\u4ECE\u6279\u6B21 ${batchNumber} \u91CD\u7F6E\u4F1A\u5220\u9664\u8BE5\u6279\u6B21\u53CA\u540E\u7EED\u603B\u7ED3\uFF0C\u8FD9\u4E9B\u603B\u7ED3\u4ECD\u8986\u76D6\u9690\u85CF\u6D88\u606F\u3002`,
-      `\u5220\u9664\u6279\u6B21 ${batchNumber} \u53CA\u5176\u540E\u7684\u603B\u7ED3\u5E76\u91CD\u7F6E\u68C0\u67E5\u70B9\uFF1F`
+    const vector = fields([
+      {
+        key: "embedding",
+        label: "\u603B\u7ED3\u5411\u91CF\u5316\u7AEF\u70B9\u7EC4",
+        type: "select",
+        value: settings.summary.embeddingGroupId,
+        options: [
+          ["", "\u6682\u4E0D\u540C\u6B65\u5411\u91CF"],
+          ...settings.retrieval.embeddingGroups.map(
+            (g) => [g.id, g.name]
+          )
+        ]
+      },
+      {
+        key: "batchSize",
+        label: "\u5355\u6B21\u5411\u91CF\u5316\u5207\u7247\u6570\u91CF",
+        type: "number",
+        min: 1,
+        max: 100,
+        value: settings.summary.embeddingBatchSize,
+        required: true
+      },
+      {
+        key: "rerank",
+        label: "\u603B\u7ED3\u53EC\u56DE\u91CD\u6392\u5E8F\u7EC4",
+        type: "select",
+        value: settings.retrieval.recall.rerankSetId,
+        options: [
+          ["", "\u4E0D\u4F7F\u7528"],
+          ...settings.retrieval.rerankSets.map(
+            (g) => [g.id, g.name]
+          )
+        ]
+      },
+      {
+        key: "policy",
+        label: "\u68C0\u7D22\u6545\u969C\u7B56\u7565",
+        type: "select",
+        value: settings.retrieval.failoverPolicy,
+        options: policies
+      }
+    ]);
+    page.append(
+      section(
+        "\u5411\u91CF\u5316\u4E0E\u68C0\u7D22",
+        saveForm(vector, (v) => {
+          const s = getSettings();
+          s.summary.embeddingGroupId = v.embedding;
+          s.summary.embeddingBatchSize = v.batchSize;
+          s.retrieval.recall.rerankSetId = v.rerank;
+          s.retrieval.failoverPolicy = v.policy;
+          saveSettings(s);
+        })
+      )
     );
-    if (decision === "cancel") return;
-    if (decision === "restore") {
-      await this.withBusy(() => this.coordinator.compression.restoreBatch(this.state, batchIds));
-    }
-    await this.withBusy(() => this.coordinator.resetFrom(batchNumber));
+    return page;
   }
-  async restoreRange() {
-    if (!this.state) return;
-    const start = Number(this.root.querySelector("[data-compression-range-start]")?.value);
-    const end = Number(this.root.querySelector("[data-compression-range-end]")?.value);
-    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < 0) {
-      throw new Error("\u6062\u590D\u8303\u56F4\u5FC5\u987B\u4F7F\u7528\u6709\u6548\u7684\u975E\u8D1F\u697C\u5C42\u53F7\u3002");
-    }
-    await this.withBusy(() => this.coordinator.compression.restoreRange(this.state, start, end));
-  }
-  async deletionDecision(batchIds, coveredMessage, plainMessage) {
-    if (!this.state) return "cancel";
-    const hidden = await this.coordinator.compression.hiddenCountForBatches(
-      this.state,
-      batchIds
+  if (ctx.route === "api/credentials") {
+    const credentials = await echoesApi.listCredentials();
+    const edit = (current) => editDialog(
+      current ? "\u4FEE\u6539\u51ED\u636E" : "\u65B0\u589E\u51ED\u636E",
+      [
+        { key: "name", label: "\u540D\u79F0", value: current?.name, required: true },
+        {
+          key: "secret",
+          label: current ? "\u65B0\u5BC6\u94A5\uFF08\u7559\u7A7A\u4FDD\u7559\uFF09" : "API \u5BC6\u94A5",
+          type: "password",
+          required: !current
+        }
+      ],
+      async (v) => {
+        if (current)
+          await echoesApi.updateCredential(current.id, {
+            name: v.name,
+            ...v.secret ? { secret: v.secret } : {}
+          });
+        else await echoesApi.createCredential({ name: v.name, secret: v.secret });
+        await ctx.refresh();
+      }
     );
-    if (hidden === 0) return confirm(plainMessage) ? "keep" : "cancel";
-    const policy = this.state.catalog.compression.deletionPolicy;
-    if (policy === "restore_first") return "restore";
-    if (policy === "keep_hidden") {
-      return confirm(`${coveredMessage}
-
-\u5F53\u524D\u7B56\u7565\u4F1A\u4FDD\u6301\u6D88\u606F\u9690\u85CF\u3002\u786E\u8BA4\u7EE7\u7EED\uFF1F`) ? "keep" : "cancel";
-    }
-    return coveredDeletionDialog(`${coveredMessage}
-\u5171\u6D89\u53CA ${hidden} \u6761\u7531 Echoes \u9690\u85CF\u7684\u6D88\u606F\u3002`);
+    const legacy = legacyCredentialEndpoints();
+    page.append(
+      actions(
+        button("\u65B0\u589E\u51ED\u636E", "key", () => edit(), "primary"),
+        legacy.length ? button("\u8FC1\u79FB\u65E7\u51ED\u636E", "file-import", async () => {
+          if (!confirm("\u5C06\u65E7\u914D\u7F6E\u4E2D\u7684\u5BC6\u94A5\u8FC1\u79FB\u5230\u670D\u52A1\u7AEF\u51ED\u636E\u5B58\u50A8\uFF1F")) return;
+          const bindings = legacy.map(
+            ({ kind: kind2, containerId, endpointId }) => ({
+              kind: kind2,
+              containerId,
+              endpointId,
+              credentialId: id("credential")
+            })
+          );
+          await echoesApi.migrateCredentials(
+            legacy.map((e, i) => ({
+              id: bindings[i].credentialId,
+              name: e.endpointName,
+              secret: e.apiKey
+            }))
+          );
+          applyCredentialMigration(bindings);
+          await ctx.refresh();
+        }) : null
+      ),
+      credentials.length ? table(
+        ["\u540D\u79F0", "\u521B\u5EFA\u65F6\u95F4", "\u6700\u540E\u4F7F\u7528", "\u64CD\u4F5C"],
+        credentials.map((c) => [
+          c.name,
+          new Date(c.createdAt).toLocaleString(),
+          c.lastUsedAt ? new Date(c.lastUsedAt).toLocaleString() : "\u5C1A\u672A\u4F7F\u7528",
+          actions(
+            tool("\u4FEE\u6539\u51ED\u636E", "pen", () => edit(c)),
+            tool(
+              "\u5220\u9664\u51ED\u636E",
+              "trash",
+              async () => {
+                const all = [
+                  ...getSettings().generationGroups.flatMap(
+                    (g) => g.endpoints
+                  ),
+                  ...getSettings().retrieval.embeddingGroups.flatMap(
+                    (g) => g.endpoints
+                  ),
+                  ...getSettings().retrieval.rerankSets.flatMap(
+                    (g) => g.endpoints
+                  )
+                ];
+                if (all.some((e) => e.credentialId === c.id))
+                  throw new Error(
+                    "\u4ECD\u6709\u7AEF\u70B9\u4F7F\u7528\u6B64\u51ED\u636E\uFF0C\u8BF7\u5148\u66F4\u6362\u5BF9\u5E94\u7AEF\u70B9\u51ED\u636E\u3002"
+                  );
+                if (confirm("\u5220\u9664\u51ED\u636E " + c.name + "\uFF1F")) {
+                  await echoesApi.deleteCredential(c.id);
+                  await ctx.refresh();
+                }
+              },
+              "danger"
+            )
+          )
+        ])
+      ) : empty("\u5C1A\u672A\u914D\u7F6E\u51ED\u636E")
+    );
+    return page;
   }
-  async editPrompt(index) {
-    const settings = getSettings();
-    const current = index === void 0 ? void 0 : settings.summary.promptPreset.items[index];
-    const modal = dialogShell(current ? "\u7F16\u8F91\u603B\u7ED3\u63D0\u793A\u8BCD" : "\u6DFB\u52A0\u603B\u7ED3\u63D0\u793A\u8BCD");
-    const body = modal.querySelector(".echoes-dialog-body");
-    body.innerHTML = `<div class="echoes-form-grid"><label>\u7C7B\u578B<select name="kind"><option value="custom">\u81EA\u5B9A\u4E49</option><option value="character">\u89D2\u8272\u8BBE\u5B9A</option><option value="worldbook">\u4E16\u754C\u4E66</option><option value="persona">\u7528\u6237\u8BBE\u5B9A</option><option value="previous_summaries">\u524D\u6587\u603B\u7ED3</option><option value="messages">\u5F85\u603B\u7ED3\u6D88\u606F</option></select></label><label>\u89D2\u8272<select name="role"><option value="system">System</option><option value="user">User</option><option value="assistant">Assistant</option></select></label><label>\u6807\u9898<input name="title" required></label><label data-count>\u524D\u6587\u6570\u91CF<input name="count" type="number" min="0" max="100"></label><label data-unit>\u8BA1\u6570\u5355\u4F4D<select name="unit"><option value="batches">\u5B8C\u6574\u6279\u6B21</option><option value="slices">\u5207\u7247</option></select></label><label class="echoes-form-span" data-content>\u5185\u5BB9<textarea name="content" rows="9"></textarea></label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label></div>`;
-    const kind = body.querySelector("[name=kind]");
-    kind.value = current?.kind ?? "custom";
-    body.querySelector("[name=role]").value = current?.role ?? "system";
-    body.querySelector("[name=title]").value = current?.title ?? "\u65B0\u63D0\u793A\u8BCD";
-    body.querySelector("[name=enabled]").checked = current?.enabled ?? true;
-    body.querySelector("[name=count]").value = String(current?.kind === "previous_summaries" ? current.count : 2);
-    body.querySelector("[name=unit]").value = current?.kind === "previous_summaries" ? current.unit ?? "slices" : "batches";
-    body.querySelector("[name=content]").value = current?.kind === "custom" ? current.content : "";
-    const refresh = () => {
-      body.querySelector("[data-count]").classList.toggle("echoes-hidden", kind.value !== "previous_summaries");
-      body.querySelector("[data-unit]").classList.toggle("echoes-hidden", kind.value !== "previous_summaries");
-      body.querySelector("[data-content]").classList.toggle("echoes-hidden", kind.value !== "custom");
-    };
-    kind.addEventListener("change", refresh);
-    refresh();
-    await submitDialog(modal, () => {
-      const base = { id: current?.id ?? newSummaryPromptItemId(), kind: kind.value, title: body.querySelector("[name=title]").value, role: body.querySelector("[name=role]").value, enabled: body.querySelector("[name=enabled]").checked };
-      const item = summaryPromptItemSchema.parse(kind.value === "custom" ? { ...base, content: body.querySelector("[name=content]").value } : kind.value === "previous_summaries" ? { ...base, count: Number(body.querySelector("[name=count]").value), unit: body.querySelector("[name=unit]").value } : base);
-      if (index === void 0) settings.summary.promptPreset.items.push(item);
-      else settings.summary.promptPreset.items[index] = item;
-      settings.summary.promptPreset.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-      saveSettings(settings);
-    }, { errorTitle: "\u603B\u7ED3\u63D0\u793A\u8BCD\u65E0\u6548" });
-  }
-  deletePrompt(index) {
-    const settings = getSettings();
-    if (!settings.summary.promptPreset.items[index] || !confirm("\u5220\u9664\u8BE5\u603B\u7ED3\u63D0\u793A\u8BCD\uFF1F")) return;
-    settings.summary.promptPreset.items.splice(index, 1);
-    settings.summary.promptPreset.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-    saveSettings(settings);
-  }
-  movePrompt(index, offset) {
-    const settings = getSettings();
-    const [item] = settings.summary.promptPreset.items.splice(index, 1);
-    if (!item) return;
-    settings.summary.promptPreset.items.splice(index + offset, 0, item);
-    settings.summary.promptPreset.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-    saveSettings(settings);
-  }
-  async editRule(index) {
-    const settings = getSettings();
-    const current = index === void 0 ? void 0 : settings.summary.preprocessRules[index];
-    const modal = dialogShell(current ? "\u7F16\u8F91\u6E05\u6D17\u89C4\u5219" : "\u6DFB\u52A0\u6E05\u6D17\u89C4\u5219");
-    const body = modal.querySelector(".echoes-dialog-body");
-    body.innerHTML = `<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required></label><label>\u7C7B\u578B<select name="type"><option value="remove">\u5220\u9664</option><option value="replace">\u66FF\u6362</option><option value="extract">\u63D0\u53D6</option></select></label><label class="echoes-form-span">\u8868\u8FBE\u5F0F<input name="pattern" required></label><label>\u6807\u5FD7<input name="flags"></label><label>\u66FF\u6362\u5185\u5BB9<input name="replacement"></label><label class="echoes-check"><input name="user" type="checkbox">User</label><label class="echoes-check"><input name="assistant" type="checkbox">Assistant</label><label class="echoes-check"><input name="enabled" type="checkbox">\u542F\u7528</label></div>`;
-    body.querySelector("[name=name]").value = current?.name ?? "\u65B0\u89C4\u5219";
-    body.querySelector("[name=type]").value = current?.type ?? "remove";
-    body.querySelector("[name=pattern]").value = current?.pattern ?? "";
-    body.querySelector("[name=flags]").value = current?.flags ?? "g";
-    body.querySelector("[name=replacement]").value = current?.replacement ?? "";
-    body.querySelector("[name=user]").checked = current?.roles.includes("user") ?? true;
-    body.querySelector("[name=assistant]").checked = current?.roles.includes("assistant") ?? true;
-    body.querySelector("[name=enabled]").checked = current?.enabled ?? true;
-    await submitDialog(modal, () => {
-      const roles = ["user", "assistant"].filter((role2) => body.querySelector(`[name=${role2}]`).checked);
-      const pattern = body.querySelector("[name=pattern]").value;
-      const flags = body.querySelector("[name=flags]").value;
-      new RegExp(pattern, flags);
-      const rule = summaryPreprocessRuleSchema.parse({ id: current?.id ?? newSummaryRuleId(), name: body.querySelector("[name=name]").value, type: body.querySelector("[name=type]").value, pattern, flags, replacement: body.querySelector("[name=replacement]").value, roles, enabled: body.querySelector("[name=enabled]").checked, order: current?.order ?? settings.summary.preprocessRules.length });
-      if (index === void 0) settings.summary.preprocessRules.push(rule);
-      else settings.summary.preprocessRules[index] = rule;
-      saveSettings(settings);
-    }, { errorTitle: "\u603B\u7ED3\u6E05\u6D17\u89C4\u5219\u65E0\u6548" });
-  }
-  deleteRule(index) {
-    const settings = getSettings();
-    if (!settings.summary.preprocessRules[index] || !confirm("\u5220\u9664\u8BE5\u6E05\u6D17\u89C4\u5219\uFF1F")) return;
-    settings.summary.preprocessRules.splice(index, 1);
-    this.reindexRules(settings.summary.preprocessRules);
-    saveSettings(settings);
-  }
-  moveRule(index, offset) {
-    const settings = getSettings();
-    const [rule] = settings.summary.preprocessRules.splice(index, 1);
-    if (!rule) return;
-    settings.summary.preprocessRules.splice(index + offset, 0, rule);
-    this.reindexRules(settings.summary.preprocessRules);
-    saveSettings(settings);
-  }
-  reindexRules(rules) {
-    rules.forEach((rule, index) => {
-      rule.order = index;
-    });
-  }
-};
-
-// src/extension/ui/status-panel.ts
-function id(prefix) {
-  return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
-}
-function button2(icon, title, action) {
-  const element = document.createElement("button");
-  element.type = "button";
-  element.className = "echoes-icon-button";
-  element.title = title;
-  element.setAttribute("aria-label", title);
-  element.dataset.statusAction = action;
-  element.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
-  return element;
-}
-function previewDialog(title, content) {
-  const element = dialogShell(title, { closeOnly: true });
-  element.querySelector(".echoes-dialog-body").innerHTML = '<pre class="echoes-status-preview"></pre>';
-  element.querySelector("pre").textContent = content;
-  element.showModal();
-}
-function diffSummary(current, parent) {
-  if (!parent) return "\u521D\u59CB\u5FEB\u7167";
-  const left = JSON.stringify(parent.state);
-  const right = JSON.stringify(current.state);
-  if (left === right) return "\u65E0\u53D8\u5316";
-  const keys = /* @__PURE__ */ new Set([...Object.keys(parent.state), ...Object.keys(current.state)]);
-  const changed = [...keys].filter((key) => JSON.stringify(parent.state[key]) !== JSON.stringify(current.state[key]));
-  return changed.length > 0 ? changed.join(", ") : "\u5D4C\u5957\u5B57\u6BB5\u53D8\u5316";
-}
-var StatusPanel = class {
-  constructor(root) {
-    this.root = root;
-    this.bindEvents();
-  }
-  root;
-  state = null;
-  records = [];
-  busy = false;
-  actionChain = Promise.resolve();
-  queuedActions = 0;
-  renderSequence = 0;
-  tab = "current";
-  focusTabAfterRender = null;
-  chatIdentity() {
-    return {
-      chatId: SillyTavern.getContext().chatId ?? null,
-      worldbookName: window.TavernHelper?.getChatWorldbookName("current") ?? null
-    };
-  }
-  assertChatIdentity(identity) {
-    const current = this.chatIdentity();
-    if (!identity.chatId || current.chatId !== identity.chatId || current.worldbookName !== identity.worldbookName) {
-      throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u672C\u6B21\u7F16\u8F91\u672A\u4FDD\u5B58\u3002\u8BF7\u5728\u76EE\u6807\u804A\u5929\u4E2D\u91CD\u65B0\u6253\u5F00\u7F16\u8F91\u5668\u3002");
-    }
-  }
-  async render() {
-    if (!this.root.classList.contains("echoes-status-view")) return;
-    const sequence2 = ++this.renderSequence;
-    const chatId = SillyTavern.getContext().chatId;
-    const host = this.root.querySelector(".echoes-grid-host");
-    host.innerHTML = '<div class="echoes-grid-message">\u6B63\u5728\u8BFB\u53D6\u666E\u901A\u72B6\u6001...</div>';
-    try {
-      const state = await statusCoordinator.load();
-      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-status-view") || SillyTavern.getContext().chatId !== chatId || state.catalog.chatId !== chatId) return;
-      this.state = state;
-      this.records = statusCoordinator.history(state);
-      this.renderSidebar();
-      this.renderContent();
-    } catch (error51) {
-      if (sequence2 !== this.renderSequence || !this.root.classList.contains("echoes-status-view") || SillyTavern.getContext().chatId !== chatId) return;
-      host.innerHTML = "";
-      const note = document.createElement("div");
-      note.className = "echoes-grid-message error";
-      note.textContent = error51 instanceof Error ? error51.message : String(error51);
-      host.append(note);
-    }
-  }
-  renderSidebar() {
-    const heading = this.root.querySelector(".echoes-sidebar-heading > span");
-    const actions = this.root.querySelector(".echoes-sidebar-actions");
-    const list = this.root.querySelector(".echoes-table-list");
-    heading.textContent = "\u72B6\u6001\u5386\u53F2";
-    actions.replaceChildren();
-    list.replaceChildren();
-    const current = this.state ? statusCoordinator.current(this.state) : null;
-    for (const [icon, label, value] of [
-      ["power-off", "\u603B\u5F00\u5173", this.state?.catalog.enabled ? "\u5F00\u542F" : "\u5173\u95ED"],
-      ["arrows-rotate", "\u81EA\u52A8\u66F4\u65B0", this.state?.catalog.autoUpdate ? "\u5F00\u542F" : "\u5173\u95ED"],
-      ["clock-rotate-left", "\u5FEB\u7167", String(this.records.length)],
-      ["layer-group", "\u5F53\u524D\u4FEE\u8BA2", String(current?.snapshot.revision ?? 0)]
-    ]) {
-      const item = document.createElement("div");
-      item.className = "echoes-summary-stat";
-      item.innerHTML = `<i class="fa-solid fa-${icon}"></i><span></span><strong></strong>`;
-      item.querySelector("span").textContent = label;
-      item.querySelector("strong").textContent = value;
-      list.append(item);
-    }
-  }
-  renderContent() {
-    if (!this.state) return;
-    const settings = getSettings();
-    const workflow = settings.generationWorkflows.status;
-    const workflowGroup = settings.generationGroups.find((group) => group.id === workflow.groupId);
-    const current = statusCoordinator.current(this.state);
-    const currentState = current?.snapshot.state ?? this.state.catalog.profile.initialState;
-    const host = this.root.querySelector(".echoes-grid-host");
-    host.innerHTML = `
-      <div class="echoes-status-page">
-        <nav class="echoes-status-tabs" aria-label="\u72B6\u6001\u8BB0\u5FC6\u5206\u533A" role="tablist">
-          <button type="button" id="echoes-status-tab-current" role="tab" aria-controls="echoes-status-panel-current" data-status-action="tab" data-status-tab="current" aria-selected="${this.tab === "current"}" tabindex="${this.tab === "current" ? "0" : "-1"}"><i class="fa-solid fa-gauge-high"></i><span>\u5F53\u524D\u72B6\u6001</span></button>
-          <button type="button" id="echoes-status-tab-history" role="tab" aria-controls="echoes-status-panel-history" data-status-action="tab" data-status-tab="history" aria-selected="${this.tab === "history"}" tabindex="${this.tab === "history" ? "0" : "-1"}"><i class="fa-solid fa-clock-rotate-left"></i><span>\u5386\u53F2\u5FEB\u7167</span></button>
-          <button type="button" id="echoes-status-tab-rules" role="tab" aria-controls="echoes-status-panel-rules" data-status-action="tab" data-status-tab="rules" aria-selected="${this.tab === "rules"}" tabindex="${this.tab === "rules" ? "0" : "-1"}"><i class="fa-solid fa-list-check"></i><span>\u89C4\u5219</span></button>
-          <button type="button" id="echoes-status-tab-profile" role="tab" aria-controls="echoes-status-panel-profile" data-status-action="tab" data-status-tab="profile" aria-selected="${this.tab === "profile"}" tabindex="${this.tab === "profile" ? "0" : "-1"}"><i class="fa-solid fa-sliders"></i><span>\u6A21\u677F\u4E0E\u6CE8\u5165</span></button>
-        </nav>
-        <div class="echoes-status-tabpanel${this.tab === "current" ? "" : " echoes-hidden"}" id="echoes-status-panel-current" role="tabpanel" aria-labelledby="echoes-status-tab-current" data-status-section="current" ${this.tab === "current" ? "" : "hidden"}>
-          <section class="echoes-status-controls">
-            <div class="echoes-summary-control-row">
-              <label class="echoes-check"><input type="checkbox" data-status-enabled>\u72B6\u6001\u6CE8\u5165</label>
-              <label class="echoes-check"><input type="checkbox" data-status-auto>\u81EA\u52A8\u66F4\u65B0</label>
-              <div class="echoes-api-binding-inline"><span>\u72B6\u6001\u5DE5\u4F5C\u6D41<strong data-status-binding></strong></span><button type="button" class="menu_button" data-action="switch-view" data-view="api"><i class="fa-solid fa-plug"></i> API\u914D\u7F6E</button></div>
-              <button type="button" class="menu_button echoes-primary" data-status-action="sync"><i class="fa-solid fa-arrows-rotate"></i> \u624B\u52A8\u540C\u6B65</button>
-              <button type="button" class="menu_button" data-status-action="refresh"><i class="fa-solid fa-rotate"></i> \u5237\u65B0</button>
-            </div>
-            <div class="echoes-status-sync" data-status-sync></div>
-          </section>
-          <section class="echoes-summary-section echoes-status-editor-section">
-            <header class="echoes-status-editor-toolbar"><h2>\u5F53\u524D\u72B6\u6001</h2><div><button type="button" class="menu_button" data-status-action="preview"><i class="fa-solid fa-eye"></i> \u6700\u7EC8\u63D0\u793A\u8BCD</button> <button type="button" class="menu_button" data-status-action="reset"><i class="fa-solid fa-rotate-left"></i> \u6062\u590D\u521D\u59CB\u503C</button> <button type="button" class="menu_button echoes-primary" data-status-action="save-yaml"><i class="fa-solid fa-floppy-disk"></i> \u6821\u9A8C\u5E76\u4FDD\u5B58</button></div></header>
-            <textarea class="echoes-status-yaml" data-status-yaml spellcheck="false"></textarea>
-          </section>
-          <section class="echoes-summary-section"><header><h2>\u6700\u8FD1\u4EFB\u52A1\u8BCA\u65AD</h2></header><pre class="echoes-recall-trace" data-status-trace></pre></section>
-        </div>
-        <div class="echoes-status-tabpanel${this.tab === "history" ? "" : " echoes-hidden"}" id="echoes-status-panel-history" role="tabpanel" aria-labelledby="echoes-status-tab-history" data-status-section="history" ${this.tab === "history" ? "" : "hidden"}>
-          <section class="echoes-summary-section"><header><h2>\u5FEB\u7167\u5386\u53F2</h2></header><div data-status-history></div></section>
-        </div>
-        <div class="echoes-status-tabpanel${this.tab === "rules" ? "" : " echoes-hidden"}" id="echoes-status-panel-rules" role="tabpanel" aria-labelledby="echoes-status-tab-rules" data-status-section="rules" ${this.tab === "rules" ? "" : "hidden"}>
-          <section class="echoes-summary-section"><header><h2>\u72B6\u6001\u63D0\u793A\u8BCD</h2><button type="button" class="menu_button" data-status-action="add-prompt"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-prompts></div></section>
-          <section class="echoes-summary-section"><header><h2>\u6D88\u606F\u6E05\u6D17</h2><button type="button" class="menu_button" data-status-action="add-cleaning"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-cleaning></div></section>
-          <section class="echoes-summary-section"><header><h2>\u58F0\u660E\u5F0F\u6821\u9A8C</h2><button type="button" class="menu_button" data-status-action="add-validation"><i class="fa-solid fa-plus"></i> \u6DFB\u52A0</button></header><div class="echoes-summary-config-list" data-status-validation></div></section>
-        </div>
-        <div class="echoes-status-tabpanel${this.tab === "profile" ? "" : " echoes-hidden"}" id="echoes-status-panel-profile" role="tabpanel" aria-labelledby="echoes-status-tab-profile" data-status-section="profile" ${this.tab === "profile" ? "" : "hidden"}>
-          <section class="echoes-summary-section">
-            <header><h2>\u5F53\u524D\u804A\u5929\u914D\u7F6E\u526F\u672C</h2><button type="button" class="menu_button echoes-primary" data-status-action="save-profile"><i class="fa-solid fa-floppy-disk"></i> \u4FDD\u5B58\u914D\u7F6E</button></header>
-            <div class="echoes-status-profile">
-              <label>\u521D\u59CB\u72B6\u6001 YAML<textarea data-status-initial spellcheck="false"></textarea></label>
-              <label>\u672A\u77E5\u5B57\u6BB5<select data-status-unknown><option value="allow">\u5141\u8BB8</option><option value="reject">\u62D2\u7EDD</option></select></label>
-              <label>\u6CE8\u5165\u4F4D\u7F6E<select data-status-position><option value="before_character">\u89D2\u8272\u5B9A\u4E49\u524D</option><option value="after_character">\u89D2\u8272\u5B9A\u4E49\u540E</option><option value="at_depth">\u6307\u5B9A\u6DF1\u5EA6</option></select></label>
-              <label>\u89D2\u8272<select data-status-role><option value="system">system</option><option value="user">user</option><option value="assistant">assistant</option></select></label>
-              <label>\u6DF1\u5EA6<input type="number" min="0" max="100" data-status-depth></label>
-              <label>\u987A\u5E8F<input type="number" min="-10000" max="10000" data-status-order></label>
-              <label class="echoes-status-template-field">\u6CE8\u5165\u6A21\u677F<textarea data-status-template></textarea></label>
-            </div>
-          </section>
-          <section class="echoes-summary-section"><header><h2>\u5168\u5C40\u72B6\u6001\u6A21\u677F</h2><button type="button" class="menu_button" data-status-action="save-template"><i class="fa-solid fa-plus"></i> \u5C06\u5F53\u524D\u526F\u672C\u4FDD\u5B58\u4E3A\u6A21\u677F</button></header><div class="echoes-status-template-picker"><select data-status-template-select></select><button type="button" class="menu_button" data-status-action="apply-template">\u57FA\u4E8E\u6A21\u677F\u91CD\u5EFA\u526F\u672C</button><button type="button" class="menu_button" data-status-action="update-template"><i class="fa-solid fa-floppy-disk"></i> \u8986\u76D6\u6A21\u677F</button><button type="button" class="menu_button" data-status-action="delete-template"><i class="fa-solid fa-trash"></i> \u5220\u9664\u6A21\u677F</button></div></section>
-        </div>
-      </div>`;
-    host.querySelector("[data-status-enabled]").checked = this.state.catalog.enabled;
-    host.querySelector("[data-status-auto]").checked = this.state.catalog.autoUpdate;
-    host.querySelector("[data-status-binding]").textContent = `${workflowGroup?.name ?? "\u672A\u914D\u7F6E"} \xB7 ${{ confirm_ambiguous: "\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4", always: "\u59CB\u7EC8\u81EA\u52A8\u5207\u6362", definitive_only: "\u4EC5\u660E\u786E\u5931\u8D25\u5207\u6362" }[workflow.failoverPolicy]}`;
-    host.querySelector("[data-status-yaml]").value = renderStatusYaml(currentState);
-    this.fillProfile();
-    this.renderHistory();
-    this.renderPrompts();
-    this.renderCleaning();
-    this.renderValidation();
-    const templateSelect = host.querySelector("[data-status-template-select]");
-    for (const template of settings.statusTemplates) templateSelect.append(new Option(template.name, template.id));
-    host.querySelector("[data-status-sync]").textContent = current ? `\u5F53\u524D\u697C\u5C42 ${current.messageId} \xB7 swipe ${current.swipeId} \xB7 \u4FEE\u8BA2 ${current.snapshot.revision} \xB7 ${current.snapshot.origin}` : "\u5C1A\u65E0\u5FEB\u7167\uFF0C\u5F53\u524D\u4F7F\u7528\u6A21\u677F\u521D\u59CB\u72B6\u6001\u3002";
-    host.querySelector("[data-status-trace]").textContent = JSON.stringify(statusCoordinator.trace ?? { message: "\u6682\u65E0\u72B6\u6001\u4EFB\u52A1" }, null, 2);
-    this.updateBusyControls();
-  }
-  fillProfile() {
-    if (!this.state) return;
-    const profile = this.state.catalog.profile;
-    this.root.querySelector("[data-status-initial]").value = renderStatusYaml(profile.initialState);
-    this.root.querySelector("[data-status-unknown]").value = profile.validation.unknownFields;
-    this.root.querySelector("[data-status-position]").value = profile.injection.position;
-    this.root.querySelector("[data-status-role]").value = profile.injection.role;
-    this.root.querySelector("[data-status-depth]").value = String(profile.injection.depth);
-    this.root.querySelector("[data-status-order]").value = String(profile.injection.order);
-    this.root.querySelector("[data-status-template]").value = profile.injection.template;
-  }
-  renderHistory() {
-    const host = this.root.querySelector("[data-status-history]");
-    if (this.records.length === 0) {
-      host.innerHTML = '<div class="echoes-empty-note">\u6682\u65E0\u72B6\u6001\u5FEB\u7167\u3002</div>';
-      return;
-    }
-    const byId = new Map(this.records.map((record3) => [record3.snapshot.snapshotId, record3.snapshot]));
-    const wrapper = document.createElement("div");
-    wrapper.className = "echoes-table-scroll";
-    const table = document.createElement("table");
-    table.className = "echoes-data-table";
-    table.innerHTML = "<thead><tr><th>\u52A9\u624B\u697C\u5C42</th><th>Swipe</th><th>\u6765\u6E90</th><th>\u4FEE\u8BA2</th><th>\u72B6\u6001\u54C8\u5E0C</th><th>\u53D8\u5316</th><th>\u64CD\u4F5C</th></tr></thead>";
-    const body = document.createElement("tbody");
-    for (const record3 of [...this.records].reverse()) {
-      const row = document.createElement("tr");
-      for (const value of [
-        record3.messageId,
-        `${record3.swipeId}${record3.selected ? " \xB7 \u5F53\u524D" : ""}`,
-        record3.snapshot.origin,
-        String(record3.snapshot.revision),
-        record3.snapshot.stateHash.slice(0, 12),
-        diffSummary(record3.snapshot, record3.snapshot.parentSnapshotId ? byId.get(record3.snapshot.parentSnapshotId) : void 0)
-      ]) {
-        const cell = document.createElement("td");
-        cell.textContent = value;
-        row.append(cell);
-      }
-      const actions = document.createElement("td");
-      const inspect = button2("eye", "\u67E5\u770B\u5B8C\u6574\u5FEB\u7167", "inspect-history");
-      inspect.dataset.snapshotId = record3.snapshot.snapshotId;
-      const restore = button2("clock-rotate-left", "\u6062\u590D\u5230\u5F53\u524D\u6700\u540E\u4E00\u6761\u52A9\u624B\u6D88\u606F", "restore-history");
-      restore.dataset.snapshotId = record3.snapshot.snapshotId;
-      actions.append(inspect, restore);
-      row.append(actions);
-      body.append(row);
-    }
-    table.append(body);
-    prepareResponsiveTable(table);
-    wrapper.append(table);
-    host.replaceChildren(wrapper);
-  }
-  configRow(title, detail, enabled) {
-    const row = document.createElement("article");
-    row.className = "echoes-summary-config-row";
-    const text = document.createElement("div");
-    const strong = document.createElement("strong");
-    strong.textContent = title;
-    const small = document.createElement("small");
-    small.textContent = detail;
-    text.append(strong, small);
-    row.append(text);
-    if (enabled !== void 0) {
-      const toggle = document.createElement("label");
-      toggle.className = "echoes-switch";
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.setAttribute("aria-label", `\u542F\u7528${title}`);
-      input.checked = enabled;
-      toggle.append(input, document.createElement("span"));
-      row.append(toggle);
-    }
-    const controls = document.createElement("div");
-    controls.className = "echoes-row-actions";
-    controls.dataset.controls = "true";
-    row.append(controls);
-    return row;
-  }
-  renderPrompts() {
-    const host = this.root.querySelector("[data-status-prompts]");
-    host.replaceChildren();
-    const items = this.state.catalog.profile.promptPreset.items;
-    items.forEach((item, index) => {
-      const row = this.configRow(item.title, `${item.role} \xB7 ${item.kind}`, item.enabled);
-      row.querySelector("input").dataset.statusPromptToggle = String(index);
-      const controls = row.querySelector("[data-controls]");
-      for (const [icon, title, action, disabled] of [
-        ["arrow-up", "\u4E0A\u79FB", "prompt-up", index === 0],
-        ["arrow-down", "\u4E0B\u79FB", "prompt-down", index === items.length - 1],
-        ["pen", "\u7F16\u8F91", "edit-prompt", false],
-        ["trash", "\u5220\u9664", "delete-prompt", false]
-      ]) {
-        const control = button2(icon, title, action);
-        control.dataset.index = String(index);
-        control.disabled = disabled;
-        controls.append(control);
-      }
-      host.append(row);
-    });
-  }
-  renderCleaning() {
-    const host = this.root.querySelector("[data-status-cleaning]");
-    host.replaceChildren();
-    const rules = this.state.catalog.profile.preprocessRules;
-    if (rules.length === 0) host.innerHTML = '<div class="echoes-empty-note">\u6682\u65E0\u6E05\u6D17\u89C4\u5219\u3002</div>';
-    rules.forEach((rule, index) => {
-      const row = this.configRow(rule.name, `${rule.type} \xB7 /${rule.pattern}/${rule.flags}`, rule.enabled);
-      row.querySelector("input").dataset.statusCleaningToggle = String(index);
-      const controls = row.querySelector("[data-controls]");
-      const up = button2("arrow-up", "\u4E0A\u79FB", "cleaning-up");
-      up.dataset.index = String(index);
-      up.disabled = index === 0;
-      const down = button2("arrow-down", "\u4E0B\u79FB", "cleaning-down");
-      down.dataset.index = String(index);
-      down.disabled = index === rules.length - 1;
-      const edit = button2("pen", "\u7F16\u8F91", "edit-cleaning");
-      edit.dataset.index = String(index);
-      const remove = button2("trash", "\u5220\u9664", "delete-cleaning");
-      remove.dataset.index = String(index);
-      controls.append(up, down, edit, remove);
-      host.append(row);
-    });
-  }
-  renderValidation() {
-    const host = this.root.querySelector("[data-status-validation]");
-    host.replaceChildren();
-    const rules = this.state.catalog.profile.validation.rules;
-    if (rules.length === 0) host.innerHTML = '<div class="echoes-empty-note">\u6682\u65E0\u5B57\u6BB5\u6821\u9A8C\uFF0C\u672A\u77E5\u5B57\u6BB5\u6309\u4E0A\u65B9\u7B56\u7565\u5904\u7406\u3002</div>';
-    rules.forEach((rule, index) => {
-      const limits = [
-        rule.required ? "\u5FC5\u586B" : "\u53EF\u9009",
-        rule.minimum !== void 0 ? `min ${rule.minimum}` : "",
-        rule.maximum !== void 0 ? `max ${rule.maximum}` : "",
-        rule.maxDelta !== void 0 ? `\u0394 ${rule.maxDelta}` : ""
-      ].filter(Boolean).join(" \xB7 ");
-      const row = this.configRow(rule.name, `${rule.path.join(".")} \xB7 ${rule.type} \xB7 ${limits}`);
-      const controls = row.querySelector("[data-controls]");
-      const edit = button2("pen", "\u7F16\u8F91", "edit-validation");
-      edit.dataset.index = String(index);
-      const remove = button2("trash", "\u5220\u9664", "delete-validation");
-      remove.dataset.index = String(index);
-      controls.append(edit, remove);
-      host.append(row);
-    });
-  }
-  bindEvents() {
-    this.root.addEventListener("click", (event) => {
-      const target = event.target.closest("[data-status-action]");
-      if (!target) return;
-      this.enqueue(() => this.handleAction(target), "\u72B6\u6001\u64CD\u4F5C\u5931\u8D25");
-    });
-    this.root.addEventListener("keydown", (event) => {
-      const target = event.target.closest('[role="tab"][data-status-tab]');
-      if (!target || event.altKey || event.ctrlKey || event.metaKey) return;
-      const tabs = [...this.root.querySelectorAll('[role="tab"][data-status-tab]')];
-      const current = tabs.indexOf(target);
-      let next = current;
-      if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
-      else if (event.key === "ArrowLeft") next = (current - 1 + tabs.length) % tabs.length;
-      else if (event.key === "Home") next = 0;
-      else if (event.key === "End") next = tabs.length - 1;
-      else return;
-      event.preventDefault();
-      tabs[next]?.click();
-    });
-    this.root.addEventListener("change", (event) => {
-      const target = event.target;
-      if (!target.matches([
-        "[data-status-enabled]",
-        "[data-status-auto]",
-        "[data-status-prompt-toggle]",
-        "[data-status-cleaning-toggle]"
-      ].join(","))) return;
-      this.enqueue(() => this.handleChange(target), "\u72B6\u6001\u914D\u7F6E\u65E0\u6548");
-    });
-  }
-  enqueue(operation, errorTitle) {
-    this.queuedActions += 1;
-    this.updateBusyControls();
-    this.actionChain = this.actionChain.then(operation).catch((error51) => {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), errorTitle);
-    }).finally(() => {
-      this.queuedActions = Math.max(0, this.queuedActions - 1);
-      this.updateBusyControls();
-      if (this.focusTabAfterRender) {
-        this.root.querySelector(`[role="tab"][data-status-tab="${this.focusTabAfterRender}"]`)?.focus();
-        this.focusTabAfterRender = null;
-      }
-    });
-  }
-  updateBusyControls() {
-    const pending = this.queuedActions > 0;
-    this.root.dataset.statusBusy = String(pending);
-    this.root.querySelectorAll("[data-status-action]").forEach((control) => {
-      if (pending && !control.disabled) {
-        control.dataset.statusBusyDisabled = "true";
-        control.disabled = true;
-      } else if (!pending && control.dataset.statusBusyDisabled === "true") {
-        delete control.dataset.statusBusyDisabled;
-        control.disabled = false;
-      }
-    });
-  }
-  async handleChange(target) {
-    if (!this.state) return;
-    if (target.matches("[data-status-enabled]")) {
-      this.state = await statusCoordinator.worldbook.saveConfiguration(this.state.worldbookName, { enabled: target.checked });
-    } else if (target.matches("[data-status-auto]")) {
-      this.state = await statusCoordinator.worldbook.saveConfiguration(this.state.worldbookName, { autoUpdate: target.checked });
-    } else if (target.dataset.statusPromptToggle !== void 0) {
-      const index = Number(target.dataset.statusPromptToggle);
-      this.state.catalog.profile.promptPreset.items[index].enabled = target.checked;
-      await this.saveProfile(false);
-    } else if (target.dataset.statusCleaningToggle !== void 0) {
-      const index = Number(target.dataset.statusCleaningToggle);
-      this.state.catalog.profile.preprocessRules[index].enabled = target.checked;
-      await this.saveProfile(false);
-    }
-    await this.render();
-  }
-  async handleAction(target) {
-    if (!this.state) return;
-    const action = target.dataset.statusAction ?? "";
-    if (action === "tab") {
-      const tab = target.dataset.statusTab;
-      if (tab === "current" || tab === "history" || tab === "rules" || tab === "profile") {
-        this.tab = tab;
-        this.focusTabAfterRender = tab;
-      }
-    } else if (action === "refresh") await this.render();
-    else if (action === "sync") await this.withBusy(() => statusCoordinator.synchronize());
-    else if (action === "save-yaml") {
-      const state = statusCoordinator.parseYaml(this.root.querySelector("[data-status-yaml]").value);
-      await this.withBusy(() => statusCoordinator.saveManualState(state));
-    } else if (action === "reset") {
-      await this.withBusy(() => statusCoordinator.saveManualState(this.state.catalog.profile.initialState));
-    } else if (action === "preview") await this.previewPrompt();
-    else if (action === "save-profile") await this.saveProfile(true);
-    else if (action === "inspect-history") {
-      const record3 = this.records.find((item) => item.snapshot.snapshotId === target.dataset.snapshotId);
-      if (record3) previewDialog(`\u72B6\u6001\u5FEB\u7167 ${record3.messageId}/${record3.swipeId}`, renderStatusYaml(record3.snapshot.state));
-    } else if (action === "restore-history") {
-      const record3 = this.records.find((item) => item.snapshot.snapshotId === target.dataset.snapshotId);
-      if (record3) await this.withBusy(() => statusCoordinator.restoreSnapshot(record3.snapshot));
-    } else if (action === "add-prompt") await this.editPrompt();
-    else if (action === "edit-prompt") await this.editPrompt(Number(target.dataset.index));
-    else if (action === "delete-prompt") {
-      this.state.catalog.profile.promptPreset.items.splice(Number(target.dataset.index), 1);
-      await this.saveProfile(false);
-    } else if (action === "prompt-up" || action === "prompt-down") {
-      const from = Number(target.dataset.index);
-      const to = from + (action === "prompt-up" ? -1 : 1);
-      const [item] = this.state.catalog.profile.promptPreset.items.splice(from, 1);
-      if (item) this.state.catalog.profile.promptPreset.items.splice(to, 0, item);
-      await this.saveProfile(false);
-    } else if (action === "add-cleaning") await this.editCleaning();
-    else if (action === "edit-cleaning") await this.editCleaning(Number(target.dataset.index));
-    else if (action === "delete-cleaning") {
-      this.state.catalog.profile.preprocessRules.splice(Number(target.dataset.index), 1);
-      await this.saveProfile(false);
-    } else if (action === "cleaning-up" || action === "cleaning-down") {
-      const from = Number(target.dataset.index);
-      const to = from + (action === "cleaning-up" ? -1 : 1);
-      const [rule] = this.state.catalog.profile.preprocessRules.splice(from, 1);
-      if (rule) this.state.catalog.profile.preprocessRules.splice(to, 0, rule);
-      this.state.catalog.profile.preprocessRules.forEach((item, index) => item.order = index);
-      await this.saveProfile(false);
-    } else if (action === "add-validation") await this.editValidation();
-    else if (action === "edit-validation") await this.editValidation(Number(target.dataset.index));
-    else if (action === "delete-validation") {
-      this.state.catalog.profile.validation.rules.splice(Number(target.dataset.index), 1);
-      await this.saveProfile(false);
-    } else if (action === "apply-template") await this.applyTemplate();
-    else if (action === "save-template") await this.saveTemplate();
-    else if (action === "update-template") this.updateTemplate();
-    else if (action === "delete-template") this.deleteTemplate();
-    await this.render();
-  }
-  async saveProfile(readForm) {
-    if (!this.state) return;
-    const profile = structuredClone(this.state.catalog.profile);
-    if (readForm) {
-      profile.initialState = statusCoordinator.parseYaml(this.root.querySelector("[data-status-initial]").value);
-      profile.validation.unknownFields = this.root.querySelector("[data-status-unknown]").value;
-      profile.injection.position = this.root.querySelector("[data-status-position]").value;
-      profile.injection.role = this.root.querySelector("[data-status-role]").value;
-      profile.injection.depth = Number(this.root.querySelector("[data-status-depth]").value);
-      profile.injection.order = Number(this.root.querySelector("[data-status-order]").value);
-      profile.injection.template = this.root.querySelector("[data-status-template]").value;
-    }
-    await this.persistProfile(profile);
-  }
-  async persistProfile(profile) {
-    if (!this.state) return;
-    validateStatusState(profile.initialState, profile.initialState, profile.validation);
-    profile.version += 1;
-    profile.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-    this.state = await statusCoordinator.worldbook.saveConfiguration(this.state.worldbookName, { profile });
-  }
-  async previewPrompt() {
-    if (!this.state) return;
-    const chat = SillyTavern.getContext().chat;
-    let targetIndex = chat.length - 1;
-    while (targetIndex >= 0) {
-      const message3 = chat[targetIndex];
-      if (message3.is_user !== true && message3.role !== "user" && String(message3.mes ?? message3.message ?? "").trim()) break;
-      targetIndex -= 1;
-    }
-    if (targetIndex < 0) throw new Error("The chat has no assistant message to preview.");
-    const previous = statusCoordinator.snapshots.latestBefore(targetIndex, this.state.catalog.namespaceId)?.snapshot ?? null;
-    const prepared = await prepareStatusRequest({ catalog: this.state.catalog, baseSnapshot: previous, targetMessageIndex: targetIndex });
-    previewDialog("\u72B6\u6001\u66F4\u65B0\u6700\u7EC8\u63D0\u793A\u8BCD", prepared.promptMessages.map((message3) => `[${message3.role}]
-${message3.content}`).join("\n\n"));
-  }
-  async editPrompt(index) {
-    if (!this.state) return;
-    const identity = this.chatIdentity();
-    const current = index === void 0 ? void 0 : this.state.catalog.profile.promptPreset.items[index];
-    const element = dialogShell(current ? "\u7F16\u8F91\u72B6\u6001\u63D0\u793A\u8BCD" : "\u6DFB\u52A0\u72B6\u6001\u63D0\u793A\u8BCD");
-    const body = element.querySelector(".echoes-dialog-body");
-    body.innerHTML = `<div class="echoes-form-grid"><label>\u6807\u9898<input name="title" required></label><label>\u7C7B\u578B<select name="kind"><option value="custom">\u81EA\u5B9A\u4E49</option><option value="character">\u89D2\u8272\u8BBE\u5B9A</option><option value="worldbook">\u5F53\u524D\u6FC0\u6D3B\u4E16\u754C\u4E66</option><option value="persona">\u7528\u6237\u8BBE\u5B9A</option><option value="current_state">\u5F53\u524D\u72B6\u6001</option><option value="messages">\u589E\u91CF\u6D88\u606F</option></select></label><label>\u89D2\u8272<select name="role"><option value="system">system</option><option value="user">user</option><option value="assistant">assistant</option></select></label><label class="echoes-wide-field">\u5185\u5BB9<textarea name="content"></textarea></label></div>`;
-    body.querySelector("[name=title]").value = current?.title ?? "\u81EA\u5B9A\u4E49\u72B6\u6001\u63D0\u793A\u8BCD";
-    body.querySelector("[name=kind]").value = current?.kind ?? "custom";
-    body.querySelector("[name=role]").value = current?.role ?? "system";
-    body.querySelector("[name=content]").value = current?.kind === "custom" ? current.content : "";
-    await submitDialog(element, async () => {
-      this.assertChatIdentity(identity);
-      const kind = body.querySelector("[name=kind]").value;
-      const item = statusPromptItemSchema.parse({
-        id: current?.id ?? newStatusPromptItemId(),
-        title: body.querySelector("[name=title]").value,
-        kind,
-        role: body.querySelector("[name=role]").value,
-        enabled: current?.enabled ?? true,
-        ...kind === "custom" ? { content: body.querySelector("[name=content]").value } : {}
+  const kind = ctx.route.split("/")[1];
+  const groups = kind === "generation" ? settings.generationGroups : kind === "embedding" ? settings.retrieval.embeddingGroups : settings.retrieval.rerankSets;
+  const update = (group, remove = false) => {
+    const s = getSettings();
+    const replace = (items) => remove ? items.filter((x) => x.id !== group.id) : items.some((x) => x.id === group.id) ? items.map((x) => x.id === group.id ? group : x) : [...items, group];
+    if (kind === "generation")
+      s.generationGroups = replace(s.generationGroups);
+    else if (kind === "embedding")
+      s.retrieval.embeddingGroups = replace(s.retrieval.embeddingGroups);
+    else s.retrieval.rerankSets = replace(s.retrieval.rerankSets);
+    saveSettings(s);
+  };
+  const editGroup = (group) => editDialog(
+    group ? "\u7F16\u8F91\u7AEF\u70B9\u7EC4" : "\u65B0\u589E\u7AEF\u70B9\u7EC4",
+    [
+      { key: "name", label: "\u7EC4\u540D\u79F0", value: group?.name, required: true },
+      ...kind === "embedding" ? [
+        {
+          key: "embeddingSpaceId",
+          label: "\u5411\u91CF\u7A7A\u95F4 ID",
+          value: group?.embeddingSpaceId ?? id("space"),
+          required: true,
+          readonly: !!group
+        },
+        {
+          key: "dimensions",
+          label: "\u5411\u91CF\u7EF4\u5EA6",
+          type: "number",
+          value: group?.dimensions ?? 1024,
+          min: 1,
+          max: 65536,
+          required: true
+        },
+        {
+          key: "requestDimensions",
+          label: "\u5411\u6A21\u578B\u53D1\u9001\u7EF4\u5EA6\u53C2\u6570",
+          type: "checkbox",
+          value: group?.requestDimensions ?? false
+        }
+      ] : []
+    ],
+    async (v) => {
+      update({
+        ...group,
+        id: group?.id ?? id("group"),
+        name: v.name,
+        endpoints: group?.endpoints ?? [],
+        ...kind === "embedding" ? {
+          embeddingSpaceId: v.embeddingSpaceId,
+          dimensions: v.dimensions,
+          requestDimensions: v.requestDimensions
+        } : {}
       });
-      const profile = structuredClone(this.state.catalog.profile);
-      if (index === void 0) profile.promptPreset.items.push(item);
-      else profile.promptPreset.items[index] = item;
-      await this.persistProfile(profile);
-    }, { errorTitle: "\u72B6\u6001\u63D0\u793A\u8BCD\u65E0\u6548" });
-  }
-  async editCleaning(index) {
-    if (!this.state) return;
-    const identity = this.chatIdentity();
-    const current = index === void 0 ? void 0 : this.state.catalog.profile.preprocessRules[index];
-    const element = dialogShell(current ? "\u7F16\u8F91\u6D88\u606F\u6E05\u6D17" : "\u6DFB\u52A0\u6D88\u606F\u6E05\u6D17");
-    const body = element.querySelector(".echoes-dialog-body");
-    body.innerHTML = `<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required></label><label>\u64CD\u4F5C<select name="type"><option value="replace">\u66FF\u6362</option><option value="remove">\u5220\u9664\u5339\u914D</option><option value="extract">\u63D0\u53D6</option></select></label><label>\u6B63\u5219<input name="pattern" required></label><label>\u6807\u5FD7<input name="flags"></label><label>\u89D2\u8272<select name="roles" multiple><option value="user">user</option><option value="assistant">assistant</option></select></label><label>\u66FF\u6362\u6587\u672C<input name="replacement"></label></div>`;
-    body.querySelector("[name=name]").value = current?.name ?? "\u72B6\u6001\u6E05\u6D17\u89C4\u5219";
-    body.querySelector("[name=type]").value = current?.type ?? "replace";
-    body.querySelector("[name=pattern]").value = current?.pattern ?? "";
-    body.querySelector("[name=flags]").value = current?.flags ?? "g";
-    body.querySelector("[name=replacement]").value = current?.replacement ?? "";
-    const roles = body.querySelector("[name=roles]");
-    [...roles.options].forEach((option) => option.selected = (current?.roles ?? ["user", "assistant"]).includes(option.value));
-    await submitDialog(element, async () => {
-      this.assertChatIdentity(identity);
-      const pattern = body.querySelector("[name=pattern]").value;
-      const flags = body.querySelector("[name=flags]").value;
-      new RegExp(pattern, flags);
-      const rule = summaryPreprocessRuleSchema.parse({
-        id: current?.id ?? id("status_cleaning"),
-        name: body.querySelector("[name=name]").value,
-        type: body.querySelector("[name=type]").value,
-        pattern,
-        flags,
-        replacement: body.querySelector("[name=replacement]").value,
-        roles: [...roles.selectedOptions].map((option) => option.value),
-        enabled: current?.enabled ?? true,
-        order: current?.order ?? this.state.catalog.profile.preprocessRules.length
-      });
-      const profile = structuredClone(this.state.catalog.profile);
-      if (index === void 0) profile.preprocessRules.push(rule);
-      else profile.preprocessRules[index] = rule;
-      await this.persistProfile(profile);
-    }, { errorTitle: "\u6D88\u606F\u6E05\u6D17\u89C4\u5219\u65E0\u6548" });
-  }
-  async editValidation(index) {
-    if (!this.state) return;
-    const identity = this.chatIdentity();
-    const current = index === void 0 ? void 0 : this.state.catalog.profile.validation.rules[index];
-    const element = dialogShell(current ? "\u7F16\u8F91\u72B6\u6001\u6821\u9A8C" : "\u6DFB\u52A0\u72B6\u6001\u6821\u9A8C");
-    const body = element.querySelector(".echoes-dialog-body");
-    body.innerHTML = `<div class="echoes-form-grid"><label>\u540D\u79F0<input name="name" required></label><label>\u8DEF\u5F84\uFF08\u70B9\u5206\u9694\uFF0C* \u4E3A\u901A\u914D\uFF09<input name="path" required></label><label>\u7C7B\u578B<select name="type"><option value="string">string</option><option value="number">number</option><option value="boolean">boolean</option><option value="object">object</option><option value="array">array</option><option value="null">null</option></select></label><label class="echoes-check"><input type="checkbox" name="required">\u5FC5\u586B</label><label>\u679A\u4E3E\uFF08JSON \u6570\u7EC4\uFF09<input name="enum"></label><label>\u6700\u5C0F\u503C<input type="number" step="any" name="minimum"></label><label>\u6700\u5927\u503C<input type="number" step="any" name="maximum"></label><label>\u5355\u6B21\u6700\u5927\u53D8\u5316<input type="number" min="0" step="any" name="delta"></label></div>`;
-    body.querySelector("[name=name]").value = current?.name ?? "\u72B6\u6001\u5B57\u6BB5";
-    body.querySelector("[name=path]").value = current?.path.join(".") ?? "";
-    body.querySelector("[name=type]").value = current?.type ?? "string";
-    body.querySelector("[name=required]").checked = current?.required ?? false;
-    body.querySelector("[name=enum]").value = current?.enumValues ? JSON.stringify(current.enumValues) : "";
-    for (const [name, value] of [["minimum", current?.minimum], ["maximum", current?.maximum], ["delta", current?.maxDelta]]) {
-      body.querySelector(`[name=${name}]`).value = value === void 0 ? "" : String(value);
+      await ctx.refresh();
     }
-    await submitDialog(element, async () => {
-      this.assertChatIdentity(identity);
-      const numeric = (name) => {
-        const value = body.querySelector(`[name=${name}]`).value;
-        return value === "" ? void 0 : Number(value);
-      };
-      const enumText = body.querySelector("[name=enum]").value.trim();
-      const rule = statusValidationRuleSchema.parse({
-        id: current?.id ?? newStatusRuleId(),
-        name: body.querySelector("[name=name]").value,
-        path: body.querySelector("[name=path]").value.split(".").map((part) => part.trim()),
-        type: body.querySelector("[name=type]").value,
-        required: body.querySelector("[name=required]").checked,
-        ...enumText ? { enumValues: JSON.parse(enumText) } : {},
-        ...numeric("minimum") !== void 0 ? { minimum: numeric("minimum") } : {},
-        ...numeric("maximum") !== void 0 ? { maximum: numeric("maximum") } : {},
-        ...numeric("delta") !== void 0 ? { maxDelta: numeric("delta") } : {}
-      });
-      const profile = structuredClone(this.state.catalog.profile);
-      if (index === void 0) profile.validation.rules.push(rule);
-      else profile.validation.rules[index] = rule;
-      await this.persistProfile(profile);
-    }, { errorTitle: "\u72B6\u6001\u6821\u9A8C\u89C4\u5219\u65E0\u6548" });
-  }
-  async applyTemplate() {
-    if (!this.state) return;
-    const templateId = this.root.querySelector("[data-status-template-select]").value;
-    const template = getSettings().statusTemplates.find((item) => item.id === templateId);
-    if (!template || !confirm(`\u57FA\u4E8E\u201C${template.name}\u201D\u91CD\u5EFA\u5F53\u524D\u804A\u5929\u914D\u7F6E\u526F\u672C\uFF1F\u73B0\u6709\u5386\u53F2\u5FEB\u7167\u4E0D\u4F1A\u6539\u53D8\u3002`)) return;
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const profile = {
-      id: id("status_profile"),
-      sourceTemplateId: template.id,
-      name: template.name,
-      description: template.description,
-      initialState: structuredClone(template.initialState),
-      promptPreset: structuredClone(template.promptPreset),
-      preprocessRules: structuredClone(template.preprocessRules),
-      validation: structuredClone(template.validation),
-      injection: structuredClone(template.injection),
-      version: 1,
-      createdAt: now,
-      updatedAt: now
-    };
-    this.state = await statusCoordinator.worldbook.saveConfiguration(this.state.worldbookName, { profile });
-  }
-  async saveTemplate() {
-    if (!this.state) return;
-    const name = window.prompt("\u65B0\u72B6\u6001\u6A21\u677F\u540D\u79F0", `${this.state.catalog.profile.name} \u526F\u672C`)?.trim();
-    if (!name) return;
-    const settings = getSettings();
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const profile = this.state.catalog.profile;
-    const template = statusTemplateSchema.parse({
-      id: id("status_template"),
-      name,
-      description: profile.description,
-      initialState: profile.initialState,
-      promptPreset: profile.promptPreset,
-      preprocessRules: profile.preprocessRules,
-      validation: profile.validation,
-      injection: profile.injection,
-      builtIn: false,
-      version: 1,
-      createdAt: now,
-      updatedAt: now
+  );
+  const editEndpoint = async (group, current) => {
+    const credentials = await echoesApi.listCredentials();
+    const c = current;
+    const f = fields([
+      { key: "name", label: "\u7AEF\u70B9\u540D\u79F0", value: current?.name, required: true },
+      {
+        key: "baseUrl",
+        label: "API \u5730\u5740",
+        value: current?.baseUrl ?? "",
+        required: true
+      },
+      {
+        key: "model",
+        label: "\u6A21\u578B\u540D\u79F0",
+        value: current?.model ?? "",
+        required: true
+      },
+      {
+        key: "credentialId",
+        label: "\u51ED\u636E",
+        type: "select",
+        value: current?.credentialId ?? "",
+        options: [
+          ["", "\u65E0\u51ED\u636E"],
+          ...credentials.map((x) => [x.id, x.name])
+        ]
+      },
+      {
+        key: "timeoutMs",
+        label: "\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09",
+        type: "number",
+        value: current?.timeoutMs ?? 12e4,
+        min: kind === "generation" ? 1e4 : 1e3,
+        max: kind === "generation" ? 18e5 : 6e5,
+        required: true
+      },
+      {
+        key: "enabled",
+        label: "\u542F\u7528\u7AEF\u70B9",
+        type: "checkbox",
+        value: current?.enabled ?? true
+      },
+      {
+        key: "allowPrivateNetwork",
+        label: "\u5141\u8BB8\u8BBF\u95EE\u79C1\u6709\u7F51\u7EDC",
+        type: "checkbox",
+        value: current?.allowPrivateNetwork ?? false
+      },
+      ...kind === "generation" ? [
+        {
+          key: "temperature",
+          label: "Temperature",
+          type: "number",
+          value: c?.temperature ?? 0.7,
+          min: 0,
+          max: 2,
+          step: 0.1
+        },
+        {
+          key: "streaming",
+          label: "\u6D41\u5F0F\u54CD\u5E94",
+          type: "checkbox",
+          value: c?.streaming ?? false
+        },
+        {
+          key: "jsonMode",
+          label: "JSON \u54CD\u5E94\u6A21\u5F0F",
+          type: "checkbox",
+          value: c?.jsonMode ?? false
+        }
+      ] : []
+    ]);
+    const modelList = el("datalist");
+    modelList.id = id("models");
+    f.controls.get("model").setAttribute("list", modelList.id);
+    const load = button("\u83B7\u53D6\u6A21\u578B\u5217\u8868", "rotate", async () => {
+      const result = await ctx.job(
+        "\u83B7\u53D6\u6A21\u578B\u5217\u8868",
+        () => echoesApi.listEndpointModels({
+          baseUrl: f.controls.get("baseUrl").value,
+          credentialId: f.controls.get("credentialId").value || void 0,
+          timeoutMs: Number(f.controls.get("timeoutMs").value),
+          allowPrivateNetwork: f.controls.get("allowPrivateNetwork").checked
+        })
+      );
+      modelList.replaceChildren(
+        ...result.models.map((m) => {
+          const o = el("option");
+          o.value = m;
+          return o;
+        })
+      );
+      load.querySelector("span").textContent = "\u5DF2\u8F7D\u5165 " + result.models.length + " \u4E2A\u6A21\u578B";
     });
-    settings.statusTemplates.push(template);
-    saveSettings(settings);
+    const body = el("div", "ew-page-content", f.node, actions(load), modelList);
+    dialog(
+      current ? "\u7F16\u8F91\u7AEF\u70B9" : "\u65B0\u589E\u7AEF\u70B9",
+      body,
+      async () => {
+        const v = f.values();
+        const { credentialId, ...rest } = v;
+        const endpoint = {
+          ...rest,
+          id: current?.id ?? id("endpoint"),
+          order: current?.order ?? group.endpoints.length,
+          ...credentialId ? { credentialId } : {}
+        };
+        const fresh = getSettings();
+        const currentGroup = (kind === "generation" ? fresh.generationGroups : kind === "embedding" ? fresh.retrieval.embeddingGroups : fresh.retrieval.rerankSets).find((g) => g.id === group.id);
+        if (!currentGroup) throw new Error("\u7AEF\u70B9\u7EC4\u5DF2\u88AB\u5220\u9664\u3002");
+        const endpoints = current ? currentGroup.endpoints.map(
+          (e) => e.id === current.id ? endpoint : e
+        ) : [...currentGroup.endpoints, endpoint];
+        update({ ...currentGroup, endpoints });
+        await ctx.refresh();
+      },
+      f.dirty
+    );
+  };
+  page.append(
+    actions(button("\u65B0\u589E\u7AEF\u70B9\u7EC4", "plus", () => editGroup(), "primary"))
+  );
+  if (!groups.length) page.append(empty("\u5C1A\u672A\u914D\u7F6E\u7AEF\u70B9\u7EC4"));
+  for (const group of groups) {
+    const endpoints = [...group.endpoints].sort((a, b) => a.order - b.order);
+    page.append(
+      section(
+        group.name,
+        actions(
+          kind === "embedding" ? badge((group.dimensions ?? 0) + " \u7EF4 \xB7 " + group.embeddingSpaceId) : badge(endpoints.length + " \u4E2A\u7AEF\u70B9"),
+          button("\u6DFB\u52A0\u7AEF\u70B9", "plus", () => editEndpoint(group)),
+          tool("\u7F16\u8F91\u7EC4", "pen", () => editGroup(group)),
+          tool(
+            "\u5220\u9664\u7EC4",
+            "trash",
+            async () => {
+              const s = getSettings();
+              const used = kind === "generation" ? Object.values(s.generationWorkflows).some(
+                (w) => w.groupId === group.id
+              ) : kind === "embedding" ? s.summary.embeddingGroupId === group.id : s.retrieval.recall.rerankSetId === group.id;
+              if (used)
+                throw new Error("\u6B64\u7AEF\u70B9\u7EC4\u6B63\u5728\u88AB\u5DE5\u4F5C\u6D41\u4F7F\u7528\uFF0C\u8BF7\u5148\u89E3\u9664\u7ED1\u5B9A\u3002");
+              if (confirm("\u5220\u9664\u7AEF\u70B9\u7EC4 " + group.name + "\uFF1F")) {
+                update(group, true);
+                await ctx.refresh();
+              }
+            },
+            "danger"
+          )
+        ),
+        endpoints.length ? table(
+          ["\u987A\u5E8F", "\u7AEF\u70B9", "\u6A21\u578B", "\u5730\u5740", "\u542F\u7528", "\u64CD\u4F5C"],
+          endpoints.map((endpoint, i) => [
+            i + 1,
+            endpoint.name,
+            endpoint.model,
+            endpoint.baseUrl,
+            check2("\u542F\u7528 " + endpoint.name, endpoint.enabled, (v) => {
+              endpoint.enabled = v;
+              update({ ...group, endpoints });
+            }),
+            actions(
+              tool("\u7F16\u8F91\u7AEF\u70B9", "pen", () => editEndpoint(group, endpoint)),
+              tool("\u4E0A\u79FB\u7AEF\u70B9", "arrow-up", async () => {
+                update({
+                  ...group,
+                  endpoints: move(endpoints, i, -1).map((e, n) => ({
+                    ...e,
+                    order: n
+                  }))
+                });
+                await ctx.refresh();
+              }),
+              tool("\u4E0B\u79FB\u7AEF\u70B9", "arrow-down", async () => {
+                update({
+                  ...group,
+                  endpoints: move(endpoints, i, 1).map((e, n) => ({
+                    ...e,
+                    order: n
+                  }))
+                });
+                await ctx.refresh();
+              }),
+              tool("\u6D4B\u8BD5\u7AEF\u70B9", "flask", async () => {
+                const result = await ctx.job(
+                  "\u6D4B\u8BD5 " + endpoint.name,
+                  () => kind === "generation" ? echoesApi.testGenerationEndpoint(
+                    endpoint
+                  ) : echoesApi.testRetrievalEndpoint({
+                    kind,
+                    endpoint,
+                    ...kind === "embedding" && group.requestDimensions ? { requestedDimensions: group.dimensions } : {}
+                  })
+                );
+                dialog(
+                  "\u7AEF\u70B9\u6D4B\u8BD5",
+                  el(
+                    "div",
+                    "ew-page-content",
+                    badge("\u5B8C\u6210 \xB7 " + result.latencyMs + " ms", "success"),
+                    result.dimensions ? el("p", "", "\u5B9E\u9645\u7EF4\u5EA6\uFF1A" + result.dimensions) : null,
+                    detail("\u5C1D\u8BD5\u8BB0\u5F55", result.attempts)
+                  )
+                );
+              }),
+              tool(
+                "\u5220\u9664\u7AEF\u70B9",
+                "trash",
+                async () => {
+                  if (confirm("\u5220\u9664\u7AEF\u70B9 " + endpoint.name + "\uFF1F")) {
+                    update({
+                      ...group,
+                      endpoints: endpoints.filter(
+                        (e) => e.id !== endpoint.id
+                      )
+                    });
+                    await ctx.refresh();
+                  }
+                },
+                "danger"
+              )
+            )
+          ])
+        ) : empty("\u6B64\u7EC4\u8FD8\u6CA1\u6709\u7AEF\u70B9")
+      )
+    );
   }
-  deleteTemplate() {
-    const select = this.root.querySelector("[data-status-template-select]");
-    if (!select.value || select.value === DEFAULT_STATUS_TEMPLATE_ID) return;
-    const settings = getSettings();
-    settings.statusTemplates = settings.statusTemplates.filter((item) => item.id !== select.value);
-    saveSettings(settings);
-  }
-  updateTemplate() {
-    if (!this.state) return;
-    const selectedId = this.root.querySelector("[data-status-template-select]").value;
-    if (!selectedId || selectedId === DEFAULT_STATUS_TEMPLATE_ID) return;
-    const settings = getSettings();
-    const index = settings.statusTemplates.findIndex((item) => item.id === selectedId);
-    const current = settings.statusTemplates[index];
-    if (!current || !confirm(`\u7528\u5F53\u524D\u804A\u5929\u914D\u7F6E\u8986\u76D6\u201C${current.name}\u201D\uFF1F`)) return;
-    const profile = this.state.catalog.profile;
-    settings.statusTemplates[index] = statusTemplateSchema.parse({
-      ...current,
-      description: profile.description,
-      initialState: profile.initialState,
-      promptPreset: profile.promptPreset,
-      preprocessRules: profile.preprocessRules,
-      validation: profile.validation,
-      injection: profile.injection,
-      version: current.version + 1,
-      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-    });
-    saveSettings(settings);
-  }
-  async withBusy(operation) {
-    this.busy = true;
-    try {
-      return await operation();
-    } finally {
-      this.busy = false;
-    }
-  }
-};
+  return page;
+}
 
-// src/extension/ui/maintenance-panel.ts
+// src/extension/workbench/maintenance.ts
 init_client();
 
 // src/extension/maintenance/backup.ts
@@ -32766,33 +31874,33 @@ function targetTranscriptShape(messages2) {
 async function targetTranscriptFingerprint(messages2) {
   return sha2562(stableJson(targetTranscriptShape(messages2)));
 }
-function role(message3) {
-  if (message3.is_user === true || message3.role === "user") return "user";
-  if (message3.role === "system") return "system";
+function role(message) {
+  if (message.is_user === true || message.role === "user") return "user";
+  if (message.role === "system") return "system";
   return "assistant";
 }
-function stableId(message3, index) {
-  return String(message3.message_id ?? message3.id ?? index);
+function stableId(message, index) {
+  return String(message.message_id ?? message.id ?? index);
 }
-function swipeTexts(message3) {
-  const swipes = Array.isArray(message3.swipes) ? message3.swipes.map(String) : [];
+function swipeTexts(message) {
+  const swipes = Array.isArray(message.swipes) ? message.swipes.map(String) : [];
   if (swipes.length > 0) return swipes;
-  return [String(message3.mes ?? message3.message ?? "")];
+  return [String(message.mes ?? message.message ?? "")];
 }
 async function describeChat(chat = SillyTavern.getContext().chat) {
-  return Promise.all(chat.map(async (message3, index) => ({
+  return Promise.all(chat.map(async (message, index) => ({
     index,
-    stableId: stableId(message3, index),
-    role: role(message3),
-    swipeHashes: await Promise.all(swipeTexts(message3).map(sha2562)),
-    selectedSwipe: Math.max(0, Number(message3.swipe_id ?? 0) || 0),
-    message: message3
+    stableId: stableId(message, index),
+    role: role(message),
+    swipeHashes: await Promise.all(swipeTexts(message).map(sha2562)),
+    selectedSwipe: Math.max(0, Number(message.swipe_id ?? 0) || 0),
+    message
   })));
 }
-function variablesForSwipe(message3, swipeId) {
-  if (Array.isArray(message3.variables)) return message3.variables[swipeId] ?? {};
-  if (message3.variables && typeof message3.variables === "object") return message3.variables[swipeId] ?? {};
-  const data = Array.isArray(message3.swipes_data) ? message3.swipes_data[swipeId] : void 0;
+function variablesForSwipe(message, swipeId) {
+  if (Array.isArray(message.variables)) return message.variables[swipeId] ?? {};
+  if (message.variables && typeof message.variables === "object") return message.variables[swipeId] ?? {};
+  const data = Array.isArray(message.swipes_data) ? message.swipes_data[swipeId] : void 0;
   return data?.variables && typeof data.variables === "object" ? data.variables : {};
 }
 function snapshots(descriptor) {
@@ -32801,8 +31909,8 @@ function snapshots(descriptor) {
     return parsed.success ? [{ swipeId, value: parsed.data }] : [];
   });
 }
-function compression(message3) {
-  const value = message3.extra?.echoes?.compression;
+function compression(message) {
+  const value = message.extra?.echoes?.compression;
   return value && typeof value === "object" ? structuredClone(value) : void 0;
 }
 function restoreEchoesStatusValues(current, original) {
@@ -33031,8 +32139,8 @@ function worldbookNamespaceReplacements(backup, targetChatId) {
       if (typeof value === "string" && !replacements.has(value)) replacements.set(value, uniqueId5(prefix));
     }
   }
-  for (const message3 of backup.messages) {
-    for (const { value } of message3.statusSnapshots) {
+  for (const message of backup.messages) {
+    for (const { value } of message.statusSnapshots) {
       if (!replacements.has(value.snapshotId)) replacements.set(value.snapshotId, uniqueId5("status_snapshot"));
     }
   }
@@ -33130,7 +32238,7 @@ var EchoesBackupManager = class {
   async create(includeGlobalSettings = false) {
     const { chatId, worldbookName } = currentWorldbook();
     const api = helper5();
-    const [entries2, chat] = await Promise.all([
+    const [entries, chat] = await Promise.all([
       api.getWorldbook(worldbookName),
       describeChat()
     ]);
@@ -33144,7 +32252,7 @@ var EchoesBackupManager = class {
       statusSnapshots: snapshots(item),
       ...compression(item.message) ? { compression: compression(item.message) } : {}
     }));
-    const worldbookEntries = entries2.filter(persistentEchoesEntry).map(portableEntry);
+    const worldbookEntries = entries.filter(persistentEchoesEntry).map(portableEntry);
     worldbookEntries.forEach(validatePortableEntry);
     const value = {
       formatVersion: 1,
@@ -33185,7 +32293,7 @@ var EchoesBackupManager = class {
     if (mode === "equivalent_chat" && (!mappedMessages2 || mappedMessages2.length !== backup.messages.length)) {
       throw new Error("The target transcript is missing messages or contains ambiguous swipe matches.");
     }
-    const entries2 = await helper5().getWorldbook(worldbookName);
+    const entries = await helper5().getWorldbook(worldbookName);
     return {
       mode,
       targetChatId: chatId,
@@ -33193,7 +32301,7 @@ var EchoesBackupManager = class {
       targetTranscriptFingerprint: await targetTranscriptFingerprint(target),
       restoreGlobalSettings: restoreGlobalSettings && Boolean(backup.globalSettings),
       mappedMessages: mappedMessages2 ?? [],
-      echoesEntriesToReplace: entries2.filter((entry) => Boolean(echoesKind(entry))).length,
+      echoesEntriesToReplace: entries.filter((entry) => Boolean(echoesKind(entry))).length,
       statusSnapshotsToReplace: backup.messages.reduce((sum, item) => sum + item.statusSnapshots.length, 0),
       compressionMarkersToReplace: backup.messages.filter((item) => item.compression).length,
       warnings: [
@@ -33241,10 +32349,10 @@ var EchoesBackupManager = class {
     const incoming = await Promise.all(backup.worldbookEntries.map((entry) => rewriteEntry(entry, plan.mode, backup, current.chatId, replacements, targetById)));
     const rewrittenSnapshots = /* @__PURE__ */ new Map();
     if (plan.mode === "equivalent_chat") {
-      for (const message3 of backup.messages) {
-        const targetMessageId = mapping.get(message3.stableId);
-        if (!targetMessageId) throw new Error(`Missing target mapping for message ${message3.stableId}.`);
-        for (const stored of message3.statusSnapshots) {
+      for (const message of backup.messages) {
+        const targetMessageId = mapping.get(message.stableId);
+        if (!targetMessageId) throw new Error(`Missing target mapping for message ${message.stableId}.`);
+        for (const stored of message.statusSnapshots) {
           rewrittenSnapshots.set(
             `${targetMessageId}\0${stored.swipeId}`,
             await rewriteSnapshotReferences(stored.value, replacements, targetById)
@@ -33259,8 +32367,8 @@ var EchoesBackupManager = class {
     try {
       await worldbookWriteCoordinator.run(current.worldbookName, async () => {
         await this.assertRestoreTarget(backup, plan);
-        await api.updateWorldbookWith(current.worldbookName, (entries2) => [
-          ...entries2.filter((entry) => !echoesKind(entry)),
+        await api.updateWorldbookWith(current.worldbookName, (entries) => [
+          ...entries.filter((entry) => !echoesKind(entry)),
           ...incoming
         ]);
         const targetMessages = await this.assertRestoreTarget(backup, plan);
@@ -33308,9 +32416,9 @@ var EchoesBackupManager = class {
         messagesWritten = true;
         await api.setChatMessages(patches, { refresh: "affected" });
         if (plan.mode === "seed_memories") {
-          const latest = [...backup.messages].reverse().map((message3) => message3.statusSnapshots.find((item) => item.swipeId === message3.selectedSwipe)?.value).find((snapshot) => Boolean(snapshot));
+          const latest = [...backup.messages].reverse().map((message) => message.statusSnapshots.find((item) => item.swipeId === message.selectedSwipe)?.value).find((snapshot) => Boolean(snapshot));
           if (latest) {
-            await api.updateWorldbookWith(current.worldbookName, (entries2) => entries2.map((entry) => {
+            await api.updateWorldbookWith(current.worldbookName, (entries) => entries.map((entry) => {
               const echoes = entry.extra?.echoes;
               if (echoes?.kind !== "status_catalog") return entry;
               const rewritten = structuredClone(entry);
@@ -33366,1532 +32474,1441 @@ var EchoesBackupManager = class {
     };
   }
 };
-
-// src/extension/ui/console-log-recorder.ts
-var MAX_ENTRIES = 500;
-var SKIP_PATTERNS = [
-  /API key/i,
-  /authorization/i,
-  /bearer\s+[a-z0-9._-]+/i,
-  /credential\s+secret/i
-];
-var listeners = /* @__PURE__ */ new Set();
-var entries = [];
-var sequence = 0;
-var installed = false;
-function sanitize(value, depth = 0) {
-  if (value === void 0) return "undefined";
-  if (value === null) return "null";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (value instanceof Error) return `${value.name}: ${value.message}`;
-  if (depth >= 3) return "[truncated]";
-  try {
-    return JSON.stringify(value, (_key, item) => {
-      if (item instanceof Error) return `${item.name}: ${item.message}`;
-      return item;
-    }, 2)?.slice(0, 2e4) ?? String(value);
-  } catch {
-    return String(value);
-  }
+function serializeBackup(backup) {
+  return JSON.stringify(backup, null, 2);
 }
-function record2(level, prefix, args) {
-  const combined = args.map((item) => sanitize(item)).join(" ");
-  if (SKIP_PATTERNS.some((pattern) => pattern.test(combined))) return;
-  const entry = {
-    id: ++sequence,
-    time: (/* @__PURE__ */ new Date()).toISOString(),
-    level,
-    prefix,
-    message: combined.slice(0, 2e4)
+
+// src/extension/workbench/logs.ts
+var records = [];
+var listeners = /* @__PURE__ */ new Set();
+var installed = false;
+var sequence = 0;
+var secretKey = /^(api[-_]?key|secret|password|authorization|access[-_]?token|refresh[-_]?token)$/i;
+function redactLog(value, depth = 0, seen = /* @__PURE__ */ new WeakSet()) {
+  if (depth > 8) return "[depth limit]";
+  if (typeof value === "string")
+    return value.replace(/\bBearer\s+\S+/gi, "Bearer [redacted]").replace(/\bsk-[\w-]{8,}/g, "[redacted]").replace(/([?&](?:api_key|key|token|secret)=)[^&\s]+/gi, "$1[redacted]").replace(
+      /((?:api[_-]?key|secret|password|authorization)\s*[:=]\s*)[^\s,;]+/gi,
+      "$1[redacted]"
+    ).slice(0, 16e3);
+  if (!value || typeof value !== "object") return value;
+  if (seen.has(value)) return "[circular]";
+  seen.add(value);
+  if (value instanceof Error)
+    return {
+      name: value.name,
+      message: redactLog(value.message),
+      stack: redactLog(value.stack)
+    };
+  if (Array.isArray(value))
+    return value.slice(0, 100).map((v) => redactLog(v, depth + 1, seen));
+  return Object.fromEntries(
+    Object.entries(value).slice(0, 100).map(([key, v]) => [
+      key,
+      secretKey.test(key) ? "[redacted]" : redactLog(v, depth + 1, seen)
+    ])
+  );
+}
+function consoleRecords() {
+  return records.slice();
+}
+function clearConsoleRecords() {
+  records.length = 0;
+  listeners.forEach((fn) => fn());
+}
+function subscribeConsole(fn) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
   };
-  entries.push(entry);
-  if (entries.length > MAX_ENTRIES) entries.splice(0, entries.length - MAX_ENTRIES);
-  for (const listener of listeners) listener();
 }
 function installConsoleLogRecorder() {
   if (installed) return;
   installed = true;
-  const original = {
-    log: console.log.bind(console),
-    warn: console.warn.bind(console),
-    error: console.error.bind(console)
-  };
-  for (const level of ["log", "warn", "error"]) {
+  for (const level of ["log", "info", "warn", "error", "debug"]) {
+    const original = console[level].bind(console);
     console[level] = (...args) => {
-      record2(level, "Echoes", args);
-      original[level](...args);
-    };
-  }
-}
-function consoleLogEntries() {
-  return [...entries].reverse();
-}
-function subscribeConsoleLogs(listener) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-// src/extension/ui/maintenance-panel.ts
-function message2(error51) {
-  return error51 instanceof Error ? error51.message : String(error51);
-}
-function downloadJson(name, value) {
-  const url2 = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: "application/json" }));
-  const link = document.createElement("a");
-  link.href = url2;
-  link.download = name;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url2), 1e3);
-}
-async function waitJob2(job) {
-  let current = job;
-  for (; ; ) {
-    if (current.status === "succeeded") return current.result;
-    if (["failed", "cancelled", "ambiguous"].includes(current.status)) {
-      throw new Error(current.error?.message ?? current.message);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    current = await echoesApi.getJob(current.id);
-  }
-}
-function stateLabel2(state) {
-  return { pass: "\u6B63\u5E38", warning: "\u8B66\u544A", fail: "\u5931\u8D25", unavailable: "\u4E0D\u53EF\u7528" }[state];
-}
-function jobStatusLabel(status) {
-  return {
-    queued: "\u6392\u961F\u4E2D",
-    running: "\u8FD0\u884C\u4E2D",
-    succeeded: "\u6210\u529F",
-    failed: "\u5931\u8D25",
-    cancelled: "\u5DF2\u53D6\u6D88",
-    ambiguous: "\u4E0D\u786E\u5B9A"
-  }[status];
-}
-var MaintenancePanel = class {
-  constructor(root) {
-    this.root = root;
-    this.root.addEventListener("click", (event) => {
-      const target = event.target.closest("[data-maintenance-action]");
-      if (!target) return;
-      void this.action(target.dataset.maintenanceAction ?? "", target).catch((error51) => {
-        toastr.error(message2(error51), "Echoes \u7EF4\u62A4");
-      });
-    });
-    this.root.addEventListener("change", (event) => {
-      const input = event.target;
-      if (input.dataset.maintenanceFile === "backup" && input.files?.[0]) {
-        void this.loadBackup(input.files[0]).catch((error51) => toastr.error(message2(error51), "Echoes \u5907\u4EFD"));
-        return;
-      }
-      if (input.dataset.jobStatusFilter !== void 0) {
-        this.jobStatusFilter = input.value;
-        this.renderJobs();
-      }
-    });
-    this.consoleUnsubscribe = subscribeConsoleLogs(() => this.renderConsoleLogs());
-  }
-  root;
-  backup = new EchoesBackupManager();
-  importedBackup = null;
-  restorePlan = null;
-  status = null;
-  credentials = [];
-  checks = [];
-  jobs = [];
-  jobStatusFilter = "";
-  diagnosticBundle = null;
-  renderSequence = 0;
-  refreshSequence = 0;
-  consoleUnsubscribe = null;
-  async render() {
-    if (!this.root.classList.contains("echoes-maintenance-view")) return;
-    const sequence2 = ++this.renderSequence;
-    const host = this.root.querySelector(".echoes-grid-host");
-    host.innerHTML = `
-      <div class="echoes-maintenance-page">
-        <section class="echoes-maintenance-section" data-system></section>
-        <section class="echoes-maintenance-section" data-credentials></section>
-        <section class="echoes-maintenance-section" data-diagnostics></section>
-        <section class="echoes-maintenance-section" data-jobs-section>
-          <details data-job-log-details>
-            <summary><h2>\u4EFB\u52A1\u65E5\u5FD7</h2><span>\u9ED8\u8BA4\u6298\u53E0\uFF1B\u5C55\u5F00\u540E\u663E\u793A\u4EFB\u52A1\u5143\u6570\u636E\u3001\u7ED3\u679C\u6458\u8981\u548C\u9519\u8BEF</span></summary>
-            <div data-jobs></div>
-          </details>
-        </section>
-        <section class="echoes-maintenance-section" data-console-log-section>
-          <details>
-            <summary><h2>\u63A7\u5236\u53F0\u65E5\u5FD7</h2><span>Echoes \u6D4F\u89C8\u5668\u7AEF\u8FD0\u884C\u8F93\u51FA\uFF1B\u670D\u52A1\u7AEF\u65E5\u5FD7\u4ECD\u5728 SillyTavern \u63A7\u5236\u53F0</span></summary>
-            <div data-console-log></div>
-          </details>
-        </section>
-        <section class="echoes-maintenance-section" data-backup></section>
-      </div>`;
-    this.renderAll();
-    await this.refresh(sequence2);
-  }
-  current(sequence2, refreshSequence) {
-    return sequence2 === this.renderSequence && (refreshSequence === void 0 || refreshSequence === this.refreshSequence) && this.root.classList.contains("echoes-maintenance-view");
-  }
-  async refresh(sequence2 = this.renderSequence) {
-    const refreshSequence = ++this.refreshSequence;
-    this.renderAll();
-    try {
-      const [status, credentials, jobs] = await Promise.allSettled([
-        echoesApi.systemStatus(),
-        echoesApi.listCredentials(),
-        echoesApi.listJobs({ limit: 200 })
-      ]);
-      if (!this.current(sequence2, refreshSequence)) return;
-      this.status = status.status === "fulfilled" ? status.value : null;
-      this.credentials = credentials.status === "fulfilled" ? credentials.value : [];
-      this.jobs = jobs.status === "fulfilled" ? jobs.value.jobs : [];
-      if (status.status === "rejected" && credentials.status === "rejected") throw status.reason;
-      if (credentials.status === "rejected") {
-        toastr.warning(`\u51ED\u636E\u5B50\u7CFB\u7EDF\u4E0D\u53EF\u7528\uFF1A${message2(credentials.reason)}`, "Echoes");
-      }
-      if (jobs.status === "rejected" && status.status !== "rejected") {
-        toastr.warning(`\u4EFB\u52A1\u65E5\u5FD7\u4E0D\u53EF\u7528\uFF1A${message2(jobs.reason)}`, "Echoes");
-      }
-    } catch (error51) {
-      if (!this.current(sequence2, refreshSequence)) return;
-      this.status = null;
-      this.credentials = [];
-      toastr.warning(`\u670D\u52A1\u7AEF\u7EF4\u62A4\u63A5\u53E3\u4E0D\u53EF\u7528\uFF1A${message2(error51)}`, "Echoes");
-    } finally {
-      if (this.current(sequence2, refreshSequence)) this.renderAll();
-    }
-  }
-  renderAll() {
-    this.renderSystem();
-    this.renderCredentials();
-    this.renderDiagnostics();
-    this.renderJobs();
-    this.renderBackup();
-    this.renderConsoleLogs();
-    const sidebar = this.root.querySelector(".echoes-table-list");
-    if (sidebar) {
-      sidebar.innerHTML = `
-        <div class="echoes-maintenance-summary">
-          <strong>Echoes ${ECHOES_BUILD_INFO.appVersion}</strong>
-          <span>\u534F\u8BAE v${ECHOES_BUILD_INFO.apiProtocolVersion}</span>
-          <span>${this.status ? "\u670D\u52A1\u7AEF\u5DF2\u8FDE\u63A5" : "\u672C\u5730\u67E5\u770B\u6A21\u5F0F"}</span>
-          <span>${this.credentials.length} \u4E2A\u51ED\u636E</span>
-        </div>`;
-    }
-  }
-  renderSystem() {
-    const host = this.root.querySelector("[data-system]");
-    if (!host) return;
-    const status = this.status;
-    const versionState = status && status.build.appVersion !== ECHOES_BUILD_INFO.appVersion ? status.protocolCompatible ? "\u7248\u672C\u4E0D\u540C\uFF0C\u534F\u8BAE\u517C\u5BB9" : "\u534F\u8BAE\u4E0D\u517C\u5BB9\uFF0C\u670D\u52A1\u7AEF\u4EFB\u52A1\u5DF2\u7981\u7528" : "\u524D\u540E\u7AEF\u7248\u672C\u4E00\u81F4";
-    const serverVersion = this.escape(status?.build.appVersion ?? "\u4E0D\u53EF\u7528");
-    const apiVersion = this.escape(String(status?.build.apiProtocolVersion ?? "-"));
-    const nodeVersion = this.escape(status?.platform.node ?? "-");
-    const platform = this.escape(status ? [status.platform.platform, status.platform.arch].join("/") : "-");
-    const dependencyState = this.escape(status?.bootstrap.state ?? "\u4E0D\u53EF\u7528");
-    host.innerHTML = `
-      <div class="echoes-section-heading">
-        <div><h2>\u7248\u672C\u4E0E\u8FD0\u884C\u65F6</h2><span>${versionState}</span></div>
-        <button type="button" class="echoes-icon-button" data-maintenance-action="refresh" title="\u5237\u65B0" aria-label="\u5237\u65B0"><i class="fa-solid fa-rotate"></i></button>
-      </div>
-      <div class="echoes-maintenance-facts">
-        <span>\u524D\u7AEF <strong>${ECHOES_BUILD_INFO.appVersion}</strong></span>
-        <span>\u670D\u52A1\u7AEF <strong>${serverVersion}</strong></span>
-        <span>API <strong>v${apiVersion}</strong></span>
-        <span>Node <strong>${nodeVersion}</strong></span>
-        <span>\u5E73\u53F0 <strong>${platform}</strong></span>
-        <span>\u4F9D\u8D56 <strong>${dependencyState}</strong></span>
-      </div>`;
-  }
-  renderCredentials() {
-    const host = this.root.querySelector("[data-credentials]");
-    if (!host) return;
-    host.innerHTML = `
-      <div class="echoes-section-heading">
-        <div><h2>\u51ED\u636E\u72B6\u6001</h2><span>\u7EF4\u62A4\u9875\u4EC5\u663E\u793A\u72B6\u6001\uFF1B\u65B0\u589E\u3001\u8F6E\u6362\u3001\u8FC1\u79FB\u548C\u5220\u9664\u7EDF\u4E00\u5728 API\u914D\u7F6E\u4E2D\u5B8C\u6210</span></div>
-        <button type="button" class="menu_button" data-action="switch-view" data-view="api"><i class="fa-solid fa-arrow-up-right-from-square"></i> \u524D\u5F80 API\u914D\u7F6E</button>
-      </div>
-      <div class="echoes-maintenance-table">
-        ${this.credentials.length === 0 ? '<p class="echoes-empty-note">\u5C1A\u65E0\u670D\u52A1\u7AEF\u51ED\u636E\u3002\u8BF7\u524D\u5F80 API\u914D\u7F6E\u6DFB\u52A0\u3002</p>' : this.credentials.map((credential) => `
-          <div class="echoes-maintenance-row">
-            <span><strong>${this.escape(credential.name)}</strong><small>${this.escape(credential.id)}</small></span>
-            <time>${new Date(credential.updatedAt).toLocaleString()}</time>
-            <span class="echoes-diagnostic-state">\u5DF2\u4FDD\u5B58</span>
-          </div>`).join("")}
-      </div>`;
-  }
-  renderDiagnostics() {
-    const host = this.root.querySelector("[data-diagnostics]");
-    if (!host) return;
-    host.innerHTML = `
-      <div class="echoes-section-heading">
-        <div><h2>\u8BCA\u65AD\u4E0E\u4FEE\u590D</h2><span>\u542F\u52A8\u53EA\u68C0\u67E5\uFF0C\u4FEE\u590D\u5FC5\u987B\u660E\u786E\u786E\u8BA4</span></div>
-        <div>
-          <button type="button" class="menu_button" data-maintenance-action="diagnose"><i class="fa-solid fa-stethoscope"></i> \u8FD0\u884C\u81EA\u68C0</button>
-          <button type="button" class="echoes-icon-button" data-maintenance-action="export-diagnostics" title="\u5BFC\u51FA\u8131\u654F\u8BCA\u65AD" aria-label="\u5BFC\u51FA\u8131\u654F\u8BCA\u65AD" ${this.diagnosticBundle ? "" : "disabled"}><i class="fa-solid fa-download"></i></button>
-        </div>
-      </div>
-      <div class="echoes-diagnostic-list">
-        ${this.checks.length === 0 ? '<p class="echoes-empty-note">\u5C1A\u672A\u8FD0\u884C\u5B8C\u6574\u81EA\u68C0\u3002</p>' : this.checks.map((item) => `
-          <div class="echoes-diagnostic-row" data-state="${item.state}">
-            <span class="echoes-diagnostic-state">${stateLabel2(item.state)}</span>
-            <span><strong>${this.escape(item.title)}</strong><small>${this.escape(item.message)}</small></span>
-            ${item.repairKind ? `<button type="button" class="menu_button" data-maintenance-action="repair" data-kind="${item.repairKind}">\u4FEE\u590D</button>` : ""}
-          </div>`).join("")}
-      </div>`;
-  }
-  renderJobs() {
-    const host = this.root.querySelector("[data-jobs]");
-    if (!host) return;
-    const filtered = this.jobStatusFilter ? this.jobs.filter((job) => job.status === this.jobStatusFilter) : this.jobs;
-    host.innerHTML = `
-      <div class="echoes-maintenance-actions">
-        <select data-job-status-filter aria-label="\u4EFB\u52A1\u72B6\u6001\u7B5B\u9009">
-          <option value="">\u5168\u90E8\u72B6\u6001</option>
-          <option value="failed">\u5931\u8D25</option>
-          <option value="ambiguous">\u4E0D\u786E\u5B9A</option>
-          <option value="running">\u8FD0\u884C\u4E2D</option>
-          <option value="queued">\u6392\u961F\u4E2D</option>
-          <option value="succeeded">\u6210\u529F</option>
-          <option value="cancelled">\u5DF2\u53D6\u6D88</option>
-        </select>
-        <button type="button" class="menu_button" data-maintenance-action="refresh-jobs"><i class="fa-solid fa-rotate"></i> \u5237\u65B0\u4EFB\u52A1</button>
-      </div>
-      <div class="echoes-job-log-list">
-        ${filtered.length === 0 ? '<p class="echoes-empty-note">\u5F53\u524D\u7528\u6237\u6682\u65E0\u4EFB\u52A1\u8BB0\u5F55\u3002</p>' : filtered.map((job) => `
-          <details class="echoes-job-log-row" data-state="${job.status}">
-            <summary>
-              <span class="echoes-diagnostic-state">${jobStatusLabel(job.status)}</span>
-              <span>
-                <strong>${this.escape(job.type)}</strong>
-                <small>${this.escape(job.message)}</small>
-                ${job.resultSummary?.failed || job.resultSummary?.ambiguous ? `<em>\u5411\u91CF\u5931\u8D25 ${job.resultSummary.failed ?? 0} \xB7 \u4E0D\u786E\u5B9A ${job.resultSummary.ambiguous ?? 0}</em>` : ""}
-              </span>
-              <time>${new Date(job.updatedAt).toLocaleString()}</time>
-            </summary>
-            <pre>${this.escape(JSON.stringify({
-      id: job.id,
-      type: job.type,
-      status: job.status,
-      progress: job.progress,
-      message: job.message,
-      createdAt: job.createdAt,
-      updatedAt: job.updatedAt,
-      error: job.error,
-      resultSummary: job.resultSummary
-    }, null, 2))}</pre>
-          </details>`).join("")}
-      </div>`;
-    const select = host.querySelector("[data-job-status-filter]");
-    if (select) select.value = this.jobStatusFilter;
-  }
-  renderBackup() {
-    const host = this.root.querySelector("[data-backup]");
-    if (!host) return;
-    host.innerHTML = `
-      <div class="echoes-section-heading"><div><h2>\u5F53\u524D\u804A\u5929\u5907\u4EFD\u4E0E\u6062\u590D</h2><span>\u4E16\u754C\u4E66\u662F\u6743\u5A01\u6765\u6E90\uFF0C\u6D3E\u751F\u7D22\u5F15\u4E0E\u5BC6\u94A5\u4E0D\u8FDB\u5165\u5907\u4EFD</span></div></div>
-      <div class="echoes-maintenance-actions">
-        <label class="echoes-check"><input type="checkbox" data-global-settings>\u5305\u542B\u8131\u654F\u5168\u5C40\u8BBE\u7F6E</label>
-        <button type="button" class="menu_button" data-maintenance-action="export-backup"><i class="fa-solid fa-file-export"></i> \u5BFC\u51FA\u5F53\u524D\u804A\u5929</button>
-        <label class="menu_button"><i class="fa-solid fa-file-import"></i> \u9009\u62E9\u5907\u4EFD<input class="echoes-hidden" type="file" accept="application/json,.json" data-maintenance-file="backup"></label>
-      </div>
-      ${this.importedBackup ? `
-        <div class="echoes-restore-preview">
-          <strong>${this.escape(this.importedBackup.source.worldbookName)}</strong>
-          <span>${this.importedBackup.messages.length} \u6761\u6D88\u606F \xB7 ${this.importedBackup.worldbookEntries.length} \u4E2A Echoes \u4E16\u754C\u4E66\u6761\u76EE</span>
-          <div class="echoes-maintenance-actions">
-            <select data-restore-mode><option value="equivalent_chat">\u7B49\u4EF7\u5BF9\u8BDD\u5B8C\u6574\u6062\u590D</option><option value="seed_memories">\u4EFB\u610F\u804A\u5929\u64AD\u79CD</option></select>
-            <label class="echoes-check"><input type="checkbox" data-restore-settings ${this.importedBackup.globalSettings ? "" : "disabled"}>\u6062\u590D\u8131\u654F\u5168\u5C40\u8BBE\u7F6E</label>
-            <button type="button" class="menu_button" data-maintenance-action="preview-restore">\u751F\u6210\u9884\u89C8</button>
-          </div>
-          ${this.restorePlan ? `<pre class="echoes-maintenance-plan">${this.escape(JSON.stringify(this.restorePlan, null, 2))}</pre><button type="button" class="menu_button echoes-primary" data-maintenance-action="restore">\u786E\u8BA4\u66FF\u6362\u5E76\u6062\u590D</button>` : ""}
-        </div>` : ""}`;
-  }
-  async action(action, target) {
-    if (action === "refresh") await this.refresh();
-    else if (action === "refresh-jobs") await this.refreshJobs();
-    else if (action === "diagnose") await this.diagnose();
-    else if (action === "export-diagnostics" && this.diagnosticBundle) downloadJson(`echoes-diagnostics-${Date.now()}.json`, this.diagnosticBundle);
-    else if (action === "repair") await this.repair(target.dataset.kind);
-    else if (action === "export-backup") await this.exportBackup();
-    else if (action === "preview-restore") await this.previewRestore();
-    else if (action === "restore") await this.restore();
-  }
-  async diagnose() {
-    const api = window.TavernHelper;
-    const worldbookName = api?.getChatWorldbookName("current");
-    const entries2 = worldbookName ? await api.getWorldbook(worldbookName) : [];
-    const summaryIndexMismatches = worldbookName ? await this.summaryIndexMismatches(worldbookName) : 0;
-    const credentialIds = [...this.referencedCredentialIds()];
-    const job = await echoesApi.startDiagnostics({
-      clientProtocol: ECHOES_BUILD_INFO.apiProtocolVersion,
-      clientVersion: ECHOES_BUILD_INFO.appVersion,
-      settingsFormatVersion: storedSettingsFormatVersion(),
-      tavernHelper: {
-        getWorldbook: typeof api?.getWorldbook === "function",
-        updateWorldbookWith: typeof api?.updateWorldbookWith === "function",
-        getChatMessages: typeof api?.getChatMessages === "function",
-        setChatMessages: typeof api?.setChatMessages === "function",
-        getVariables: typeof api?.getVariables === "function",
-        updateVariablesWith: typeof api?.updateVariablesWith === "function"
-      },
-      worldbook: {
-        formatVersions: entries2.flatMap((entry) => {
-          const echoes = entry.extra?.echoes;
-          if (!["summary_catalog", "summary_slice"].includes(String(echoes?.kind))) return [];
-          const value = echoes?.catalog?.formatVersion ?? echoes?.formatVersion ?? echoes?.version;
-          return Number.isInteger(value) ? [Number(value)] : [];
-        }),
-        staleInjectionCount: entries2.filter((entry) => {
-          const kind = entry.extra?.echoes?.kind;
-          const updatedAt = Date.parse(String(entry.extra?.echoes?.updatedAt ?? entry.extra?.echoes?.createdAt ?? ""));
-          return ["retrieval_injection", "status_injection"].includes(kind) && (!Number.isFinite(updatedAt) || Date.now() - updatedAt > 5 * 6e4);
-        }).length,
-        summaryIndexMismatches
-      },
-      credentialIds
-    });
-    const result = await waitJob2(job);
-    this.status = result.status;
-    this.checks = result.checks;
-    this.diagnosticBundle = result.bundle;
-    this.renderAll();
-  }
-  renderConsoleLogs() {
-    const host = this.root.querySelector("[data-console-log]");
-    if (!host) return;
-    host.innerHTML = `
-      <div class="echoes-console-log-list">
-        ${consoleLogEntries().length === 0 ? '<p class="echoes-empty-note">\u6682\u65E0 Echoes \u6D4F\u89C8\u5668\u7AEF\u65E5\u5FD7\u3002\u670D\u52A1\u7AEF\u8FD0\u884C\u65E5\u5FD7\u8BF7\u67E5\u770B SillyTavern \u63A7\u5236\u53F0\u3002</p>' : consoleLogEntries().map((entry) => `
-            <div class="echoes-console-log-row" data-level="${entry.level}">
-              <time>${new Date(entry.time).toLocaleTimeString()}</time>
-              <span>${this.escape(entry.prefix)}</span>
-              <pre>${this.escape(entry.message)}</pre>
-            </div>`).join("")}
-      </div>`;
-  }
-  async refreshJobs() {
-    const result = await echoesApi.listJobs({ limit: 200 });
-    this.jobs = result.jobs;
-    this.renderJobs();
-  }
-  async summaryIndexMismatches(worldbookName) {
-    let state;
-    try {
-      state = await new SummaryWorldbookStore().inspect(worldbookName);
-    } catch {
-      return 0;
-    }
-    const slices = state.slices.filter((slice) => slice.batch.state !== "stale");
-    let mismatches = state.catalog.pendingRetrievalDeletes.length;
-    const collectionId = state.catalog.retrievalCollectionId;
-    if (!collectionId) return mismatches + slices.length;
-    const expected = await Promise.all(slices.map(async (slice) => ({
-      documentId: await summaryRetrievalDocumentId(collectionId, slice.id),
-      contentHash: await summaryRetrievalContentHash(slice)
-    })));
-    try {
-      for (let offset = 0; offset < expected.length; offset += 1e3) {
-        const batch = expected.slice(offset, offset + 1e3);
-        if (batch.length === 0) continue;
-        const actual = await echoesApi.retrievalDocumentStatus(batch.map((item) => item.documentId));
-        const byId = new Map(actual.documents.map((item) => [item.documentId, item]));
-        mismatches += batch.filter((item) => byId.get(item.documentId)?.contentHash !== item.contentHash).length;
-      }
-      return mismatches;
-    } catch {
-      return mismatches + expected.length;
-    }
-  }
-  async repair(kind) {
-    if (!confirm(`\u4FEE\u590D\u9879\u76EE\u201C${kind}\u201D\u53EF\u80FD\u6539\u5199 Echoes \u8FD0\u884C\u6570\u636E\u3002\u7EE7\u7EED\uFF1F`)) return;
-    if (kind === "retrieval_index") {
-      const state = await new SummaryCoordinator().repairIndex();
-      const mismatches = await this.summaryIndexMismatches(state.worldbookName);
-      if (mismatches > 0) {
-        throw new Error(`\u603B\u7ED3\u7D22\u5F15\u4FEE\u590D\u540E\u4ECD\u6709 ${mismatches} \u4E2A\u6587\u6863\u7F3A\u5931\u6216\u54C8\u5E0C\u4E0D\u4E00\u81F4\u3002`);
-      }
-      toastr.success("\u603B\u7ED3\u7D22\u5F15\u5DF2\u91CD\u5EFA\u5E76\u901A\u8FC7\u54C8\u5E0C\u6821\u9A8C\u3002", "Echoes \u7EF4\u62A4");
-      await this.diagnose();
-      return;
-    }
-    if (["settings_format", "summary_format", "temporary_injections"].includes(kind)) {
-      if (kind === "settings_format") saveSettings({ ...getSettings(), formatVersion: 2 });
-      else {
-        const api = window.TavernHelper;
-        const worldbookName = api?.getChatWorldbookName("current");
-        if (!api || !worldbookName) throw new Error("\u5F53\u524D\u804A\u5929\u6CA1\u6709\u53EF\u7EF4\u62A4\u7684\u4E16\u754C\u4E66\u3002");
-        await worldbookWriteCoordinator.run(worldbookName, () => api.updateWorldbookWith(worldbookName, (entries2) => {
-          if (kind === "summary_format") {
-            return entries2.map((entry) => {
-              const echoes = entry.extra?.echoes;
-              if (!["summary_catalog", "summary_slice"].includes(String(echoes?.kind))) return entry;
-              const updated = structuredClone(entry);
-              updated.extra.echoes.version = 2;
-              if (updated.extra.echoes.kind === "summary_catalog") updated.extra.echoes.catalog.formatVersion = 2;
-              if (updated.extra.echoes.kind === "summary_slice" && !updated.extra.echoes.batch.source) {
-                updated.extra.echoes.batch.source = { kind: "chat_messages" };
-              }
-              return updated;
-            });
-          }
-          return entries2.filter((entry) => {
-            const echoes = entry.extra?.echoes;
-            if (!["retrieval_injection", "status_injection"].includes(String(echoes?.kind))) return true;
-            const updatedAt = Date.parse(String(echoes?.updatedAt ?? echoes?.createdAt ?? ""));
-            return Number.isFinite(updatedAt) && Date.now() - updatedAt <= 5 * 6e4;
-          });
-        }));
-      }
-      await this.diagnose();
-      return;
-    }
-    const request = { kinds: [kind], confirmed: true };
-    const serverRequest = kind === "orphan_credentials" ? {
-      ...request,
-      orphanCredentialIds: this.credentials.filter((credential) => !this.referencedCredentialIds().has(credential.id)).map((credential) => credential.id)
-    } : request;
-    const result = await waitJob2(await echoesApi.startRepair(serverRequest));
-    if (result.skipped.length > 0) {
-      toastr.warning(
-        result.skipped.map((item) => `${item.kind}: ${item.reason}`).join("\n"),
-        "Echoes \u7EF4\u62A4"
-      );
-    }
-    await this.diagnose();
-  }
-  referencedCredentialIds() {
-    const settings = getSettings();
-    return new Set([
-      ...settings.generationGroups.flatMap((group) => group.endpoints),
-      ...settings.retrieval.embeddingGroups.flatMap((group) => group.endpoints),
-      ...settings.retrieval.rerankSets.flatMap((set3) => set3.endpoints)
-    ].flatMap((endpoint) => endpoint.credentialId ? [endpoint.credentialId] : []));
-  }
-  async exportBackup() {
-    const includeSettings = this.root.querySelector("[data-global-settings]")?.checked ?? false;
-    const backup = await this.backup.create(includeSettings);
-    downloadJson(`echoes-${backup.source.chatId}-${backup.backupId}.json`, backup);
-  }
-  async loadBackup(file2) {
-    if (file2.size > 100 * 1024 * 1024) throw new Error("\u5907\u4EFD\u6587\u4EF6\u8D85\u8FC7 100 MB \u9650\u5236\u3002");
-    this.importedBackup = await this.backup.parse(await file2.text());
-    this.restorePlan = null;
-    this.renderBackup();
-  }
-  async previewRestore() {
-    if (!this.importedBackup) return;
-    const mode = this.root.querySelector("[data-restore-mode]").value;
-    const restoreSettings = this.root.querySelector("[data-restore-settings]").checked;
-    this.restorePlan = await this.backup.plan(this.importedBackup, mode, restoreSettings);
-    this.renderBackup();
-  }
-  async restore() {
-    if (!this.importedBackup || !this.restorePlan) return;
-    if (!confirm("\u5C06\u66FF\u6362\u76EE\u6807\u804A\u5929\u4E2D\u7684\u5168\u90E8 Echoes \u6570\u636E\u3002\u5DF2\u751F\u6210\u9884\u89C8\uFF0C\u662F\u5426\u7EE7\u7EED\uFF1F")) return;
-    const { result } = await this.backup.restore(this.importedBackup, this.restorePlan, (safetyBackup) => {
-      downloadJson(`echoes-safety-${safetyBackup.backupId}.json`, safetyBackup);
-    });
-    this.restorePlan = null;
-    if (result.retrievalRebuildRequired) {
-      const settings = getSettings();
-      const group = settings.retrieval.embeddingGroups.find((item) => item.id === settings.summary.embeddingGroupId);
-      const availableCredentials = new Set(this.credentials.map((credential) => credential.id));
-      const enabled = group?.endpoints.filter((endpoint) => endpoint.enabled) ?? [];
-      if (group && enabled.length > 0 && enabled.every((endpoint) => Boolean(endpoint.apiKey || endpoint.credentialId && availableCredentials.has(endpoint.credentialId)))) {
-        void new SummaryCoordinator().repairIndex().then(() => {
-          toastr.success("\u6062\u590D\u540E\u7684\u603B\u7ED3\u7D22\u5F15\u5DF2\u91CD\u5EFA\u3002", "Echoes");
-        }).catch((error51) => {
-          toastr.warning(`\u4E16\u754C\u4E66\u5DF2\u6062\u590D\uFF0C\u7D22\u5F15\u91CD\u5EFA\u5931\u8D25\uFF1A${message2(error51)}`, "Echoes");
+      original(...args);
+      if (!args.some((v) => typeof v === "string" && /echoes/i.test(v))) return;
+      try {
+        const text = args.map((v) => {
+          const safe = redactLog(v);
+          return typeof safe === "string" ? safe : JSON.stringify(safe);
+        }).join(" ").slice(0, 24e3);
+        records.push({
+          id: ++sequence,
+          time: (/* @__PURE__ */ new Date()).toISOString(),
+          level,
+          text
         });
+        if (records.length > 500) records.splice(0, records.length - 500);
+        for (const listener of listeners)
+          try {
+            listener();
+          } catch {
+          }
+      } catch {
       }
-    }
-    toastr.success(`\u5DF2\u6062\u590D ${result.worldbookEntries} \u4E2A\u4E16\u754C\u4E66\u6761\u76EE\u3002`, "Echoes");
-    await this.refresh();
-  }
-  escape(value) {
-    const node = document.createElement("span");
-    node.textContent = value;
-    return node.innerHTML;
-  }
-};
-
-// src/extension/ui/memory-panel.ts
-function iconButton3(icon, title, action) {
-  const button3 = document.createElement("button");
-  button3.type = "button";
-  button3.className = "echoes-icon-button";
-  button3.dataset.action = action;
-  button3.title = title;
-  button3.setAttribute("aria-label", title);
-  button3.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
-  return button3;
-}
-function commandButton2(icon, label, action, primary = false) {
-  const button3 = document.createElement("button");
-  button3.type = "button";
-  button3.className = `menu_button${primary ? " echoes-primary" : ""}`;
-  button3.dataset.action = action;
-  button3.innerHTML = `<i class="fa-solid fa-${icon}"></i> ${label}`;
-  return button3;
-}
-function displayValue(value) {
-  if (value === void 0 || value === null) return "";
-  if (typeof value === "object") return JSON.stringify(value);
-  if (typeof value === "boolean") return value ? "\u662F" : "\u5426";
-  return String(value);
-}
-function statusLabel(status) {
-  return { permanent: "\u6C38\u4E45", keyword: "\u5173\u952E\u8BCD", vectorized: "\u5411\u91CF\u5316" }[status];
-}
-var MemoryPanel = class {
-  root;
-  store = new WorldbookMemoryStore();
-  retrievalPanel;
-  summaryPanel;
-  apiConfigPanel;
-  recallPanel;
-  statusPanel;
-  maintenancePanel;
-  state = null;
-  activeTypeId = null;
-  reloadSequence = 0;
-  view = "memory";
-  draggedPromptIndex = null;
-  lastCompletedExtraction = "";
-  previousPrimaryView = "memory";
-  structuredSettingsTab = "automation";
-  summarySettingsTab = "generation";
-  chatIdentity() {
-    return {
-      chatId: SillyTavern.getContext().chatId ?? null,
-      worldbookName: window.TavernHelper?.getChatWorldbookName("current") ?? null
     };
   }
-  assertChatIdentity(identity) {
-    const current = this.chatIdentity();
-    if (!identity.chatId || current.chatId !== identity.chatId || current.worldbookName !== identity.worldbookName) {
-      throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u672C\u6B21\u7F16\u8F91\u672A\u4FDD\u5B58\u3002\u8BF7\u5728\u76EE\u6807\u804A\u5929\u4E2D\u91CD\u65B0\u6253\u5F00\u7F16\u8F91\u5668\u3002");
-    }
+}
+
+// src/extension/workbench/maintenance.ts
+var backupManager = new EchoesBackupManager();
+function showResult(title, result) {
+  const body = detail("\u5B8C\u6574\u7ED3\u679C", result);
+  body.open = true;
+  dialog(title, body);
+}
+function statusSummary(job) {
+  const r = job.resultSummary;
+  return el(
+    "div",
+    "ew-page-content",
+    job.error ? el("p", "danger", job.error.message) : el("p", "ew-muted", job.message),
+    r ? actions(
+      badge("\u5DF2\u5411\u91CF\u5316 " + (r.vectorized ?? 0)),
+      badge("\u5931\u8D25 " + (r.failed ?? 0), r.failed ? "danger" : ""),
+      badge("\u5F85\u5904\u7406 " + (r.pending ?? 0)),
+      badge("\u5F85\u786E\u8BA4 " + (r.ambiguous ?? 0), r.ambiguous ? "warning" : "")
+    ) : null,
+    ...(r?.attempts ?? []).filter((a) => a.message).map(
+      (a) => el(
+        "p",
+        a.outcome === "succeeded" ? "ew-muted" : "danger",
+        a.endpointName + " \xB7 " + (a.status ?? a.outcome) + " \xB7 " + a.message
+      )
+    )
+  );
+}
+async function maintenanceView(ctx) {
+  if (ctx.route === "maintenance/jobs") {
+    const page = el("div", "ew-page-content");
+    const ui = local(ctx, "job-filter", () => ({ status: "", query: "" }));
+    const host = el("div");
+    const f = fields(
+      [
+        {
+          key: "status",
+          label: "\u4EFB\u52A1\u72B6\u6001",
+          type: "select",
+          value: ui.status,
+          options: [
+            ["", "\u5168\u90E8"],
+            ["running", "\u8FD0\u884C\u4E2D"],
+            ["queued", "\u6392\u961F\u4E2D"],
+            ["succeeded", "\u5DF2\u5B8C\u6210"],
+            ["failed", "\u5931\u8D25"],
+            ["ambiguous", "\u5F85\u786E\u8BA4"],
+            ["cancelled", "\u5DF2\u53D6\u6D88"]
+          ]
+        }
+      ],
+      false
+    );
+    let jobs = [];
+    const draw = () => {
+      const list = jobs.filter(
+        (j) => JSON.stringify(j).toLowerCase().includes(ui.query.toLowerCase())
+      );
+      host.replaceChildren(
+        ...list.map((job) => {
+          const entry = el("details", "ew-job-log");
+          entry.append(
+            el(
+              "summary",
+              "ew-actions",
+              stateBadge(job.status),
+              el("strong", "", job.type),
+              el("time", "ew-muted", new Date(job.createdAt).toLocaleString()),
+              job.resultSummary?.failed ? badge("\u5185\u5BB9\u5931\u8D25 " + job.resultSummary.failed, "danger") : null
+            ),
+            el(
+              "div",
+              "ew-page-content",
+              statusSummary(job),
+              detail("\u4EFB\u52A1 JSON", job),
+              ["running", "queued"].includes(job.status) ? button(
+                "\u53D6\u6D88\u6B64\u4EFB\u52A1",
+                "stop",
+                async () => {
+                  const result = await echoesApi.cancelJob(job.id);
+                  if (!result.cancelled)
+                    throw new Error("\u540E\u53F0\u672A\u786E\u8BA4\u53D6\u6D88\uFF0C\u8BF7\u5237\u65B0\u68C0\u67E5\u3002");
+                  await load();
+                },
+                "danger"
+              ) : null
+            )
+          );
+          return entry;
+        })
+      );
+      if (!list.length) host.append(empty("\u6682\u65E0\u5339\u914D\u7684\u4EFB\u52A1\u65E5\u5FD7"));
+    };
+    const load = async () => {
+      jobs = (await echoesApi.listJobs({ status: ui.status, limit: 200 })).jobs;
+      if (!ctx.signal.aborted) draw();
+    };
+    f.controls.get("status").addEventListener("change", () => {
+      ui.status = f.controls.get("status").value;
+      void load().catch((e) => showResult("\u8BFB\u53D6\u4EFB\u52A1\u65E5\u5FD7\u5931\u8D25", String(e)));
+    });
+    page.append(
+      el(
+        "div",
+        "ew-toolbar",
+        searchBox(
+          ui.query,
+          (v) => {
+            ui.query = v;
+            draw();
+          },
+          "\u641C\u7D22\u4EFB\u52A1\u3001\u7AEF\u70B9\u6216\u9519\u8BEF"
+        ),
+        actions(
+          f.node,
+          button("\u5237\u65B0\u65E5\u5FD7", "rotate", load),
+          button(
+            "\u5BFC\u51FA\u65E5\u5FD7",
+            "download",
+            () => download(
+              "echoes-tasks.json",
+              JSON.stringify(redactLog(jobs), null, 2)
+            )
+          )
+        )
+      ),
+      host
+    );
+    const consoleSection = el(
+      "details",
+      "ew-detail",
+      el("summary", "", "\u63A7\u5236\u53F0\u65E5\u5FD7"),
+      consoleView(ctx)
+    );
+    page.append(consoleSection);
+    await load();
+    return page;
   }
+  if (ctx.route === "maintenance/console") return consoleView(ctx);
+  if (ctx.route === "maintenance/collections") return collectionsView(ctx);
+  if (ctx.route === "maintenance/query") return queryView(ctx);
+  if (ctx.route === "maintenance/backup") {
+    const page = el("div", "ew-page-content");
+    const options = fields([
+      {
+        key: "global",
+        label: "\u5305\u542B\u5168\u5C40\u8BBE\u7F6E\uFF08\u4E0D\u542B\u5BC6\u94A5\uFF09",
+        type: "checkbox",
+        value: false
+      }
+    ]);
+    page.append(
+      section(
+        "\u5907\u4EFD\u5F53\u524D\u804A\u5929",
+        options.node,
+        button(
+          "\u5BFC\u51FA\u5907\u4EFD",
+          "download",
+          async () => {
+            ctx.guard();
+            const backup = await ctx.run(
+              "\u5BFC\u51FA\u5907\u4EFD",
+              () => backupManager.create(options.values().global)
+            );
+            download(
+              "echoes-backup-" + backup.createdAt.replaceAll(":", "-") + ".json",
+              serializeBackup(backup)
+            );
+          },
+          "primary"
+        )
+      )
+    );
+    const importOptions = fields([
+      {
+        key: "mode",
+        label: "\u6062\u590D\u65B9\u5F0F",
+        type: "select",
+        value: "equivalent_chat",
+        options: [
+          ["equivalent_chat", "\u76F8\u540C\u804A\u5929\uFF1A\u6062\u590D\u6D88\u606F\u5173\u8054\u4E0E\u8BB0\u5FC6"],
+          ["seed_memories", "\u65B0\u804A\u5929\uFF1A\u4EC5\u5BFC\u5165\u8BB0\u5FC6\u79CD\u5B50"]
+        ]
+      },
+      {
+        key: "global",
+        label: "\u540C\u65F6\u6062\u590D\u5907\u4EFD\u4E2D\u7684\u5168\u5C40\u8BBE\u7F6E",
+        type: "checkbox",
+        value: false
+      }
+    ]);
+    page.append(
+      section(
+        "\u6062\u590D\u5907\u4EFD",
+        importOptions.node,
+        button("\u9009\u62E9\u5907\u4EFD\u5E76\u9884\u68C0", "file-import", async () => {
+          const file2 = await readFile();
+          if (!file2) return;
+          ctx.guard();
+          const v = importOptions.values();
+          const backup = await backupManager.parse(await file2.text());
+          const plan = await backupManager.plan(backup, v.mode, v.global);
+          const body = el(
+            "div",
+            "ew-page-content",
+            el(
+              "p",
+              "warning",
+              "\u6062\u590D\u5C06\u66FF\u6362\u76EE\u6807\u804A\u5929\u5DF2\u6709\u7684 Echoes \u6570\u636E\u3002\u68C0\u7D22\u7D22\u5F15\u9700\u8981\u91CD\u65B0\u5EFA\u7ACB\u3002"
+            ),
+            table(
+              ["\u9879\u76EE", "\u5F71\u54CD"],
+              [
+                ["\u76EE\u6807\u804A\u5929", plan.targetChatId],
+                ["\u66FF\u6362\u8BB0\u5FC6\u6761\u76EE", plan.echoesEntriesToReplace],
+                ["\u72B6\u6001\u5FEB\u7167", plan.statusSnapshotsToReplace],
+                ["\u9690\u85CF\u6807\u8BB0", plan.compressionMarkersToReplace],
+                ["\u5168\u5C40\u8BBE\u7F6E", plan.restoreGlobalSettings ? "\u66FF\u6362" : "\u4FDD\u7559"]
+              ]
+            ),
+            detail("\u9884\u68C0\u8BE6\u60C5", plan)
+          );
+          const d = dialog("\u6062\u590D\u9884\u68C0", body);
+          body.append(
+            button(
+              "\u521B\u5EFA\u5B89\u5168\u5907\u4EFD\u5E76\u6062\u590D",
+              "rotate-left",
+              async () => {
+                if (!confirm("\u786E\u8BA4\u66FF\u6362\u4EE5\u4E0A\u6570\u636E\uFF1F\u6062\u590D\u524D\u5C06\u81EA\u52A8\u5BFC\u51FA\u5B89\u5168\u5907\u4EFD\u3002"))
+                  return;
+                ctx.guard();
+                const result = await ctx.run(
+                  "\u6062\u590D\u5907\u4EFD",
+                  () => backupManager.restore(
+                    backup,
+                    plan,
+                    (safety) => download(
+                      "echoes-safety-" + safety.backupId + ".json",
+                      serializeBackup(safety)
+                    )
+                  )
+                );
+                d.close();
+                showResult("\u6062\u590D\u5B8C\u6210", result.result);
+                await ctx.refresh();
+              },
+              "danger"
+            )
+          );
+        })
+      )
+    );
+    return page;
+  }
+  if (ctx.route === "maintenance/diagnostics") return diagnosticsView(ctx);
+  const status = await echoesApi.systemStatus();
+  return el(
+    "div",
+    "ew-page-content",
+    section(
+      "\u7248\u672C\u4E0E\u8FDE\u63A5",
+      table(
+        ["\u7EC4\u4EF6", "\u72B6\u6001"],
+        [
+          ["\u524D\u7AEF\u7248\u672C", ECHOES_BUILD_INFO.appVersion],
+          ["\u670D\u52A1\u7AEF\u7248\u672C", status.build.appVersion],
+          ["\u534F\u8BAE\u517C\u5BB9", status.protocolCompatible ? "\u662F" : "\u5426"],
+          ["Node.js", status.platform.node],
+          ["\u542F\u52A8\u72B6\u6001", status.bootstrap.state],
+          ["\u51ED\u636E\u670D\u52A1", status.subsystems.credentials],
+          ["\u4EFB\u52A1\u670D\u52A1", status.subsystems.jobs],
+          ["\u68C0\u7D22\u670D\u52A1", status.subsystems.retrieval]
+        ]
+      )
+    ),
+    detail("\u7CFB\u7EDF\u5B8C\u6574\u72B6\u6001", status),
+    actions(
+      button(
+        "\u5BFC\u51FA\u8131\u654F\u914D\u7F6E",
+        "download",
+        () => download(
+          "echoes-settings-redacted.json",
+          JSON.stringify(redactedSettings(), null, 2)
+        )
+      ),
+      button(
+        "\u8BCA\u65AD\u4E0E\u4FEE\u590D",
+        "screwdriver-wrench",
+        () => ctx.navigate("maintenance/diagnostics")
+      )
+    )
+  );
+}
+function consoleView(ctx) {
+  const page = el("div", "ew-page-content");
+  const ui = local(ctx, "console-filter", () => ({
+    query: "",
+    level: "all",
+    paused: false
+  }));
+  const host = el("div");
+  let snapshot = consoleRecords();
+  const f = fields(
+    [
+      {
+        key: "level",
+        label: "\u65E5\u5FD7\u7EA7\u522B",
+        type: "select",
+        value: ui.level,
+        options: [
+          ["all", "\u5168\u90E8"],
+          ["error", "Error"],
+          ["warn", "Warning"],
+          ["info", "Info"],
+          ["log", "Log"],
+          ["debug", "Debug"]
+        ]
+      }
+    ],
+    false
+  );
+  const draw = () => {
+    if (!ui.paused) snapshot = consoleRecords();
+    const items = snapshot.filter(
+      (r) => (ui.level === "all" || ui.level === r.level) && r.text.toLowerCase().includes(ui.query.toLowerCase())
+    );
+    host.replaceChildren(
+      items.length ? table(
+        ["\u65F6\u95F4", "\u7EA7\u522B", "\u8F93\u51FA"],
+        items.slice().reverse().map((r) => [
+          new Date(r.time).toLocaleTimeString(),
+          badge(
+            r.level,
+            r.level === "error" ? "danger" : r.level === "warn" ? "warning" : ""
+          ),
+          el("pre", "ew-console-text", r.text)
+        ])
+      ) : empty("\u672C\u6B21\u9875\u9762\u52A0\u8F7D\u540E\u6682\u65E0\u5339\u914D\u7684 Echoes \u6D4F\u89C8\u5668\u65E5\u5FD7")
+    );
+  };
+  f.controls.get("level").addEventListener("change", () => {
+    ui.level = f.controls.get("level").value;
+    draw();
+  });
+  const pause = button(
+    ui.paused ? "\u7EE7\u7EED\u66F4\u65B0" : "\u6682\u505C\u66F4\u65B0",
+    ui.paused ? "play" : "pause",
+    () => {
+      ui.paused = !ui.paused;
+      pause.querySelector("span").textContent = ui.paused ? "\u7EE7\u7EED\u66F4\u65B0" : "\u6682\u505C\u66F4\u65B0";
+      draw();
+    }
+  );
+  page.append(
+    el(
+      "div",
+      "ew-toolbar",
+      searchBox(
+        ui.query,
+        (v) => {
+          ui.query = v;
+          draw();
+        },
+        "\u641C\u7D22\u63A7\u5236\u53F0\u8F93\u51FA"
+      ),
+      actions(
+        f.node,
+        pause,
+        button("\u6E05\u7A7A", "trash", clearConsoleRecords),
+        button(
+          "\u5BFC\u51FA",
+          "download",
+          () => download("echoes-console.json", JSON.stringify(snapshot, null, 2))
+        )
+      )
+    ),
+    el(
+      "p",
+      "ew-muted",
+      "\u8303\u56F4\uFF1A\u672C\u6B21\u9875\u9762\u52A0\u8F7D\u540E\u7684 Echoes \u6D4F\u89C8\u5668\u65E5\u5FD7\uFF1B\u4E0D\u5305\u542B\u670D\u52A1\u5668\u7EC8\u7AEF\u8F93\u51FA\u3002"
+    ),
+    host
+  );
+  const unsubscribe = subscribeConsole(draw);
+  ctx.signal.addEventListener("abort", unsubscribe, { once: true });
+  draw();
+  return page;
+}
+async function collectionsView(ctx) {
+  const collections = await echoesApi.listRetrievalCollections();
+  const settings = getSettings();
+  const groups = settings.retrieval.embeddingGroups;
+  const page = el("div", "ew-page-content");
+  const chooseGroup = (collection) => groups.filter(
+    (g) => g.embeddingSpaceId === collection.collection.embeddingSpaceId && g.dimensions === collection.collection.dimensions
+  );
+  const runIndex = (collection, repair) => {
+    const available = chooseGroup(collection);
+    if (!available.length)
+      throw new Error("\u6CA1\u6709\u4E0E\u6B64\u96C6\u5408\u7A7A\u95F4\u548C\u7EF4\u5EA6\u5339\u914D\u7684\u5411\u91CF\u7AEF\u70B9\u7EC4\u3002");
+    const form = fields([
+      {
+        key: "group",
+        label: "\u5411\u91CF\u7AEF\u70B9\u7EC4",
+        type: "select",
+        options: available.map((g) => [g.id, g.name]),
+        value: available[0].id
+      }
+    ]);
+    const d = dialog(repair ? "\u4FEE\u590D\u672A\u5C31\u7EEA\u5411\u91CF" : "\u91CD\u5EFA\u5168\u90E8\u5411\u91CF", form.node);
+    form.node.append(
+      button(
+        "\u5F00\u59CB\u5904\u7406",
+        "play",
+        async () => {
+          const group = available.find((g) => g.id === form.values().group);
+          if (!confirm(
+            (repair ? "\u4EC5\u91CD\u8BD5\u672A\u5C31\u7EEA\u6587\u6863" : "\u91CD\u65B0\u5411\u91CF\u5316\u5168\u90E8\u6587\u6863") + "\u5C06\u8C03\u7528\u6A21\u578B\uFF0C\u7EE7\u7EED\uFF1F"
+          ))
+            return;
+          const input = {
+            collectionIds: [collection.collection.id],
+            embeddingGroup: group,
+            failoverPolicy: settings.retrieval.failoverPolicy,
+            embeddingBatchSize: settings.summary.embeddingBatchSize
+          };
+          let result = await ctx.job(
+            "\u5904\u7406\u68C0\u7D22\u7D22\u5F15",
+            () => echoesApi.rebuildRetrievalIndex(input, repair)
+          );
+          while (result.decisionRequired && confirm(
+            result.decisionRequired.message + "\n\u5207\u6362\u7AEF\u70B9\u53EF\u80FD\u91CD\u590D\u8BA1\u8D39\uFF0C\u7EE7\u7EED\uFF1F"
+          )) {
+            const resumeAfterEndpointId = result.decisionRequired.failedEndpointId;
+            result = await ctx.job(
+              "\u7EE7\u7EED\u4FEE\u590D\u7D22\u5F15",
+              () => echoesApi.rebuildRetrievalIndex(
+                { ...input, resumeAfterEndpointId },
+                true
+              )
+            );
+          }
+          d.close();
+          showResult("\u7D22\u5F15\u5904\u7406\u7ED3\u679C", result);
+          await ctx.refresh();
+        },
+        "primary"
+      )
+    );
+  };
+  const importInto = (collection) => {
+    const options = chooseGroup(collection);
+    const form = fields([
+      {
+        key: "group",
+        label: "\u5411\u91CF\u7AEF\u70B9\u7EC4",
+        type: "select",
+        options: [
+          ["", "\u53EA\u5BFC\u5165\u6587\u672C"],
+          ...options.map((g) => [g.id, g.name])
+        ],
+        value: options[0]?.id ?? ""
+      },
+      { key: "text", label: "\u6587\u6863\u6587\u672C", type: "textarea", rows: 12 }
+    ]);
+    const d = dialog("\u5BFC\u5165\u6587\u6863 \xB7 " + collection.collection.name, form.node);
+    const upload = async (documents) => {
+      const v = form.values();
+      const embeddingGroup = options.find((g) => g.id === v.group);
+      if (!documents.length) throw new Error("\u6CA1\u6709\u53EF\u5BFC\u5165\u7684\u6587\u6863\u3002");
+      if (!confirm(
+        "\u5BFC\u5165 " + documents.length + " \u4E2A\u6587\u6863" + (embeddingGroup ? "\u5E76\u8C03\u7528\u5411\u91CF\u6A21\u578B" : "") + "\uFF1F"
+      ))
+        return;
+      const results = [];
+      for (let offset = 0; offset < documents.length; offset += 100) {
+        ctx.guard();
+        const batch = documents.slice(offset, offset + 100);
+        const input = {
+          documents: batch,
+          embeddingGroup,
+          failoverPolicy: settings.retrieval.failoverPolicy,
+          embeddingBatchSize: settings.summary.embeddingBatchSize
+        };
+        let result = await ctx.job(
+          "\u5BFC\u5165\u6587\u6863 " + (offset + 1) + "\u2013" + Math.min(documents.length, offset + 100),
+          () => echoesApi.upsertRetrievalDocuments(input)
+        );
+        while (result.decisionRequired && confirm(
+          result.decisionRequired.message + "\n\u5207\u6362\u7AEF\u70B9\u53EF\u80FD\u91CD\u590D\u8BA1\u8D39\uFF0C\u7EE7\u7EED\uFF1F"
+        )) {
+          const resumeAfterEndpointId = result.decisionRequired.failedEndpointId;
+          result = await ctx.job(
+            "\u7EE7\u7EED\u5411\u91CF\u5316\u6587\u6863",
+            () => echoesApi.upsertRetrievalDocuments({ ...input, resumeAfterEndpointId })
+          );
+        }
+        results.push(result);
+        if (result.failed || result.ambiguous || result.decisionRequired) break;
+      }
+      d.close();
+      showResult("\u6587\u6863\u5BFC\u5165\u7ED3\u679C", results);
+      await ctx.refresh();
+    };
+    form.node.append(
+      actions(
+        button(
+          "\u5BFC\u5165\u6587\u672C",
+          "file-import",
+          () => {
+            const text = form.values().text.trim();
+            if (!text) throw new Error("\u8BF7\u586B\u5199\u6587\u6863\u6587\u672C\u3002");
+            return upload([
+              {
+                collectionId: collection.collection.id,
+                sourceType: "manual",
+                sourceId: id("source"),
+                text,
+                tags: [],
+                metadata: {}
+              }
+            ]);
+          },
+          "primary"
+        ),
+        button("\u5BFC\u5165 JSONL \u6587\u4EF6", "upload", async () => {
+          const file2 = await readFile(".jsonl,.ndjson");
+          if (!file2) return;
+          if (file2.size > 20 * 1024 * 1024)
+            throw new Error("\u5355\u6B21\u5BFC\u5165\u6587\u4EF6\u4E0D\u80FD\u8D85\u8FC7 20 MB\u3002");
+          const lines = (await file2.text()).split(/\r?\n/).filter((l) => l.trim());
+          const documents = lines.map((line, i) => {
+            try {
+              const v = JSON.parse(line);
+              return retrievalDocumentInputSchema.parse({
+                ...v,
+                collectionId: collection.collection.id,
+                sourceType: v.sourceType ?? "imported",
+                sourceId: v.sourceId ?? id("source"),
+                tags: v.tags ?? [],
+                metadata: v.metadata ?? {}
+              });
+            } catch (error51) {
+              throw new Error("\u7B2C " + (i + 1) + " \u884C\u65E0\u6548\uFF1A" + String(error51));
+            }
+          });
+          await upload(documents);
+        })
+      )
+    );
+  };
+  page.append(
+    actions(
+      button(
+        "\u65B0\u5EFA\u96C6\u5408",
+        "plus",
+        () => {
+          if (!groups.length) throw new Error("\u8BF7\u5148\u914D\u7F6E\u5411\u91CF\u7AEF\u70B9\u7EC4\u3002");
+          editDialog(
+            "\u65B0\u5EFA\u68C0\u7D22\u96C6\u5408",
+            [
+              { key: "name", label: "\u540D\u79F0", required: true },
+              { key: "description", label: "\u8BF4\u660E" },
+              {
+                key: "group",
+                label: "\u5411\u91CF\u7A7A\u95F4",
+                type: "select",
+                options: groups.map((g) => [
+                  g.id,
+                  g.name + " \xB7 " + g.dimensions + " \u7EF4"
+                ])
+              }
+            ],
+            async (v) => {
+              const g = groups.find((g2) => g2.id === v.group);
+              await echoesApi.createRetrievalCollection({
+                id: id("collection"),
+                name: v.name,
+                description: v.description,
+                embeddingSpaceId: g.embeddingSpaceId,
+                dimensions: g.dimensions
+              });
+              await ctx.refresh();
+            }
+          );
+        },
+        "primary"
+      )
+    ),
+    collections.length ? table(
+      ["\u96C6\u5408", "\u6587\u6863", "\u5C31\u7EEA", "\u5F85\u5904\u7406", "\u5931\u8D25 / \u5F85\u786E\u8BA4", "\u7EF4\u5EA6", "\u64CD\u4F5C"],
+      collections.map((c) => [
+        el(
+          "div",
+          "",
+          el("strong", "", c.collection.name),
+          el("p", "ew-muted", c.collection.id)
+        ),
+        c.documents,
+        c.ready,
+        c.pending,
+        actions(
+          badge(String(c.failed), c.failed ? "danger" : ""),
+          badge(String(c.ambiguous), c.ambiguous ? "warning" : "")
+        ),
+        c.dimensions,
+        actions(
+          tool("\u5BFC\u5165\u6587\u6863", "file-import", () => importInto(c)),
+          tool(
+            "\u4FEE\u590D\u672A\u5C31\u7EEA\u5411\u91CF",
+            "screwdriver-wrench",
+            () => runIndex(c, true)
+          ),
+          tool("\u91CD\u5EFA\u5168\u90E8\u5411\u91CF", "rotate", () => runIndex(c, false)),
+          tool(
+            "\u96C6\u5408\u8BE6\u60C5",
+            "circle-info",
+            () => showResult(c.collection.name, c)
+          ),
+          tool(
+            "\u5220\u9664\u96C6\u5408",
+            "trash",
+            async () => {
+              if (!confirm(
+                "\u5220\u9664\u96C6\u5408 " + c.collection.name + " \u53CA\u5176\u4E2D\u5168\u90E8\u68C0\u7D22\u6587\u6863\uFF1F\u603B\u7ED3\u539F\u6587\u4E0D\u4F1A\u5220\u9664\u3002"
+              ))
+                return;
+              await ctx.job(
+                "\u5220\u9664\u68C0\u7D22\u96C6\u5408",
+                () => echoesApi.deleteRetrievalCollection(c.collection.id)
+              );
+              await ctx.refresh();
+            },
+            "danger"
+          )
+        )
+      ])
+    ) : empty("\u6682\u65E0\u68C0\u7D22\u96C6\u5408")
+  );
+  return page;
+}
+async function queryView(ctx) {
+  const collections = await echoesApi.listRetrievalCollections();
+  const s = getSettings();
+  const r = s.retrieval.recall;
+  const chosen = /* @__PURE__ */ new Set();
+  const page = el("div", "ew-page-content");
+  const f = fields([
+    {
+      key: "query",
+      label: "\u67E5\u8BE2\u6587\u672C",
+      type: "textarea",
+      required: true,
+      rows: 4
+    },
+    {
+      key: "embedding",
+      label: "\u5411\u91CF\u7AEF\u70B9\u7EC4",
+      type: "select",
+      options: [
+        ["", "\u4E0D\u9009\u62E9"],
+        ...s.retrieval.embeddingGroups.map(
+          (g) => [g.id, g.name]
+        )
+      ]
+    },
+    {
+      key: "rerank",
+      label: "\u91CD\u6392\u5E8F\u7AEF\u70B9\u7EC4",
+      type: "select",
+      options: [
+        ["", "\u4E0D\u9009\u62E9"],
+        ...s.retrieval.rerankSets.map(
+          (g) => [g.id, g.name]
+        )
+      ]
+    },
+    { key: "vector", label: "\u5411\u91CF\u68C0\u7D22", type: "checkbox", value: false },
+    { key: "bm25", label: "BM25 \u68C0\u7D22", type: "checkbox", value: true },
+    {
+      key: "topK",
+      label: "\u6700\u7EC8\u7ED3\u679C\u6570",
+      type: "number",
+      value: r.finalTopK,
+      min: 1,
+      max: 100
+    }
+  ]);
+  const resultHost = el("div");
+  page.append(
+    section(
+      "\u76EE\u6807\u96C6\u5408",
+      el(
+        "div",
+        "ew-list",
+        ...collections.map(
+          (c) => el(
+            "label",
+            "ew-toggle",
+            check2(
+              c.collection.name,
+              false,
+              (v) => v ? chosen.add(c.collection.id) : chosen.delete(c.collection.id)
+            ),
+            c.collection.name + " \xB7 " + c.documents + " \u6761"
+          )
+        )
+      )
+    ),
+    f.node,
+    button(
+      "\u6267\u884C\u68C0\u7D22",
+      "magnifying-glass",
+      async () => {
+        const v = f.values();
+        if (!chosen.size) throw new Error("\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u96C6\u5408\u3002");
+        if (!v.vector && !v.bm25) throw new Error("\u81F3\u5C11\u542F\u7528\u4E00\u79CD\u68C0\u7D22\u65B9\u5F0F\u3002");
+        const embeddingGroup = s.retrieval.embeddingGroups.find(
+          (g) => g.id === v.embedding
+        );
+        const rerankSet = s.retrieval.rerankSets.find((g) => g.id === v.rerank);
+        if (v.vector && !embeddingGroup) throw new Error("\u8BF7\u9009\u62E9\u5411\u91CF\u7AEF\u70B9\u7EC4\u3002");
+        const compatible = collections.filter(
+          (c) => chosen.has(c.collection.id) && c.collection.embeddingSpaceId === embeddingGroup?.embeddingSpaceId && c.dimensions === embeddingGroup?.dimensions
+        ).map((c) => c.collection.id);
+        if (v.vector && compatible.length !== chosen.size)
+          throw new Error("\u9009\u4E2D\u96C6\u5408\u4E0E\u5411\u91CF\u7AEF\u70B9\u7EC4\u7684\u7A7A\u95F4\u6216\u7EF4\u5EA6\u4E0D\u4E00\u81F4\u3002");
+        let result = await ctx.job(
+          "\u68C0\u7D22\u5B9E\u9A8C",
+          () => echoesApi.queryRetrieval({
+            collectionIds: [...chosen],
+            query: v.query,
+            vectorEnabled: v.vector,
+            bm25Enabled: v.bm25,
+            rerankEnabled: !!rerankSet,
+            vectorTopK: r.vectorTopK,
+            bm25TopK: r.bm25TopK,
+            rerankTopK: r.rerankTopK,
+            finalTopK: v.topK,
+            failoverPolicy: s.retrieval.failoverPolicy,
+            embeddingGroup,
+            rerankSet
+          })
+        );
+        while (result.decisionRequired && result.continuation && confirm(
+          result.decisionRequired.message + "\n\u7EE7\u7EED\u53EF\u80FD\u8C03\u7528\u5176\u4ED6\u7AEF\u70B9\uFF0C\u662F\u5426\u7EE7\u7EED\uFF1F"
+        )) {
+          const token = result.continuation.token;
+          result = await ctx.job(
+            "\u7EE7\u7EED\u68C0\u7D22",
+            () => echoesApi.continueRetrievalQuery({
+              token,
+              failoverPolicy: s.retrieval.failoverPolicy,
+              embeddingGroup,
+              rerankSet
+            })
+          );
+        }
+        if (ctx.signal.aborted) return;
+        resultHost.replaceChildren(
+          detail("\u68C0\u7D22\u5206\u652F\u4E0E\u9519\u8BEF", result.branches),
+          result.hits.length ? table(
+            ["\u6392\u540D", "\u5185\u5BB9\u4E0E\u6765\u6E90"],
+            result.hits.map((h, i) => [
+              i + 1,
+              detail("\u547D\u4E2D " + (i + 1), h)
+            ])
+          ) : empty("\u6CA1\u6709\u547D\u4E2D\u7ED3\u679C")
+        );
+      },
+      "primary"
+    ),
+    resultHost
+  );
+  return page;
+}
+async function diagnosticsView(ctx) {
+  const page = el("div", "ew-page-content");
+  const host = el("div");
+  let checks = [];
+  const selected = /* @__PURE__ */ new Set();
+  const run = async () => {
+    const helper6 = window.TavernHelper;
+    const settings = getSettings();
+    const endpoints = [
+      ...settings.generationGroups.flatMap((g) => g.endpoints),
+      ...settings.retrieval.embeddingGroups.flatMap((g) => g.endpoints),
+      ...settings.retrieval.rerankSets.flatMap((g) => g.endpoints)
+    ];
+    const result = await ctx.job(
+      "\u8FD0\u884C\u7CFB\u7EDF\u8BCA\u65AD",
+      () => echoesApi.startDiagnostics({
+        clientProtocol: ECHOES_BUILD_INFO.apiProtocolVersion,
+        clientVersion: ECHOES_BUILD_INFO.appVersion,
+        settingsFormatVersion: settings.formatVersion,
+        tavernHelper: Object.fromEntries(
+          [
+            "getWorldbook",
+            "updateWorldbookWith",
+            "getChatMessages",
+            "setChatMessages"
+          ].map((k) => [k, typeof helper6?.[k] === "function"])
+        ),
+        credentialIds: [
+          ...new Set(
+            endpoints.flatMap((e) => e.credentialId ? [e.credentialId] : [])
+          )
+        ]
+      })
+    );
+    checks = result.checks;
+    selected.clear();
+    host.replaceChildren(
+      table(
+        ["\u9009\u62E9", "\u68C0\u67E5\u9879", "\u72B6\u6001", "\u8BE6\u60C5"],
+        checks.map((c) => [
+          c.repairKind ? check2(
+            "\u4FEE\u590D " + c.title,
+            false,
+            (v) => v ? selected.add(c.repairKind) : selected.delete(c.repairKind)
+          ) : "",
+          c.title,
+          stateBadge(c.state),
+          el(
+            "div",
+            "",
+            el("p", "", c.message),
+            c.details ? detail("\u8BCA\u65AD\u8BE6\u60C5", c.details) : null
+          )
+        ])
+      ),
+      button(
+        "\u5BFC\u51FA\u8BCA\u65AD\u62A5\u544A",
+        "download",
+        () => download(
+          "echoes-diagnostics.json",
+          JSON.stringify(redactLog(result), null, 2)
+        )
+      )
+    );
+  };
+  page.append(
+    actions(
+      button("\u8FD0\u884C\u8BCA\u65AD", "stethoscope", run, "primary"),
+      button("\u4FEE\u590D\u9009\u4E2D\u95EE\u9898", "screwdriver-wrench", async () => {
+        if (!selected.size) throw new Error("\u8BF7\u5148\u8FD0\u884C\u8BCA\u65AD\u5E76\u9009\u62E9\u4FEE\u590D\u9879\u3002");
+        if (!confirm(
+          "\u6267\u884C " + [...selected].join("\u3001") + "\uFF1F\u5EFA\u8BAE\u5148\u5728\u5907\u4EFD\u9875\u9762\u5BFC\u51FA\u5907\u4EFD\u3002"
+        ))
+          return;
+        ctx.guard();
+        const frontend = /* @__PURE__ */ new Set([
+          "settings_format",
+          "summary_format",
+          "temporary_injections"
+        ]);
+        if (selected.has("settings_format")) saveSettings(getSettings());
+        if (selected.has("summary_format")) await ctx.summary.checkIntegrity();
+        if (selected.has("temporary_injections")) {
+          await recallCoordinator.clear();
+          await statusCoordinator.clearInjection();
+        }
+        const backend = [...selected].filter((k) => !frontend.has(k));
+        if (backend.length)
+          showResult(
+            "\u4FEE\u590D\u7ED3\u679C",
+            await ctx.job(
+              "\u7CFB\u7EDF\u4FEE\u590D",
+              () => echoesApi.startRepair({ kinds: backend, confirmed: true })
+            )
+          );
+        await run();
+      })
+    ),
+    host
+  );
+  return page;
+}
+
+// src/extension/workbench/app.ts
+var navigation = [
+  {
+    title: "API \u8FDE\u63A5",
+    icon: "plug",
+    pages: [
+      ["api/workflows", "\u5DE5\u4F5C\u6D41\u5206\u914D"],
+      ["api/generation", "\u751F\u6210\u7AEF\u70B9"],
+      ["api/embedding", "\u5411\u91CF\u7AEF\u70B9"],
+      ["api/rerank", "\u91CD\u6392\u5E8F\u7AEF\u70B9"],
+      ["api/credentials", "\u51ED\u636E\u7BA1\u7406"]
+    ]
+  },
+  {
+    title: "\u7ED3\u6784\u5316\u8BB0\u5FC6",
+    icon: "table-cells",
+    pages: [
+      ["memory/records", "\u8BB0\u5FC6\u6863\u6848"],
+      ["memory/tasks", "\u63D0\u53D6\u4EFB\u52A1"],
+      ["memory/review", "\u64CD\u4F5C\u5BA1\u6838"]
+    ]
+  },
+  {
+    title: "\u7ED3\u6784\u5316\u8BBE\u7F6E",
+    icon: "table-columns",
+    pages: [
+      ["memory/schema", "\u8868\u7ED3\u6784"],
+      ["memory/prompts", "\u63D0\u793A\u8BCD\u7F16\u6392"],
+      ["memory/rules", "\u63D0\u53D6\u89C4\u5219"],
+      ["memory/templates", "\u7C7B\u578B\u6A21\u677F"]
+    ]
+  },
+  {
+    title: "\u603B\u7ED3\u8BB0\u5FC6",
+    icon: "book-open",
+    pages: [
+      ["summary/records", "\u603B\u7ED3\u8BB0\u5F55"],
+      ["summary/tasks", "\u751F\u6210\u4EFB\u52A1"],
+      ["summary/hiding", "\u4E0A\u4E0B\u6587\u9690\u85CF"]
+    ]
+  },
+  {
+    title: "\u603B\u7ED3\u8BBE\u7F6E",
+    icon: "sliders",
+    pages: [
+      ["summary/rules", "\u751F\u6210\u89C4\u5219"],
+      ["summary/prompts", "\u63D0\u793A\u8BCD\u7F16\u6392"],
+      ["summary/cleaning", "\u6D88\u606F\u6E05\u6D17"],
+      ["summary/recall", "\u53EC\u56DE\u4E0E\u6CE8\u5165"]
+    ]
+  },
+  {
+    title: "\u72B6\u6001\u8BB0\u5FC6",
+    icon: "heart-pulse",
+    pages: [
+      ["status/current", "\u5F53\u524D\u72B6\u6001"],
+      ["status/history", "\u5386\u53F2\u5FEB\u7167"],
+      ["status/rules", "\u66F4\u65B0\u4E0E\u6821\u9A8C"],
+      ["status/prompts", "\u63D0\u793A\u8BCD\u4E0E\u6E05\u6D17"],
+      ["status/injection", "\u72B6\u6001\u6CE8\u5165"],
+      ["status/templates", "\u521D\u59CB\u503C\u4E0E\u6A21\u677F"]
+    ]
+  },
+  {
+    title: "\u7EF4\u62A4\u4E0E\u6062\u590D",
+    icon: "screwdriver-wrench",
+    pages: [
+      ["maintenance/jobs", "\u4EFB\u52A1\u65E5\u5FD7"],
+      ["maintenance/console", "\u63A7\u5236\u53F0\u65E5\u5FD7"],
+      ["maintenance/collections", "\u68C0\u7D22\u96C6\u5408"],
+      ["maintenance/query", "\u68C0\u7D22\u5B9E\u9A8C"],
+      ["maintenance/diagnostics", "\u8BCA\u65AD\u4E0E\u4FEE\u590D"],
+      ["maintenance/backup", "\u5907\u4EFD\u4E0E\u6062\u590D"],
+      ["maintenance/system", "\u7CFB\u7EDF\u4FE1\u606F"]
+    ]
+  }
+];
+var MemoryPanel = class {
+  root = el("div");
+  main = el("main", "ew-main");
+  nav = el("nav", "ew-nav");
+  body = el("div", "ew-body", this.nav, this.main);
+  contextLabel = el("div", "ew-context");
+  footer = el("span");
+  taskButton = button("\u4EFB\u52A1", "list-check", () => this.openTasks());
+  route = "memory/records";
+  scope = new AbortController();
+  state = /* @__PURE__ */ new Map();
+  scroll = /* @__PURE__ */ new Map();
+  activeChat = "";
+  previousFocus = null;
+  summary = new SummaryCoordinator();
+  tasks = [];
+  sequence = 0;
+  tasksHost = null;
+  hostInert = /* @__PURE__ */ new Map();
+  expanded = /* @__PURE__ */ new Set();
+  beforeUnload = (e) => {
+    if (!this.root.hidden && this.dirty()) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  };
   constructor() {
-    this.root = document.createElement("div");
-    this.root.id = "echoes-memory-overlay";
-    this.root.className = "echoes-overlay echoes-hidden";
-    this.root.innerHTML = `
-      <div class="echoes-window">
-        <header class="echoes-header">
-          <div class="echoes-brand"><i class="fa-solid fa-table"></i><strong>Echoes Memory</strong></div>
-          <span class="echoes-version-label">${ECHOES_BUILD_INFO.appVersion}</span>
-          <div class="echoes-header-actions"></div>
-        </header>
-        <div class="echoes-workspace">
-          <nav class="echoes-primary-nav" aria-label="Echoes \u4E00\u7EA7\u83DC\u5355">
-            <button type="button" data-action="switch-view" data-view="api" aria-label="API\u914D\u7F6E" title="API\u914D\u7F6E"><i class="fa-solid fa-plug"></i><span>API\u914D\u7F6E</span></button>
-            <button type="button" data-action="switch-view" data-view="memory" class="active" aria-label="\u7ED3\u6784\u5316\u8BB0\u5FC6" title="\u7ED3\u6784\u5316\u8BB0\u5FC6"><i class="fa-solid fa-table-cells"></i><span>\u7ED3\u6784\u5316\u8BB0\u5FC6</span></button>
-            <button type="button" data-action="switch-view" data-view="memory-settings" aria-label="\u7ED3\u6784\u5316\u8BB0\u5FC6\u8BBE\u7F6E" title="\u7ED3\u6784\u5316\u8BB0\u5FC6\u8BBE\u7F6E"><i class="fa-solid fa-table-columns"></i><span>\u7ED3\u6784\u5316\u8BB0\u5FC6\u8BBE\u7F6E</span></button>
-            <button type="button" data-action="switch-view" data-view="summary" aria-label="\u603B\u7ED3\u8BB0\u5FC6" title="\u603B\u7ED3\u8BB0\u5FC6"><i class="fa-solid fa-clock-rotate-left"></i><span>\u603B\u7ED3\u8BB0\u5FC6</span></button>
-            <button type="button" data-action="switch-view" data-view="summary-settings" aria-label="\u603B\u7ED3\u8BB0\u5FC6\u8BBE\u7F6E" title="\u603B\u7ED3\u8BB0\u5FC6\u8BBE\u7F6E"><i class="fa-solid fa-brain"></i><span>\u603B\u7ED3\u8BB0\u5FC6\u8BBE\u7F6E</span></button>
-            <button type="button" data-action="switch-view" data-view="status" aria-label="\u72B6\u6001\u8BB0\u5FC6\u4E0E\u8BBE\u7F6E" title="\u72B6\u6001\u8BB0\u5FC6\u4E0E\u8BBE\u7F6E"><i class="fa-solid fa-gauge-high"></i><span>\u72B6\u6001\u8BB0\u5FC6\u4E0E\u8BBE\u7F6E</span></button>
-          </nav>
-          <aside class="echoes-sidebar">
-            <div class="echoes-sidebar-heading">
-              <span>\u5F53\u524D\u5BF9\u8BDD\u7C7B\u578B</span>
-              <div class="echoes-sidebar-actions">
-                <button type="button" class="echoes-icon-button" data-action="migrate" title="\u4ECE\u5176\u4ED6\u5BF9\u8BDD\u8FC1\u79FB" aria-label="\u4ECE\u5176\u4ED6\u5BF9\u8BDD\u8FC1\u79FB"><i class="fa-solid fa-file-import"></i></button>
-                <button type="button" class="echoes-icon-button" data-action="add-type" title="\u65B0\u5EFA\u7C7B\u578B" aria-label="\u65B0\u5EFA\u7C7B\u578B"><i class="fa-solid fa-plus"></i></button>
-              </div>
-            </div>
-            <nav class="echoes-table-list" aria-label="\u8BB0\u5FC6\u7C7B\u578B"></nav>
-          </aside>
-          <main class="echoes-main">
-            <div class="echoes-toolbar">
-              <div class="echoes-table-title"><h1>\u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6</h1><span class="echoes-scope-label"></span></div>
-              <div class="echoes-table-actions"></div>
-            </div>
-            <nav class="echoes-subnav echoes-hidden" aria-label="\u9875\u9762\u5206\u7C7B"></nav>
-            <div class="echoes-job-status echoes-hidden" role="status">
-              <div class="echoes-progress"><span></span></div>
-              <span data-job-message></span>
-            </div>
-            <div class="echoes-grid-host"></div>
-          </main>
-        </div>
-      </div>`;
-    document.body.append(this.root);
-    this.retrievalPanel = new RetrievalPanel(this.root);
-    this.summaryPanel = new SummaryPanel(this.root);
-    this.apiConfigPanel = new ApiConfigPanel(this.root);
-    this.recallPanel = new RecallPanel(this.root);
-    this.statusPanel = new StatusPanel(this.root);
-    this.maintenancePanel = new MaintenancePanel(this.root);
-    const headerActions = this.root.querySelector(".echoes-header-actions");
-    headerActions.append(iconButton3("gear", "\u7EF4\u62A4", "maintenance"));
-    headerActions.append(iconButton3("xmark", "\u5173\u95ED", "close"));
-    this.bindEvents();
+    this.root.id = "echoes-workbench";
+    this.root.hidden = true;
+    this.root.setAttribute("role", "dialog");
+    this.root.setAttribute("aria-modal", "true");
+    this.root.setAttribute("aria-label", "Echoes \u8BB0\u5FC6\u5DE5\u4F5C\u53F0");
+    try {
+      this.root.dataset.theme = localStorage.getItem("echoes.workbench.theme") ?? "dark";
+    } catch {
+      this.root.dataset.theme = "dark";
+    }
+    const mobile = tool(
+      "\u5207\u6362\u5BFC\u822A",
+      "bars",
+      () => this.body.classList.toggle("nav-open")
+    );
+    mobile.classList.add("ew-mobile-nav");
+    const theme = tool("\u5207\u6362\u660E\u6697\u4E3B\u9898", "circle-half-stroke", () => {
+      this.root.dataset.theme = this.root.dataset.theme === "dark" ? "light" : "dark";
+      this.root.querySelectorAll(".ew-dialog").forEach((d) => d.dataset.theme = this.root.dataset.theme);
+      try {
+        localStorage.setItem(
+          "echoes.workbench.theme",
+          this.root.dataset.theme
+        );
+      } catch {
+      }
+    });
+    const header = el(
+      "header",
+      "ew-header",
+      mobile,
+      el("strong", "ew-brand", icon("layer-group"), "Echoes"),
+      this.contextLabel,
+      actions(
+        this.taskButton,
+        theme,
+        tool("\u5173\u95ED Echoes", "xmark", () => this.close())
+      )
+    );
+    this.root.append(
+      el(
+        "div",
+        "ew-window",
+        header,
+        this.body,
+        el(
+          "footer",
+          "ew-footer",
+          el("span", "", "Echoes " + ECHOES_BUILD_INFO.appVersion),
+          this.footer
+        )
+      )
+    );
+    this.nav.setAttribute("aria-label", "\u8BB0\u5FC6\u529F\u80FD\u5BFC\u822A");
+    this.main.tabIndex = -1;
+    this.root.addEventListener("keydown", (e) => {
+      if (this.root.querySelector("dialog[open]")) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        this.close();
+      }
+      if (e.key === "Tab") {
+        const nodes = [
+          ...this.root.querySelectorAll(
+            'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]'
+          )
+        ].filter((n) => n.getClientRects().length);
+        const first = nodes[0], last = nodes.at(-1);
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        }
+        if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
+    });
+    window.addEventListener("beforeunload", this.beforeUnload);
     extractionCoordinator.subscribe(() => {
-      if (!["memory", "memory-settings"].includes(this.view) || this.root.classList.contains("echoes-hidden")) return;
-      this.renderToolbar();
-      if (this.state) {
-        if (this.view === "memory") this.renderMemoryGrid();
-        else if (this.structuredSettingsTab === "automation") this.renderStructuredSettings();
-      }
-      const trace = extractionCoordinator.trace();
-      const completionKey = trace?.completedAt ? `${trace.state}:${trace.completedAt}` : "";
-      if (completionKey && completionKey !== this.lastCompletedExtraction) {
-        this.lastCompletedExtraction = completionKey;
-        if (trace?.state === "completed") void this.reload();
-      }
+      this.updateTasks();
     });
   }
   async open() {
-    this.root.classList.remove("echoes-hidden");
-    await this.reload();
+    if (!this.root.isConnected) document.body.append(this.root);
+    if (this.root.hidden) {
+      this.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      for (const sibling of document.body.children)
+        if (sibling instanceof HTMLElement && sibling !== this.root) {
+          this.hostInert.set(sibling, sibling.inert);
+          sibling.inert = true;
+        }
+      this.root.hidden = false;
+    }
+    await this.render();
+    this.main.focus();
   }
   close() {
-    this.root.classList.add("echoes-hidden");
+    if (this.dirty() && !confirm("\u5B58\u5728\u672A\u4FDD\u5B58\u7684\u4FEE\u6539\uFF0C\u653E\u5F03\u4FEE\u6539\u5E76\u5173\u95ED\uFF1F")) return;
+    this.scope.abort();
+    this.root.querySelectorAll("dialog").forEach((d) => d.close());
+    this.root.hidden = true;
+    for (const [node, inert] of this.hostInert) node.inert = inert;
+    this.hostInert.clear();
+    this.previousFocus?.focus();
+  }
+  async reload() {
+    const changed = (SillyTavern.getContext().chatId ?? "") !== this.activeChat;
+    if (changed) {
+      this.scope.abort();
+      this.root.querySelectorAll("dialog").forEach((d) => d.close());
+    }
+    if (!this.root.hidden && (changed || !this.dirty())) await this.render();
+    else if (!this.root.hidden)
+      this.footer.textContent = "\u6570\u636E\u5DF2\u66F4\u65B0\uFF1B\u672A\u4FDD\u5B58\u7684\u7F16\u8F91\u4FDD\u6301\u4E0D\u53D8";
   }
   async reloadTables() {
     await this.reload();
   }
-  async reload() {
-    const sequence2 = ++this.reloadSequence;
-    const chatId = SillyTavern.getContext().chatId;
-    if (["api", "summary", "summary-settings", "status", "maintenance"].includes(this.view)) {
-      this.render();
+  async checkSummaryAutomation() {
+    if (!SillyTavern.getContext().chatId || this.summary.isRunning()) return;
+    await this.summary.runAutomatic();
+    await this.reload();
+  }
+  async checkExtractionAutomation() {
+    if (!SillyTavern.getContext().chatId || extractionCoordinator.isRunning())
       return;
-    }
-    this.setContentMessage("\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u5BF9\u8BDD\u4E16\u754C\u4E66...");
-    try {
-      const state = await this.store.load();
-      if (sequence2 !== this.reloadSequence || !["memory", "memory-settings"].includes(this.view) || SillyTavern.getContext().chatId !== chatId) return;
-      this.state = state;
-      if (!state.catalog.types.some((type) => type.id === this.activeTypeId)) {
-        this.activeTypeId = state.catalog.types[0]?.id ?? null;
-      }
-      this.render();
-      if (state.issues.length > 0) {
-        toastr.warning(`\u6709 ${state.issues.length} \u4E2A\u4E16\u754C\u4E66\u6761\u76EE\u65E0\u6CD5\u89E3\u6790\uFF0C\u8BF7\u68C0\u67E5\u6761\u76EE YAML\u3002`, "Echoes");
-      }
-    } catch (error51) {
-      if (sequence2 !== this.reloadSequence || !["memory", "memory-settings"].includes(this.view) || SillyTavern.getContext().chatId !== chatId) return;
-      this.state = null;
-      this.renderSidebar();
-      this.renderToolbar();
-      this.setContentMessage(error51 instanceof Error ? error51.message : String(error51), true);
-    }
+    await extractionCoordinator.runAutomatic();
+    await this.reload();
   }
-  checkSummaryAutomation() {
-    return this.summaryPanel.runAutomatic();
+  dirty() {
+    return !!this.root.querySelector('[data-dirty="true"]');
   }
-  checkExtractionAutomation() {
-    return extractionCoordinator.runAutomatic();
-  }
-  bindEvents() {
-    this.root.addEventListener("click", (event) => {
-      const target = event.target.closest("[data-action]");
-      if (!target) return;
-      const action = target.dataset.action;
-      if (action === "close") this.close();
-      else if (action === "maintenance") {
-        if (this.view === "maintenance") this.view = this.previousPrimaryView;
-        else {
-          this.previousPrimaryView = this.view;
-          this.view = "maintenance";
-        }
-        this.render();
-      } else if (action === "switch-view") {
-        this.view = target.dataset.view;
-        this.previousPrimaryView = this.view;
-        void this.reload();
-      } else if (action === "structured-settings-tab") {
-        this.structuredSettingsTab = target.dataset.tab;
-        this.render();
-      } else if (action === "summary-settings-tab") {
-        this.summarySettingsTab = target.dataset.tab;
-        this.render();
-      } else if (action === "select-type") {
-        this.activeTypeId = target.dataset.typeId ?? null;
-        if (this.view !== "memory") this.view = "memory";
-        this.render();
-      } else if (action === "add-type") void this.editType();
-      else if (action === "edit-type") void this.editType(this.activeType);
-      else if (action === "delete-type") void this.deleteActiveType();
-      else if (action === "add-row") void this.editRow();
-      else if (action === "edit-row") void this.editRow(this.rowById(target.dataset.rowId));
-      else if (action === "delete-row") void this.deleteRow(target.dataset.rowId ?? "");
-      else if (action === "extract") void this.extractMemories();
-      else if (action === "extraction-stop") void extractionCoordinator.stopCurrent();
-      else if (action === "extraction-review") void this.reviewExtraction();
-      else if (action === "extraction-retry") void this.retryExtraction();
-      else if (action === "extraction-checkpoint-latest") void this.relocateExtractionCheckpoint("latest");
-      else if (action === "extraction-checkpoint-clear") void this.relocateExtractionCheckpoint("clear");
-      else if (action === "migrate") void this.migrate();
-      else if (action === "add-template") void this.editTemplate();
-      else if (action === "edit-template") void this.editTemplate(this.templateById(target.dataset.templateId));
-      else if (action === "delete-template") void this.deleteTemplate(target.dataset.templateId ?? "");
-      else if (action === "add-prompt") void this.editPromptItem();
-      else if (action === "edit-prompt") void this.editPromptItem(this.promptItem(Number(target.dataset.index)));
-      else if (action === "delete-prompt") void this.deletePromptItem(Number(target.dataset.index));
-      else if (action === "move-prompt-up") void this.movePromptItem(Number(target.dataset.index), -1);
-      else if (action === "move-prompt-down") void this.movePromptItem(Number(target.dataset.index), 1);
-      else if (action === "preview-prompts") this.previewPrompts();
-    });
-    this.root.addEventListener("change", (event) => {
-      const target = event.target;
-      if (target.matches("[data-type-toggle]")) {
-        void this.toggleType(target.dataset.typeId ?? "", target.checked);
-      } else if (target.matches("[data-prompt-toggle]")) {
-        void this.togglePrompt(Number(target.dataset.index), target.checked);
-      } else if (target.matches("[data-extraction-auto]")) {
-        void this.toggleExtractionAutomation(target.checked);
-      } else if (target.matches("[data-extraction-message-count]")) {
-        const settings = getSettings();
-        settings.extractionMessageCount = Math.max(2, Math.min(500, Math.floor(Number(target.value))));
-        saveSettings(settings);
-        target.value = String(settings.extractionMessageCount);
-      }
-    });
-    this.root.addEventListener("dragstart", (event) => {
-      const item = event.target.closest("[data-prompt-index]");
-      this.draggedPromptIndex = item ? Number(item.dataset.promptIndex) : null;
-    });
-    this.root.addEventListener("dragover", (event) => {
-      if (event.target.closest("[data-prompt-index]")) event.preventDefault();
-    });
-    this.root.addEventListener("drop", (event) => {
-      const item = event.target.closest("[data-prompt-index]");
-      if (!item || this.draggedPromptIndex === null) return;
-      event.preventDefault();
-      void this.reorderPrompt(this.draggedPromptIndex, Number(item.dataset.promptIndex));
-      this.draggedPromptIndex = null;
-    });
-    this.root.addEventListener("click", (event) => {
-      if (event.target === this.root) this.close();
-    });
-  }
-  get activeType() {
-    return this.state?.catalog.types.find((type) => type.id === this.activeTypeId);
-  }
-  render() {
-    this.root.classList.toggle("echoes-memory-view", this.view === "memory");
-    this.root.classList.toggle("echoes-api-view", this.view === "api");
-    this.root.classList.toggle("echoes-retrieval-view", this.view === "summary-settings" && this.summarySettingsTab === "retrieval");
-    this.root.classList.toggle("echoes-summary-view", this.view === "summary");
-    this.root.classList.toggle("echoes-summary-settings-view", this.view === "summary-settings");
-    this.root.classList.toggle("echoes-summary-generation-view", this.view === "summary-settings" && this.summarySettingsTab === "generation");
-    this.root.classList.toggle("echoes-recall-view", this.view === "summary-settings" && this.summarySettingsTab === "recall");
-    this.root.classList.toggle("echoes-status-view", this.view === "status");
-    this.root.classList.toggle("echoes-maintenance-view", this.view === "maintenance");
-    this.root.classList.toggle("echoes-context-view", ["memory", "summary", "status", "maintenance"].includes(this.view));
-    this.root.querySelectorAll(".echoes-primary-nav [data-view]").forEach((button3) => {
-      button3.classList.toggle("active", button3.dataset.view === this.view);
-    });
-    this.renderSubnav();
-    this.renderSidebar();
-    this.renderToolbar();
-    if (this.view === "api") {
-      void this.apiConfigPanel.render();
+  navigate(route) {
+    if (route === this.route) return;
+    if (this.dirty() && !confirm("\u5B58\u5728\u672A\u4FDD\u5B58\u7684\u4FEE\u6539\uFF0C\u653E\u5F03\u4FEE\u6539\u5E76\u5207\u6362\u9875\u9762\uFF1F"))
       return;
-    }
-    if (this.view === "summary") {
-      void this.summaryPanel.render("memory");
-      return;
-    }
-    if (this.view === "summary-settings") {
-      if (this.summarySettingsTab === "generation") void this.summaryPanel.render("settings");
-      else if (this.summarySettingsTab === "recall") void this.recallPanel.render();
-      else void this.retrievalPanel.render();
-      return;
-    }
-    if (this.view === "status") {
-      void this.statusPanel.render();
-      return;
-    }
-    if (this.view === "maintenance") {
-      void this.maintenancePanel.render();
-      return;
-    }
-    if (!this.state) return;
-    if (this.view === "memory") this.renderMemoryGrid();
-    else if (this.structuredSettingsTab === "prompts") this.renderPromptPreset();
-    else if (this.structuredSettingsTab === "templates") this.renderTemplates();
-    else this.renderStructuredSettings();
+    this.scroll.set(this.activeChat + ":" + this.route, this.main.scrollTop);
+    this.route = route;
+    this.body.classList.remove("nav-open");
+    void this.render();
   }
-  renderSubnav() {
-    const nav = this.root.querySelector(".echoes-subnav");
-    nav.replaceChildren();
-    const items = this.view === "memory-settings" ? [["automation", "\u81EA\u52A8\u63D0\u53D6"], ["prompts", "\u63D0\u793A\u8BCD\u9884\u8BBE"], ["templates", "\u7C7B\u578B\u6A21\u677F"]] : this.view === "summary-settings" ? [["generation", "\u603B\u7ED3\u751F\u6210"], ["recall", "\u53EC\u56DE\u4E0E\u6CE8\u5165"], ["retrieval", "\u68C0\u7D22\u7EF4\u62A4"]] : [];
-    nav.classList.toggle("echoes-hidden", items.length === 0);
-    for (const [tab, label] of items) {
-      const button3 = document.createElement("button");
-      button3.type = "button";
-      button3.dataset.action = this.view === "memory-settings" ? "structured-settings-tab" : "summary-settings-tab";
-      button3.dataset.tab = tab;
-      button3.textContent = label;
-      const active = this.view === "memory-settings" ? this.structuredSettingsTab : this.summarySettingsTab;
-      button3.classList.toggle("active", active === tab);
-      nav.append(button3);
-    }
-  }
-  renderSidebar() {
-    const heading = this.root.querySelector(".echoes-sidebar-heading > span");
-    const actions = this.root.querySelector(".echoes-sidebar-actions");
-    const list = this.root.querySelector(".echoes-table-list");
-    list.replaceChildren();
-    if (["api", "memory-settings", "summary-settings"].includes(this.view)) {
-      heading.textContent = "";
-      actions.replaceChildren();
-      return;
-    }
-    if (this.view === "summary") {
-      heading.textContent = "\u603B\u7ED3\u72B6\u6001";
-      actions.replaceChildren();
-      const loading = document.createElement("p");
-      loading.className = "echoes-empty-note";
-      loading.textContent = "\u6B63\u5728\u8BFB\u53D6...";
-      list.append(loading);
-      return;
-    }
-    if (this.view === "status") {
-      heading.textContent = "\u72B6\u6001\u5386\u53F2";
-      actions.replaceChildren();
-      const loading = document.createElement("p");
-      loading.className = "echoes-empty-note";
-      loading.textContent = "\u6B63\u5728\u8BFB\u53D6...";
-      list.append(loading);
-      return;
-    }
-    if (this.view === "maintenance") {
-      heading.textContent = "\u7CFB\u7EDF\u72B6\u6001";
-      actions.replaceChildren();
-      list.innerHTML = '<p class="echoes-empty-note">\u6B63\u5728\u8BFB\u53D6...</p>';
-      return;
-    }
-    heading.textContent = "\u5F53\u524D\u5BF9\u8BDD\u7C7B\u578B";
-    actions.innerHTML = `
-      <button type="button" class="echoes-icon-button" data-action="migrate" title="\u4ECE\u5176\u4ED6\u5BF9\u8BDD\u8FC1\u79FB" aria-label="\u4ECE\u5176\u4ED6\u5BF9\u8BDD\u8FC1\u79FB"><i class="fa-solid fa-file-import"></i></button>
-      <button type="button" class="echoes-icon-button" data-action="add-type" title="\u65B0\u5EFA\u7C7B\u578B" aria-label="\u65B0\u5EFA\u7C7B\u578B"><i class="fa-solid fa-plus"></i></button>`;
-    const types = this.state?.catalog.types ?? [];
-    if (types.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "echoes-empty-note";
-      empty.textContent = "\u5F53\u524D\u5BF9\u8BDD\u6CA1\u6709\u8BB0\u5FC6\u7C7B\u578B\u3002";
-      list.append(empty);
-      return;
-    }
-    for (const type of types) {
-      const item = document.createElement("div");
-      item.className = `echoes-type-nav${type.id === this.activeTypeId ? " active" : ""}`;
-      const select = document.createElement("button");
-      select.type = "button";
-      select.dataset.action = "select-type";
-      select.dataset.typeId = type.id;
-      select.innerHTML = '<i class="fa-solid fa-table-columns"></i>';
-      const label = document.createElement("span");
-      label.textContent = type.name;
-      select.append(label);
-      const toggle = document.createElement("label");
-      toggle.className = "echoes-switch";
-      toggle.title = type.enabled ? "\u5173\u95ED\u7C7B\u578B" : "\u6FC0\u6D3B\u7C7B\u578B";
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.checked = type.enabled;
-      input.dataset.typeToggle = "true";
-      input.dataset.typeId = type.id;
-      toggle.append(input, document.createElement("span"));
-      item.append(select, toggle);
-      list.append(item);
-    }
-  }
-  renderToolbar() {
-    const title = this.root.querySelector(".echoes-table-title h1");
-    const scope = this.root.querySelector(".echoes-scope-label");
-    const actions = this.root.querySelector(".echoes-table-actions");
-    actions.replaceChildren();
-    scope.textContent = "";
-    if (this.view === "api") {
-      title.textContent = "API\u914D\u7F6E";
-      scope.textContent = "\u51ED\u636E \xB7 \u751F\u6210\u6A21\u578B \xB7 Embedding \xB7 Rerank \xB7 \u5DE5\u4F5C\u6D41\u5206\u914D";
-      return;
-    }
-    if (this.view === "summary") {
-      title.textContent = "\u603B\u7ED3\u8BB0\u5FC6";
-      scope.textContent = "\u603B\u7ED3\u8BB0\u5F55 \xB7 \u4E0A\u4E0B\u6587\u9690\u85CF \xB7 \u53EC\u56DE\u8BCA\u65AD";
-      const refresh = iconButton3("rotate", "\u5237\u65B0", "unused");
-      delete refresh.dataset.action;
-      refresh.dataset.summaryAction = "refresh";
-      const repair = iconButton3("screwdriver-wrench", "\u4FEE\u590D\u7D22\u5F15", "unused");
-      delete repair.dataset.action;
-      repair.dataset.summaryAction = "repair";
-      actions.append(refresh, repair);
-      return;
-    }
-    if (this.view === "summary-settings") {
-      title.textContent = "\u603B\u7ED3\u8BB0\u5FC6\u8BBE\u7F6E";
-      scope.textContent = this.summarySettingsTab === "generation" ? "\u751F\u6210\u89C4\u5219 \xB7 \u63D0\u793A\u8BCD \xB7 \u6D88\u606F\u6E05\u6D17" : this.summarySettingsTab === "recall" ? "\u53EC\u56DE\u6765\u6E90 \xB7 \u6392\u5E8F\u6743\u91CD \xB7 \u67E5\u8BE2\u9884\u8BBE \xB7 \u6CE8\u5165" : "\u96C6\u5408 \xB7 \u7D22\u5F15 \xB7 \u6570\u636E\u5BFC\u5165 \xB7 \u67E5\u8BE2\u5B9E\u9A8C";
-      return;
-    }
-    if (this.view === "status") {
-      title.textContent = "\u72B6\u6001\u8BB0\u5FC6\u4E0E\u8BBE\u7F6E";
-      scope.textContent = "\u5F53\u524D\u72B6\u6001 \xB7 \u5386\u53F2\u5FEB\u7167 \xB7 \u63D0\u793A\u8BCD \xB7 \u6821\u9A8C \xB7 \u6CE8\u5165";
-      return;
-    }
-    if (this.view === "maintenance") {
-      title.textContent = "\u7EF4\u62A4\u4E0E\u6062\u590D";
-      scope.textContent = "\u7248\u672C \xB7 \u51ED\u636E \xB7 \u81EA\u68C0 \xB7 \u4FBF\u643A\u5907\u4EFD";
-      return;
-    }
-    if (this.view === "memory-settings") {
-      title.textContent = "\u7ED3\u6784\u5316\u8BB0\u5FC6\u8BBE\u7F6E";
-      scope.textContent = this.state ? `\u804A\u5929\u4E16\u754C\u4E66 \xB7 ${this.state.worldbookName}` : "";
-      if (this.structuredSettingsTab === "prompts") {
-        actions.append(commandButton2("eye", "\u9884\u89C8", "preview-prompts"));
-        actions.append(commandButton2("plus", "\u6DFB\u52A0\u63D0\u793A\u8BCD", "add-prompt", true));
-      } else if (this.structuredSettingsTab === "templates") {
-        actions.append(commandButton2("plus", "\u65B0\u5EFA\u6A21\u677F", "add-template", true));
-      }
-      return;
-    }
-    scope.textContent = this.state ? `\u804A\u5929\u4E16\u754C\u4E66 \xB7 ${this.state.worldbookName}` : "";
-    const type = this.activeType;
-    title.textContent = type?.name ?? "\u8BF7\u9009\u62E9\u8BB0\u5FC6\u7C7B\u578B";
-    if (!type) return;
-    const running = extractionCoordinator.isRunning();
-    const review = extractionCoordinator.review();
-    const extract2 = commandButton2("wand-magic-sparkles", "\u5904\u7406\u4E0B\u4E00\u6279", "extract");
-    extract2.disabled = running;
-    actions.append(extract2);
-    if (running) actions.append(commandButton2("stop", "\u505C\u6B62", "extraction-stop"));
-    if (review) actions.append(commandButton2("clipboard-check", "\u5BA1\u6838", "extraction-review", true));
-    else if (extractionCoordinator.pauseReason()) {
-      actions.append(commandButton2("rotate", "\u91CD\u8DD1", "extraction-retry"));
-    }
-    actions.append(commandButton2("plus", "\u6DFB\u52A0\u6570\u636E", "add-row", true));
-    actions.append(iconButton3("pen", "\u7F16\u8F91\u7C7B\u578B", "edit-type"));
-    actions.append(iconButton3("trash", "\u5220\u9664\u7C7B\u578B", "delete-type"));
-  }
-  renderMemoryGrid() {
-    const type = this.activeType;
-    if (!this.state) return;
-    const host = this.root.querySelector(".echoes-grid-host");
-    const page = document.createElement("div");
-    page.className = "echoes-memory-page";
-    const content = document.createElement("div");
-    content.className = "echoes-memory-table-host";
-    page.append(content);
-    if (!type) {
-      content.append(this.gridMessage("\u65B0\u5EFA\u4E00\u79CD\u8BB0\u5FC6\u7C7B\u578B\u540E\u5373\u53EF\u5F00\u59CB\u8BB0\u5F55\u3002"));
-      host.replaceChildren(page);
-      return;
-    }
-    const rows = this.state.rows.filter((row) => row.typeId === type.id);
-    if (rows.length === 0) {
-      content.append(this.gridMessage(type.enabled ? "\u8BE5\u7C7B\u578B\u6682\u65E0\u6570\u636E\u3002\u53EF\u4EE5\u624B\u52A8\u6DFB\u52A0\uFF0C\u6216\u901A\u8FC7\u201C\u5904\u7406\u4E0B\u4E00\u6279\u201D\u63D0\u53D6\u65B0\u589E\u804A\u5929\u3002" : "\u8BE5\u7C7B\u578B\u5DF2\u5173\u95ED\uFF0C\u5176\u4E16\u754C\u4E66\u6761\u76EE\u548C\u526F API \u5199\u8868\u4E0A\u4E0B\u6587\u5747\u4E0D\u4F1A\u542F\u7528\u3002"));
-      host.replaceChildren(page);
-      return;
-    }
-    const wrapper = document.createElement("div");
-    wrapper.className = "echoes-table-scroll";
-    const table = document.createElement("table");
-    table.className = "echoes-data-table";
-    const headings = ["\u6570\u636E\u540D", "\u5173\u952E\u8BCD", "\u6761\u76EE\u72B6\u6001", ...type.columns.map((column) => column.name)];
-    const head = document.createElement("thead");
-    const headingRow = document.createElement("tr");
-    for (const heading of headings) {
-      const cell = document.createElement("th");
-      cell.scope = "col";
-      cell.textContent = heading;
-      headingRow.append(cell);
-    }
-    const actionHeading = document.createElement("th");
-    actionHeading.scope = "col";
-    actionHeading.className = "echoes-row-actions-heading";
-    actionHeading.textContent = "\u64CD\u4F5C";
-    headingRow.append(actionHeading);
-    head.append(headingRow);
-    table.append(head);
-    const body = document.createElement("tbody");
-    for (const row of rows) {
-      const tr = document.createElement("tr");
-      const fixed = [row.dataName, row.keywords.join(", "), statusLabel(row.status)];
-      for (const value of [...fixed, ...type.columns.map((column) => displayValue(row.values[column.id]))]) {
-        const cell = document.createElement("td");
-        cell.textContent = value;
-        cell.title = value;
-        tr.append(cell);
-      }
-      const actionCell = document.createElement("td");
-      actionCell.className = "echoes-row-actions";
-      const edit = iconButton3("pen", "\u7F16\u8F91\u6570\u636E", "edit-row");
-      edit.dataset.rowId = row.id;
-      const remove = iconButton3("trash", "\u5220\u9664\u6570\u636E", "delete-row");
-      remove.dataset.rowId = row.id;
-      actionCell.append(edit, remove);
-      tr.append(actionCell);
-      body.append(tr);
-    }
-    table.append(body);
-    prepareResponsiveTable(table);
-    wrapper.append(table);
-    content.append(wrapper);
-    host.replaceChildren(page);
-  }
-  renderStructuredSettings() {
-    if (!this.state) return;
-    const settings = getSettings();
-    const workflow = settings.generationWorkflows.extraction;
-    const group = settings.generationGroups.find((candidate) => candidate.id === workflow.groupId);
-    const host = this.root.querySelector(".echoes-grid-host");
-    const page = document.createElement("div");
-    page.className = "echoes-structured-settings-page";
-    const section = document.createElement("section");
-    section.className = "echoes-settings-section";
-    section.innerHTML = `
-      <div class="echoes-section-heading">
-        <div><h2>\u81EA\u52A8\u63D0\u53D6\u884C\u4E3A</h2><span>\u6A21\u578B\u548C\u6545\u969C\u7B56\u7565\u7EDF\u4E00\u5728 API\u914D\u7F6E\u4E2D\u7BA1\u7406</span></div>
-        <button type="button" class="menu_button" data-action="switch-view" data-view="api"><i class="fa-solid fa-plug"></i> \u524D\u5F80 API\u914D\u7F6E</button>
-      </div>
-      <div class="echoes-workflow-summary">
-        <span>\u751F\u6210\u7AEF\u70B9\u7EC4<strong data-structured-api-group></strong></span>
-        <span>\u6545\u969C\u7B56\u7565<strong data-structured-api-policy></strong></span>
-        <label>\u6279\u6B21\u6D88\u606F\u9608\u503C<input type="number" min="2" max="500" data-extraction-message-count></label>
-      </div>`;
-    section.querySelector("[data-structured-api-group]").textContent = group?.name ?? "\u672A\u914D\u7F6E";
-    section.querySelector("[data-structured-api-policy]").textContent = {
-      confirm_ambiguous: "\u4E0D\u786E\u5B9A\u65F6\u786E\u8BA4",
-      always: "\u59CB\u7EC8\u81EA\u52A8\u5207\u6362",
-      definitive_only: "\u4EC5\u660E\u786E\u5931\u8D25\u5207\u6362"
-    }[workflow.failoverPolicy];
-    section.querySelector("[data-extraction-message-count]").value = String(settings.extractionMessageCount);
-    page.append(section, this.renderExtractionAutomationPanel());
-    host.replaceChildren(page);
-  }
-  renderExtractionAutomationPanel() {
-    const section = document.createElement("section");
-    section.className = "echoes-extraction-automation";
-    if (!this.state) return section;
-    const trace = extractionCoordinator.trace(this.state.catalog.chatId);
-    const review = extractionCoordinator.review(this.state.catalog.chatId);
-    const pause = extractionCoordinator.pauseReason(this.state.catalog.chatId);
-    let pending = null;
-    let checkpointIssue = "";
-    try {
-      pending = extractionPendingMessageCount(this.state);
-    } catch (error51) {
-      checkpointIssue = error51 instanceof Error ? error51.message : String(error51);
-    }
-    section.innerHTML = `
-      <header>
-        <div>
-          <h2>\u7ED3\u6784\u5316\u8BB0\u5FC6\u81EA\u52A8\u63D0\u53D6</h2>
-          <p>\u6279\u6B21\u9608\u503C ${getSettings().extractionMessageCount} \u6761\uFF1B\u53EA\u63D0\u4EA4\u5230\u5DF2\u88AB\u540E\u7EED\u7528\u6237\u6D88\u606F\u786E\u8BA4\u7684\u52A9\u624B\u56DE\u590D\u3002</p>
-        </div>
-        <label class="echoes-check">
-          <input type="checkbox" data-extraction-auto>
-          \u81EA\u52A8\u63D0\u53D6
-        </label>
-      </header>
-      <div class="echoes-extraction-stats">
-        <div><span>\u68C0\u67E5\u70B9</span><strong data-extraction-checkpoint></strong></div>
-        <div><span>\u5F85\u5904\u7406\u6D88\u606F</span><strong data-extraction-pending></strong></div>
-        <div><span>\u5F53\u524D\u6279\u6B21</span><strong data-extraction-batch></strong></div>
-        <div><span>\u8FD0\u884C\u72B6\u6001</span><strong data-extraction-state></strong></div>
-      </div>
-      <div class="echoes-extraction-actions">
-        <button type="button" class="menu_button" data-action="extraction-checkpoint-latest"><i class="fa-solid fa-forward-step"></i> \u8DF3\u5230\u6700\u65B0\u6D88\u606F</button>
-        <button type="button" class="menu_button" data-action="extraction-checkpoint-clear"><i class="fa-solid fa-backward-step"></i> \u6E05\u9664\u5E76\u4ECE\u5934\u5904\u7406</button>
-      </div>
-      <p class="echoes-extraction-warning echoes-hidden" data-extraction-warning></p>
-      <details class="echoes-extraction-trace">
-        <summary>\u6700\u8FD1\u4EFB\u52A1\u8BCA\u65AD</summary>
-        <pre></pre>
-      </details>`;
-    section.querySelector("[data-extraction-auto]").checked = this.state.catalog.automation.enabled;
-    section.querySelector("[data-extraction-checkpoint]").textContent = this.state.catalog.lastProcessedMessageId ?? "\u5C1A\u672A\u5904\u7406";
-    section.querySelector("[data-extraction-pending]").textContent = pending === null ? "\u68C0\u67E5\u70B9\u7F3A\u5931" : String(pending);
-    section.querySelector("[data-extraction-batch]").textContent = trace?.batch ? `${trace.batch.mode === "auto" ? "\u81EA\u52A8" : "\u624B\u52A8"} \xB7 ${trace.batch.startMessageId} \u2192 ${trace.batch.endMessageId}` : "\u65E0";
-    section.querySelector("[data-extraction-state]").textContent = review ? `\u5F85\u5BA1\u6838 ${review.result.reviewItems.length} \u9879` : trace?.state ?? (pause ? "\u5DF2\u6682\u505C" : "\u7A7A\u95F2");
-    const warning = section.querySelector("[data-extraction-warning]");
-    const warningText = checkpointIssue || pause || (review ? "\u6279\u6B21\u5305\u542B\u8BED\u4E49\u65E0\u6548\u64CD\u4F5C\uFF0C\u7B49\u5F85\u4EBA\u5DE5\u5BA1\u6838\u3002\u5BA1\u6838\u4EC5\u4FDD\u5B58\u5728\u5F53\u524D\u9875\u9762\uFF0C\u5237\u65B0\u540E\u53EF\u80FD\u91CD\u65B0\u8C03\u7528\u526F API\u3002" : "");
-    if (warningText) {
-      warning.textContent = warningText;
-      warning.classList.remove("echoes-hidden");
-    }
-    section.querySelector(".echoes-extraction-trace pre").textContent = trace ? JSON.stringify(trace, null, 2) : "\u6682\u65E0\u4EFB\u52A1\u8BB0\u5F55\u3002";
-    return section;
-  }
-  gridMessage(message3) {
-    const note = document.createElement("div");
-    note.className = "echoes-grid-message empty";
-    note.textContent = message3;
-    return note;
-  }
-  renderPromptPreset() {
-    if (!this.state) return;
-    const host = this.root.querySelector(".echoes-grid-host");
-    const list = document.createElement("div");
-    list.className = "echoes-prompt-list";
-    const items = this.state.catalog.promptPreset.items;
-    if (items.length === 0) {
-      this.setContentMessage("\u5F53\u524D\u9884\u8BBE\u4E3A\u7A7A\u3002\u526F API \u4ECD\u4F1A\u6536\u5230\u8FD0\u884C\u65F6\u8868\u683C\u548C\u589E\u91CF\u5BF9\u8BDD\uFF0C\u4F46\u4E0D\u4F1A\u6536\u5230\u4EFB\u4F55\u81EA\u5B9A\u4E49\u89C4\u5219\u3002", false, true);
-      return;
-    }
-    const typeById = new Map(this.state.catalog.types.map((type) => [type.id, type]));
-    items.forEach((item, index) => {
-      const row = document.createElement("article");
-      row.className = "echoes-prompt-item";
-      row.draggable = true;
-      row.dataset.promptIndex = String(index);
-      const handle = document.createElement("i");
-      handle.className = "fa-solid fa-grip-vertical echoes-drag-handle";
-      handle.title = "\u62D6\u52A8\u6392\u5E8F";
-      const meta3 = document.createElement("div");
-      meta3.className = "echoes-prompt-meta";
-      const heading = document.createElement("strong");
-      heading.textContent = item.title;
-      const detail = document.createElement("span");
-      const type = item.kind === "type_writer" ? typeById.get(item.typeId) : void 0;
-      detail.textContent = item.kind === "type_writer" ? `${item.role.toUpperCase()} \xB7 \u7C7B\u578B\u5199\u8868\u63D0\u793A\u8BCD${type?.enabled === false ? " \xB7 \u7C7B\u578B\u5DF2\u5173\u95ED" : ""}` : `${item.role.toUpperCase()} \xB7 ${item.kind === "main" ? "\u4E3B\u63D0\u793A\u8BCD" : "\u81EA\u5B9A\u4E49\u63D0\u793A\u8BCD"}`;
-      const excerpt = document.createElement("small");
-      excerpt.textContent = item.kind === "type_writer" ? type?.writePrompt ?? "\u5F15\u7528\u7C7B\u578B\u4E0D\u5B58\u5728" : item.content;
-      meta3.append(heading, detail, excerpt);
-      const controls = document.createElement("div");
-      controls.className = "echoes-prompt-controls";
-      const toggle = document.createElement("label");
-      toggle.className = "echoes-switch";
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.checked = item.enabled;
-      input.dataset.promptToggle = "true";
-      input.dataset.index = String(index);
-      toggle.append(input, document.createElement("span"));
-      const up = iconButton3("arrow-up", "\u4E0A\u79FB", "move-prompt-up");
-      up.dataset.index = String(index);
-      up.disabled = index === 0;
-      const down = iconButton3("arrow-down", "\u4E0B\u79FB", "move-prompt-down");
-      down.dataset.index = String(index);
-      down.disabled = index === items.length - 1;
-      const edit = iconButton3("pen", "\u7F16\u8F91\u63D0\u793A\u8BCD", "edit-prompt");
-      edit.dataset.index = String(index);
-      const remove = iconButton3("trash", "\u5220\u9664\u63D0\u793A\u8BCD", "delete-prompt");
-      remove.dataset.index = String(index);
-      controls.append(toggle, up, down, edit, remove);
-      row.append(handle, meta3, controls);
-      list.append(row);
-    });
-    host.replaceChildren(list);
-  }
-  renderTemplates() {
-    const host = this.root.querySelector(".echoes-grid-host");
-    const list = document.createElement("div");
-    list.className = "echoes-template-list";
-    for (const template of getSettings().typeTemplates) {
-      const item = document.createElement("article");
-      item.className = "echoes-template-item";
-      const heading = document.createElement("div");
-      const title = document.createElement("strong");
-      title.textContent = template.name;
-      const badge = document.createElement("span");
-      badge.textContent = template.builtIn ? "\u9ED8\u8BA4" : "\u81EA\u5B9A\u4E49";
-      heading.append(title, badge);
-      const description = document.createElement("p");
-      description.textContent = template.description;
-      const columns = document.createElement("small");
-      columns.textContent = `\u8868\u5934\uFF1A${template.columns.map((column) => column.name).join("\u3001")}`;
-      const prompt = document.createElement("p");
-      prompt.className = "echoes-template-prompt";
-      prompt.textContent = template.writePrompt;
-      const actions = document.createElement("div");
-      actions.className = "echoes-template-actions";
-      if (template.builtIn) {
-        const lock = document.createElement("span");
-        lock.innerHTML = '<i class="fa-solid fa-lock"></i> \u5185\u7F6E\u6A21\u677F';
-        actions.append(lock);
-      } else {
-        const edit = iconButton3("pen", "\u7F16\u8F91\u6A21\u677F", "edit-template");
-        edit.dataset.templateId = template.id;
-        const remove = iconButton3("trash", "\u5220\u9664\u6A21\u677F", "delete-template");
-        remove.dataset.templateId = template.id;
-        actions.append(edit, remove);
-      }
-      item.append(heading, description, columns, prompt, actions);
-      list.append(item);
-    }
-    host.replaceChildren(list);
-  }
-  async editType(current) {
-    const identity = this.chatIdentity();
-    const input = await openTypeDialog(getSettings().typeTemplates, current);
-    if (!input) return;
-    try {
-      this.assertChatIdentity(identity);
-      const saved = await this.store.saveType(input, current?.id);
-      this.activeTypeId = saved.id;
-      this.view = "memory";
-      await this.reload();
-      toastr.success("\u8BB0\u5FC6\u7C7B\u578B\u5DF2\u4FDD\u5B58\u3002", "Echoes");
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u4FDD\u5B58\u5931\u8D25");
-    }
-  }
-  async deleteActiveType() {
-    const type = this.activeType;
-    if (!type || !window.confirm(`\u5220\u9664\u201C${type.name}\u201D\u53CA\u5176\u5168\u90E8\u4E16\u754C\u4E66\u6761\u76EE\uFF1F\u6B64\u64CD\u4F5C\u4E0D\u53EF\u64A4\u9500\u3002`)) return;
-    try {
-      await this.store.deleteType(type.id);
-      this.activeTypeId = null;
-      await this.reload();
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u5220\u9664\u5931\u8D25");
-    }
-  }
-  async toggleType(typeId, enabled) {
-    try {
-      await this.store.setTypeEnabled(typeId, enabled);
-      await this.reload();
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u7C7B\u578B\u72B6\u6001\u66F4\u65B0\u5931\u8D25");
-      await this.reload();
-    }
-  }
-  rowById(rowId) {
-    return this.state?.rows.find((row) => row.id === rowId);
-  }
-  async editRow(current) {
-    const type = this.activeType;
-    if (!type) return;
-    const identity = this.chatIdentity();
-    const input = await openRowDialog(type, current);
-    if (!input) return;
-    try {
-      this.assertChatIdentity(identity);
-      await this.store.saveRow(type.id, input, current?.id);
-      await this.reload();
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u4FDD\u5B58\u5931\u8D25");
-    }
-  }
-  async deleteRow(rowId) {
-    if (!rowId || !window.confirm("\u5220\u9664\u8FD9\u6761\u957F\u671F\u8BB0\u5FC6\uFF1F")) return;
-    try {
-      await this.store.deleteRow(rowId);
-      await this.reload();
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u5220\u9664\u5931\u8D25");
-    }
-  }
-  templateById(templateId) {
-    return getSettings().typeTemplates.find((template) => template.id === templateId);
-  }
-  async editTemplate(current) {
-    const input = await openTemplateDialog(current);
-    if (!input) return;
-    try {
-      saveTypeTemplate(input, current);
-      this.renderTemplates();
-      toastr.success("\u7C7B\u578B\u6A21\u677F\u5DF2\u4FDD\u5B58\u3002", "Echoes");
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u6A21\u677F\u4FDD\u5B58\u5931\u8D25");
-    }
-  }
-  deleteTemplate(templateId) {
-    const template = this.templateById(templateId);
-    if (!template || !window.confirm(`\u5220\u9664\u7C7B\u578B\u6A21\u677F\u201C${template.name}\u201D\uFF1F\u73B0\u6709\u7C7B\u578B\u4E0D\u4F1A\u88AB\u5220\u9664\u3002`)) return;
-    if (!deleteTypeTemplate(templateId)) {
-      toastr.warning("\u9ED8\u8BA4\u7C7B\u578B\u6A21\u677F\u4E0D\u80FD\u5220\u9664\u3002", "Echoes");
-      return;
-    }
-    this.renderTemplates();
-  }
-  promptItem(index) {
-    return this.state?.catalog.promptPreset.items[index];
-  }
-  async editPromptItem(current) {
-    if (!this.state) return;
-    const identity = this.chatIdentity();
-    const item = await openPromptItemDialog(this.state.catalog.types, current);
-    if (!item) return;
-    try {
-      this.assertChatIdentity(identity);
-      const preset = structuredClone(this.state.catalog.promptPreset);
-      const index = current ? preset.items.findIndex((candidate) => candidate.id === current.id) : -1;
-      if (index >= 0) preset.items[index] = item;
-      else preset.items.push(item);
-      await this.savePreset(preset.items);
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u63D0\u793A\u8BCD\u9884\u8BBE\u4FDD\u5B58\u5931\u8D25");
-    }
-  }
-  async deletePromptItem(index) {
-    if (!this.state || !this.promptItem(index) || !window.confirm("\u4ECE\u9884\u8BBE\u4E2D\u5220\u9664\u8BE5\u63D0\u793A\u8BCD\uFF1F")) return;
-    const items = structuredClone(this.state.catalog.promptPreset.items);
-    items.splice(index, 1);
-    await this.savePreset(items);
-  }
-  async togglePrompt(index, enabled) {
-    if (!this.state) return;
-    const items = structuredClone(this.state.catalog.promptPreset.items);
-    const item = items[index];
-    if (!item) return;
-    item.enabled = enabled;
-    await this.savePreset(items);
-  }
-  async movePromptItem(index, offset) {
-    await this.reorderPrompt(index, index + offset);
-  }
-  async reorderPrompt(from, to) {
-    if (!this.state || from === to || to < 0 || to >= this.state.catalog.promptPreset.items.length) return;
-    const items = structuredClone(this.state.catalog.promptPreset.items);
-    const [item] = items.splice(from, 1);
-    if (!item) return;
-    items.splice(to, 0, item);
-    await this.savePreset(items);
-  }
-  async savePreset(items) {
-    if (!this.state) return;
-    try {
-      await this.store.savePromptPreset({
-        ...this.state.catalog.promptPreset,
-        items,
-        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  drawNavigation() {
+    this.nav.replaceChildren();
+    for (const group of navigation) {
+      const active = group.pages.some(([route]) => route === this.route);
+      if (active) this.expanded.add(group.title);
+      const groupNode = el("div", "ew-nav-group");
+      const title = button(group.title, group.icon, () => {
+        this.expanded.has(group.title) ? this.expanded.delete(group.title) : this.expanded.add(group.title);
+        children.hidden = !this.expanded.has(group.title);
+        title.setAttribute("aria-expanded", String(!children.hidden));
       });
-      await this.reload();
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u63D0\u793A\u8BCD\u9884\u8BBE\u4FDD\u5B58\u5931\u8D25");
-      await this.reload();
-    }
-  }
-  async previewPrompts() {
-    if (!this.state) return;
-    try {
-      let prepared;
-      try {
-        prepared = await prepareExtraction(this.state, getSettings(), "auto");
-      } catch {
-        prepared = await prepareExtraction(this.state, getSettings(), "manual");
+      title.className = "ew-nav-title" + (active ? " selected" : "");
+      const children = el("div");
+      children.hidden = !this.expanded.has(group.title);
+      title.setAttribute("aria-expanded", String(!children.hidden));
+      for (const [route, label] of group.pages) {
+        const link = button(label, "", () => this.navigate(route));
+        link.querySelector("i")?.remove();
+        link.className = "ew-nav-link";
+        if (route === this.route) link.setAttribute("aria-current", "page");
+        children.append(link);
       }
-      openPreviewDialog(prepared.promptBlocks, prepared.runtimePreview);
-    } catch (error51) {
-      toastr.warning(error51 instanceof Error ? error51.message : String(error51), "\u65E0\u6CD5\u9884\u89C8");
+      groupNode.append(title, children);
+      this.nav.append(groupNode);
     }
   }
-  async migrate() {
-    if (!this.state) return;
-    const identity = this.chatIdentity();
-    const selection = await openMigrationDialog({
-      worldbookNames: this.store.listWorldbooks(),
-      currentWorldbookName: this.state.worldbookName,
-      loadTypes: async (worldbookName) => (await this.store.inspect(worldbookName)).catalog.types
-    });
-    if (!selection) return;
-    try {
-      this.assertChatIdentity(identity);
-      const summary = await this.store.migrateFrom(
-        selection.sourceWorldbookName,
-        selection.typeIds,
-        selection.policy
-      );
-      await this.reload();
-      toastr.success(`\u8FC1\u79FB\u5B8C\u6210\uFF1A\u65B0\u589E ${summary.added} \u6761\uFF0C\u66F4\u65B0 ${summary.updated} \u6761\uFF0C\u66FF\u6362\u79FB\u9664 ${summary.deleted} \u6761\u3002`, "Echoes");
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u8FC1\u79FB\u5931\u8D25");
-    }
-  }
-  async extractMemories() {
-    if (extractionCoordinator.isRunning() || !this.state) return;
-    if (extractionCoordinator.review()) {
-      await this.reviewExtraction();
-      return;
-    }
-    const settings = getSettings();
-    if (!settings.generationGroups.some((group) => group.id === settings.generationWorkflows.extraction.groupId)) {
-      toastr.warning("\u8BF7\u5148\u914D\u7F6E\u7ED3\u6784\u5316\u8BB0\u5FC6\u751F\u6210\u7AEF\u70B9\u7EC4\u3002", "Echoes");
-      this.view = "api";
-      this.render();
-      return;
-    }
-    try {
-      await extractionCoordinator.runManual();
-      await this.reload();
-      const review = extractionCoordinator.review();
-      if (review) {
-        toastr.warning("\u6279\u6B21\u5305\u542B\u65E0\u6548\u64CD\u4F5C\uFF0C\u8BF7\u5BA1\u6838\u540E\u63D0\u4EA4\u3002\u5BA1\u6838\u53EA\u4FDD\u5B58\u5728\u5F53\u524D\u9875\u9762\u5185\u5B58\u4E2D\u3002", "\u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6");
-        await this.reviewExtraction();
-      } else {
-        const trace = extractionCoordinator.trace();
-        if (trace?.state === "completed") toastr.success(trace.message ?? "\u6279\u6B21\u5DF2\u63D0\u4EA4\u3002", "\u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6");
-      }
-    } catch (error51) {
-      toastr.warning(error51 instanceof Error ? error51.message : String(error51), "\u65E0\u6CD5\u5904\u7406\u4E0B\u4E00\u6279");
-    }
-  }
-  async reviewExtraction() {
-    if (!this.state) return;
-    const review = extractionCoordinator.review();
-    if (!review) return;
-    const decision = await openExtractionReviewDialog(
-      review.result.reviewItems,
-      this.state.catalog.types,
-      this.state.rows
+  async render() {
+    this.scope.abort();
+    this.scope = new AbortController();
+    const signal = this.scope.signal;
+    const chatId = SillyTavern.getContext().chatId ?? "";
+    this.activeChat = chatId;
+    let worldbook = window.TavernHelper?.getChatWorldbookName("current") ?? null;
+    this.contextLabel.textContent = (chatId || "\u672A\u9009\u62E9\u804A\u5929") + (worldbook ? " \xB7 " + worldbook : "");
+    this.contextLabel.title = this.contextLabel.textContent;
+    const guard = () => {
+      if ((SillyTavern.getContext().chatId ?? "") !== chatId || (window.TavernHelper?.getChatWorldbookName("current") ?? null) !== worldbook)
+        throw new Error("\u5F53\u524D\u804A\u5929\u6216\u4E16\u754C\u4E66\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u9875\u9762\u540E\u64CD\u4F5C\u3002");
+    };
+    this.drawNavigation();
+    const group = navigation.find(
+      (g) => g.pages.some(([route2]) => route2 === this.route)
     );
-    if (!decision) return;
-    if (decision.action === "rerun") {
-      await this.retryExtraction();
+    const name = group.pages.find(([route2]) => route2 === this.route)[1];
+    const content = el(
+      "div",
+      "ew-page-content",
+      el("p", "ew-muted", "\u6B63\u5728\u8BFB\u53D6\u2026")
+    );
+    this.main.replaceChildren(
+      el(
+        "div",
+        "ew-page-head",
+        el("div", "", el("p", "ew-eyebrow", group.title), el("h1", "", name)),
+        tool("\u5237\u65B0\u9875\u9762", "rotate", () => {
+          if (!this.dirty() || confirm("\u653E\u5F03\u672A\u4FDD\u5B58\u7684\u4FEE\u6539\u5E76\u5237\u65B0\uFF1F"))
+            return this.render();
+        })
+      ),
+      content
+    );
+    this.main.setAttribute("aria-busy", "true");
+    if (!this.state.has(chatId)) this.state.set(chatId, /* @__PURE__ */ new Map());
+    const route = this.route;
+    const ctx = {
+      route,
+      chatId,
+      summary: this.summary,
+      signal,
+      state: this.state.get(chatId),
+      guard,
+      refresh: async () => {
+        if (!signal.aborted) {
+          guard();
+          await this.render();
+        }
+      },
+      navigate: (r) => this.navigate(r),
+      run: async (label, work, stop) => {
+        guard();
+        return this.run(label, chatId, work, stop);
+      },
+      job: async (label, start) => {
+        guard();
+        let current;
+        return this.run(
+          label,
+          chatId,
+          async (task) => {
+            current = await start();
+            const controller = new AbortController();
+            return waitJob(
+              current,
+              (job) => {
+                current = job;
+                task.progress = job.progress;
+                task.message = job.message;
+                this.updateTasks();
+              },
+              controller.signal
+            );
+          },
+          async () => {
+            if (!current) throw new Error("\u4EFB\u52A1\u6B63\u5728\u63D0\u4EA4\uFF0C\u7A0D\u540E\u518D\u505C\u6B62\u3002");
+            const result = await echoesApi.cancelJob(current.id);
+            if (!result.cancelled)
+              throw new Error("\u540E\u53F0\u672A\u786E\u8BA4\u53D6\u6D88\uFF1B\u8BF7\u67E5\u770B\u4EFB\u52A1\u65E5\u5FD7\u3002");
+          }
+        );
+      }
+    };
+    try {
+      let view;
+      if (route.startsWith("api/")) view = connectionsView;
+      else if (route.startsWith("memory/")) view = memoryView;
+      else if (route.startsWith("summary/")) view = summaryView;
+      else if (route.startsWith("status/")) view = statusView;
+      else view = maintenanceView;
+      if (!chatId && !route.startsWith("api/") && !route.startsWith("maintenance/")) {
+        content.replaceChildren(empty("\u8BF7\u5148\u9009\u62E9\u4E00\u4E2A\u804A\u5929"));
+        return;
+      }
+      const result = await view(ctx);
+      if (signal.aborted || (SillyTavern.getContext().chatId ?? "") !== chatId)
+        return;
+      if (worldbook !== null && (window.TavernHelper?.getChatWorldbookName("current") ?? null) !== worldbook)
+        throw new Error("\u8BFB\u53D6\u671F\u95F4\u4E16\u754C\u4E66\u5DF2\u6539\u53D8\uFF0C\u8BF7\u5237\u65B0\u540E\u64CD\u4F5C\u3002");
+      worldbook = window.TavernHelper?.getChatWorldbookName("current") ?? null;
+      content.replaceChildren(result);
+      this.contextLabel.textContent = (chatId || "\u672A\u9009\u62E9\u804A\u5929") + (worldbook ? " \xB7 " + worldbook : "");
+      this.main.scrollTop = this.scroll.get(chatId + ":" + route) ?? 0;
+      this.footer.textContent = "\u672C\u5730\u8BBE\u7F6E\u4E0E\u5F53\u524D\u804A\u5929";
+    } catch (error51) {
+      if (!signal.aborted)
+        content.replaceChildren(
+          empty(
+            error51 instanceof Error ? error51.message : String(error51),
+            button("\u91CD\u8BD5", "rotate", () => this.render())
+          )
+        );
+    } finally {
+      if (!signal.aborted) this.main.removeAttribute("aria-busy");
+      this.updateTasks();
+    }
+  }
+  async run(label, chatId, work, stop) {
+    const task = {
+      id: ++this.sequence,
+      label,
+      chatId,
+      status: "\u8FD0\u884C\u4E2D",
+      message: "",
+      progress: 0,
+      stop
+    };
+    this.tasks.push(task);
+    this.updateTasks();
+    try {
+      const result = await work(task);
+      task.status = "\u5DF2\u5B8C\u6210";
+      task.progress = 1;
+      return result;
+    } catch (error51) {
+      task.status = error51 instanceof Error && error51.name === "AbortError" ? "\u5DF2\u53D6\u6D88" : "\u5931\u8D25";
+      task.message = error51 instanceof Error ? error51.message : String(error51);
+      throw error51;
+    } finally {
+      task.stop = void 0;
+      this.tasks = this.tasks.slice(-50);
+      this.updateTasks();
+    }
+  }
+  updateTasks() {
+    const running = this.tasks.filter((t) => t.status === "\u8FD0\u884C\u4E2D").length;
+    this.taskButton.querySelector("span").textContent = "\u4EFB\u52A1" + (running ? " \xB7 " + running : "");
+    if (!this.tasksHost?.isConnected) return;
+    this.tasksHost.replaceChildren(
+      actions(
+        button("\u4EFB\u52A1\u65E5\u5FD7", "list", () => {
+          this.tasksHost?.closest("dialog")?.close();
+          this.navigate("maintenance/jobs");
+        }),
+        this.summary.isRunning() ? button("\u505C\u6B62\u603B\u7ED3", "stop", () => this.summary.stop(), "danger") : null,
+        extractionCoordinator.isRunning() ? button(
+          "\u505C\u6B62\u63D0\u53D6",
+          "stop",
+          () => extractionCoordinator.stopCurrent(),
+          "danger"
+        ) : null
+      ),
+      ...this.tasks.slice().reverse().map(
+        (t) => el(
+          "div",
+          "ew-task",
+          el(
+            "div",
+            "ew-task-main",
+            el("strong", "", t.label),
+            el("p", "ew-muted", t.chatId),
+            t.message ? detail("\u8BE6\u7EC6\u4FE1\u606F", t.message) : null,
+            t.status === "\u8FD0\u884C\u4E2D" ? Object.assign(el("progress"), { max: 1, value: t.progress }) : null
+          ),
+          badge(t.status, t.status === "\u5931\u8D25" ? "danger" : ""),
+          t.stop ? tool(
+            "\u505C\u6B62\u4EFB\u52A1",
+            "stop",
+            async () => {
+              if (t.chatId !== (SillyTavern.getContext().chatId ?? ""))
+                throw new Error(
+                  "\u8BF7\u5148\u5207\u56DE\u6B64\u4EFB\u52A1\u6240\u5C5E\u804A\u5929\uFF0C\u6216\u4ECE\u670D\u52A1\u7AEF\u4EFB\u52A1\u65E5\u5FD7\u4E2D\u53D6\u6D88\u4EFB\u52A1\u3002"
+                );
+              await t.stop?.();
+              t.message = "\u5DF2\u8BF7\u6C42\u505C\u6B62\uFF0C\u7B49\u5F85\u4EFB\u52A1\u7ED3\u675F";
+              this.updateTasks();
+            },
+            "danger"
+          ) : null
+        )
+      )
+    );
+    if (!this.tasks.length)
+      this.tasksHost.append(empty("\u672C\u6B21\u4F1A\u8BDD\u6682\u65E0\u624B\u52A8\u4EFB\u52A1"));
+  }
+  openTasks() {
+    if (this.tasksHost?.isConnected) {
+      this.tasksHost.closest("dialog")?.focus();
       return;
     }
-    if (decision.selectedIndexes.length === 0 && !window.confirm("\u6CA1\u6709\u9009\u62E9\u4EFB\u4F55\u6709\u6548\u64CD\u4F5C\u3002\u786E\u5B9A\u8DF3\u8FC7\u6574\u4E2A\u6279\u6B21\u5E76\u63A8\u8FDB\u68C0\u67E5\u70B9\u5417\uFF1F")) {
-      return;
-    }
-    try {
-      const summary = await extractionCoordinator.submitReview(decision.selectedIndexes);
-      await this.reload();
-      toastr.success(
-        `\u5BA1\u6838\u5DF2\u63D0\u4EA4\uFF1A\u65B0\u589E ${summary.added}\uFF0C\u4FEE\u6539 ${summary.updated}\uFF0C\u5220\u9664 ${summary.deleted}\u3002`,
-        "\u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6"
-      );
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u5BA1\u6838\u63D0\u4EA4\u5931\u8D25");
-    }
-  }
-  async retryExtraction() {
-    try {
-      await extractionCoordinator.retryCurrent();
-      await this.reload();
-      if (extractionCoordinator.review()) await this.reviewExtraction();
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u6279\u6B21\u91CD\u8DD1\u5931\u8D25");
-    }
-  }
-  async toggleExtractionAutomation(enabled) {
-    try {
-      await extractionCoordinator.setAutomationEnabled(enabled);
-      await this.reload();
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u81EA\u52A8\u63D0\u53D6\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25");
-      await this.reload();
-    }
-  }
-  async relocateExtractionCheckpoint(mode) {
-    const messages2 = currentExtractionMessages();
-    const messageId = mode === "latest" ? messages2.at(-1)?.id ?? null : null;
-    const prompt = mode === "latest" ? `\u786E\u5B9A\u5C06\u7ED3\u6784\u5316\u8BB0\u5FC6\u68C0\u67E5\u70B9\u8DF3\u5230\u5F53\u524D\u6700\u65B0\u6D88\u606F ${messageId ?? "\uFF08\u7A7A\u804A\u5929\uFF09"} \u5417\uFF1F\u672A\u5904\u7406\u6D88\u606F\u5C06\u88AB\u8DF3\u8FC7\u3002` : "\u786E\u5B9A\u6E05\u9664\u7ED3\u6784\u5316\u8BB0\u5FC6\u68C0\u67E5\u70B9\u5E76\u4ECE\u804A\u5929\u5F00\u5934\u91CD\u65B0\u5904\u7406\u5417\uFF1F\u5DF2\u5B58\u5728\u7684\u8BB0\u5FC6\u884C\u4E0D\u4F1A\u81EA\u52A8\u5220\u9664\u3002";
-    if (!window.confirm(prompt)) return;
-    try {
-      await extractionCoordinator.relocateCheckpoint(messageId);
-      await this.reload();
-      toastr.success("\u7ED3\u6784\u5316\u8BB0\u5FC6\u68C0\u67E5\u70B9\u5DF2\u66F4\u65B0\u3002", "Echoes");
-    } catch (error51) {
-      toastr.error(error51 instanceof Error ? error51.message : String(error51), "\u68C0\u67E5\u70B9\u66F4\u65B0\u5931\u8D25");
-    }
-  }
-  setContentMessage(message3, error51 = false, empty = false) {
-    const host = this.root.querySelector(".echoes-grid-host");
-    const note = document.createElement("div");
-    note.className = `echoes-grid-message${error51 ? " error" : ""}${empty ? " empty" : ""}`;
-    note.textContent = message3;
-    host.replaceChildren(note);
+    this.tasksHost = el("div", "ew-page-content");
+    dialog("\u4EFB\u52A1\u4E2D\u5FC3", this.tasksHost);
+    this.updateTasks();
   }
 };
 
