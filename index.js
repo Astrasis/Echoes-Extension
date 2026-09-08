@@ -320,72 +320,9 @@ var init_client = __esm({
   }
 });
 
-// package.json
-var package_default = {
-  name: "echoes-memory-system",
-  version: "2.0.0",
-  echoesVersions: {
-    extension: "2.0.0",
-    server: "1.1.0"
-  },
-  private: true,
-  type: "module",
-  description: "A reliable structured and semantic memory system for SillyTavern.",
-  license: "CC-BY-NC-4.0",
-  engines: {
-    node: ">=20.9.0 <21 || >=22.0.0 <23 || >=24.0.0 <25"
-  },
-  scripts: {
-    build: "node scripts/build.mjs",
-    check: "npm run typecheck && npm run test && npm run build",
-    test: "vitest run",
-    "test:browser": "npm run build && playwright test --config playwright.workbench.config.ts",
-    "test:watch": "vitest",
-    "serve:harness": "node scripts/ui-harness-server.mjs",
-    "serve:workbench": "node scripts/workbench-server.mjs",
-    "stress:retrieval": "node scripts/retrieval-stress.mjs 200000",
-    "audit:dependencies": "npm audit --registry=https://registry.npmjs.org/ --omit=dev --audit-level=high",
-    "audit:release": "node scripts/audit-release.mjs",
-    "package:github": "npm run build && npm run audit:release && npm run audit:dependencies && node scripts/package-github.mjs",
-    "test:release": "node scripts/release-install-test.mjs",
-    typecheck: "tsc --noEmit"
-  },
-  dependencies: {
-    "@lancedb/lancedb": "0.31.0",
-    "ipaddr.js": "2.2.0",
-    yaml: "^2.9.0",
-    zod: "^4.4.3"
-  },
-  overrides: {
-    sharp: "0.35.3",
-    tar: "7.5.22"
-  },
-  devDependencies: {
-    "@playwright/test": "^1.61.1",
-    "@types/express": "^5.0.6",
-    "@types/node": "^26.1.1",
-    esbuild: "^0.28.1",
-    typescript: "^7.0.2",
-    vitest: "^4.1.10"
-  }
-};
-
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_VERSIONS = Object.freeze({
-  extension: package_default.echoesVersions.extension,
-  server: package_default.echoesVersions.server
-});
-var ECHOES_BUILD_INFO = {
-  appVersion: ECHOES_VERSIONS.extension,
-  apiProtocolVersion: API_PROTOCOL_VERSION,
-  service: "echoes-memory"
-};
-var ECHOES_SERVER_BUILD_INFO = {
-  appVersion: ECHOES_VERSIONS.server,
-  apiProtocolVersion: API_PROTOCOL_VERSION,
-  service: "echoes-memory"
-};
+var ECHOES_BUILD_INFO = { appVersion: "2.0.1", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
@@ -16016,6 +15953,11 @@ function validateMemoryValues(columns, rawValues, options = {}) {
 var SETTINGS_KEY = "echoes_memory_system";
 var DEFAULT_TEMPLATE_ID = "echoes_default_template";
 var DEFAULT_STATUS_TEMPLATE_ID = "echoes_default_status_template";
+function storedSettingsFormatVersion() {
+  const stored = SillyTavern.getContext().extensionSettings[SETTINGS_KEY];
+  if (!stored || typeof stored !== "object") return 2;
+  return Number.isInteger(stored.formatVersion) ? Number(stored.formatVersion) : 1;
+}
 var LEGACY_MAIN_PROMPT = `\u4F60\u662F\u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6\u7EF4\u62A4\u5668\u3002\u4F60\u7684\u552F\u4E00\u4EFB\u52A1\u662F\u6839\u636E\u5F53\u524D\u8868\u683C\u548C\u65B0\u589E\u5BF9\u8BDD\uFF0C\u751F\u6210\u53EF\u9760\u7684\u589E\u91CF\u8BB0\u5FC6\u64CD\u4F5C\u3002
 
 \u4E25\u683C\u7EA6\u675F\uFF1A
@@ -16815,7 +16757,9 @@ var workflowConfigSchema = external_exports.object({
 }).strict();
 var echoesSettingsV2Schema = external_exports.object({
   formatVersion: external_exports.literal(2),
-  generationGroups: external_exports.array(generationEndpointGroupSchema).max(100),
+  generationGroups: external_exports.array(generationEndpointGroupSchema.safeExtend({
+    endpoints: external_exports.array(generationEndpointSchema).max(10)
+  })).max(100),
   generationWorkflows: external_exports.object({
     extraction: workflowConfigSchema,
     summary: workflowConfigSchema,
@@ -16833,8 +16777,12 @@ var echoesSettingsV2Schema = external_exports.object({
   }).strict(),
   retrieval: external_exports.object({
     failoverPolicy: failoverPolicySchema,
-    embeddingGroups: external_exports.array(embeddingEndpointGroupSchema).max(100),
-    rerankSets: external_exports.array(rerankEndpointSetSchema).max(100),
+    embeddingGroups: external_exports.array(embeddingEndpointGroupSchema.safeExtend({
+      endpoints: external_exports.array(retrievalEndpointSchema).max(10)
+    })).max(100),
+    rerankSets: external_exports.array(rerankEndpointSetSchema.safeExtend({
+      endpoints: external_exports.array(retrievalEndpointSchema).max(10)
+    })).max(100),
     query: external_exports.object({
       vectorEnabled: external_exports.boolean(),
       bm25Enabled: external_exports.boolean(),
@@ -17316,6 +17264,23 @@ var WorldbookWriteCoordinator = class {
 var worldbookWriteCoordinator = new WorldbookWriteCoordinator();
 
 // src/extension/worldbook/summary-worldbook.ts
+function summaryMigrationFingerprint(state) {
+  return JSON.stringify({
+    namespace: state.catalog.namespaceId,
+    collection: state.catalog.retrievalCollectionId,
+    pendingDeletes: state.catalog.pendingRetrievalDeletes,
+    slices: state.slices.map((s) => [
+      s.id,
+      s.timestamp,
+      s.title,
+      s.content,
+      s.tags,
+      s.batch.id,
+      s.batch.revision,
+      s.batch.state === "stale"
+    ])
+  });
+}
 function helper() {
   if (!window.TavernHelper) throw new Error("Echoes requires TavernHelper for summary storage.");
   return window.TavernHelper;
@@ -17609,6 +17574,40 @@ var SummaryWorldbookStore = class {
         };
       }));
       return this.inspect(worldbookName);
+    });
+  }
+  activateRetrievalMigration(expected, collectionId, embeddingSpaceId, signal) {
+    return this.serialize(expected.worldbookName, async () => {
+      signal.throwIfAborted();
+      await helper().updateWorldbookWith(expected.worldbookName, (entries) => {
+        signal.throwIfAborted();
+        const current = readState(expected.worldbookName, entries);
+        if (!current || summaryMigrationFingerprint(current) !== summaryMigrationFingerprint(expected)) {
+          throw new Error("\u8FC1\u79FB\u671F\u95F4\u603B\u7ED3\u5185\u5BB9\u6216\u7ED1\u5B9A\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u8BD5\u8FC1\u79FB\u3002");
+        }
+        if (SillyTavern.getContext().chatId !== current.catalog.chatId || helper().getChatWorldbookName("current") !== expected.worldbookName) {
+          throw new Error("\u8FC1\u79FB\u671F\u95F4\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u539F\u7D22\u5F15\u7ED1\u5B9A\u4FDD\u6301\u4E0D\u53D8\u3002");
+        }
+        const catalog = summaryCatalogSchema.parse({
+          ...current.catalog,
+          retrievalCollectionId: collectionId,
+          retrievalEmbeddingSpaceId: embeddingSpaceId,
+          pendingRetrievalDeletes: [],
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+        });
+        return entries.map((entry) => {
+          const item = metadata(entry);
+          if (item?.kind === "summary_catalog") return { ...entry, ...catalogEntry(catalog) };
+          if (item?.kind === "summary_slice" && item.batch.state !== "stale") {
+            return { ...entry, extra: { ...entry.extra, echoes: {
+              ...item,
+              batch: { ...item.batch, state: "ready", updatedAt: catalog.updatedAt }
+            } } };
+          }
+          return entry;
+        });
+      });
+      return this.inspect(expected.worldbookName);
     });
   }
   markStaleFrom(worldbookName, batchNumber) {
@@ -18544,7 +18543,7 @@ var SummaryCoordinator = class {
     this.controls.set(chatId, control);
     const operation = work(control.signal).catch((error51) => {
       this.rerunAutomatic.delete(chatId);
-      if (control.signal.aborted) return null;
+      if (control.signal.aborted) throw error51;
       this.pausedAutomatic.add(chatId);
       throw error51;
     }).finally(() => {
@@ -18557,22 +18556,33 @@ var SummaryCoordinator = class {
   async trackedJob(chatId, start, signal) {
     signal.throwIfAborted();
     let job;
-    let cancellationSent = false;
+    let cancellation;
     const cancel = () => {
-      if (!job || cancellationSent || TERMINAL_STATES.has(job.status)) return;
-      cancellationSent = true;
-      void echoesApi.cancelJob(job.id).catch((error51) => {
-        console.error("[Echoes] Failed to cancel summary job.", error51);
+      if (!job || cancellation || TERMINAL_STATES.has(job.status)) return;
+      cancellation = echoesApi.cancelJob(job.id).then((result) => {
+        if (!result.cancelled) throw new Error("\u540E\u53F0\u672A\u786E\u8BA4\u53D6\u6D88\u603B\u7ED3\u8BF7\u6C42\uFF0C\u8BF7\u68C0\u67E5\u4EFB\u52A1\u65E5\u5FD7\u3002");
       });
+      void cancellation.catch(() => void 0);
     };
     signal.addEventListener("abort", cancel, { once: true });
+    const accepted = start().then((value) => {
+      job = value;
+      if (signal.aborted) cancel();
+      return value;
+    });
     try {
-      const accepted = start().then((value) => {
-        job = value;
-        if (signal.aborted) cancel();
-        return value;
-      });
       return await waitForJob(await abortable(accepted, signal), signal);
+    } catch (error51) {
+      if (signal.aborted) {
+        try {
+          await accepted;
+          cancel();
+          await cancellation;
+        } catch (cancelError) {
+          throw new Error("\u540E\u53F0\u53D6\u6D88\u5931\u8D25\uFF1A" + (cancelError instanceof Error ? cancelError.message : String(cancelError)));
+        }
+      }
+      throw error51;
     } finally {
       signal.removeEventListener("abort", cancel);
     }
@@ -18616,6 +18626,7 @@ var SummaryCoordinator = class {
   async setAutoRun(enabled) {
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) throw new Error("Open a SillyTavern chat before changing summary automation.");
+    const running = this.activeRuns.get(chatId);
     if (!enabled) {
       this.pausedAutomatic.add(chatId);
       this.rerunAutomatic.delete(chatId);
@@ -18624,6 +18635,11 @@ var SummaryCoordinator = class {
     const state = await this.load();
     if (state.catalog.chatId !== chatId) throw new Error("The active chat changed.");
     const updated = await this.store.setAutoRun(state.worldbookName, enabled);
+    if (!enabled) {
+      await running?.catch((error51) => {
+        if (!(error51 instanceof Error) || error51.name !== "AbortError") throw error51;
+      });
+    }
     if (enabled) this.pausedAutomatic.delete(chatId);
     return updated;
   }
@@ -18748,6 +18764,21 @@ var SummaryCoordinator = class {
       defaultDecision
     );
   }
+  rebuildBatches(batchNumbers, decide = defaultDecision) {
+    const chatId = SillyTavern.getContext().chatId;
+    if (!chatId) return Promise.resolve(null);
+    if (this.activeRuns.has(chatId)) return Promise.reject(new Error("This chat already has a summary task running."));
+    return this.startRun(chatId, async (signal) => {
+      let state = null;
+      for (const batchNumber of [...new Set(batchNumbers)]) {
+        signal.throwIfAborted();
+        if (SillyTavern.getContext().chatId !== chatId) throw new DOMException("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u6279\u91CF\u603B\u7ED3\u5DF2\u505C\u6B62\u3002", "AbortError");
+        state = await this.performRebuild(chatId, batchNumber, decide, signal);
+        if (!state) break;
+      }
+      return state;
+    }, decide);
+  }
   async performRebuild(lockedChatId, batchNumber, decide, signal) {
     if (SillyTavern.getContext().chatId !== lockedChatId) return null;
     const state = await this.load();
@@ -18806,18 +18837,26 @@ var SummaryCoordinator = class {
   }
   async repairIndex(decide = defaultDecision) {
     const chatId = SillyTavern.getContext().chatId;
+    if (!chatId) throw new Error("\u8BF7\u5148\u9009\u62E9\u804A\u5929\u3002");
+    if (this.activeRuns.has(chatId)) throw new Error("\u8BF7\u5148\u505C\u6B62\u5F53\u524D\u603B\u7ED3\u4EFB\u52A1\u3002");
+    return await this.startRun(chatId, (signal) => this.performRepairIndex(decide, signal), decide);
+  }
+  async performRepairIndex(decide, signal) {
+    const chatId = SillyTavern.getContext().chatId;
     let state = await this.load();
     if (chatId && state.catalog.chatId === chatId) this.pausedAutomatic.delete(chatId);
     const active = state.slices.filter((slice) => slice.batch.state !== "stale");
     if (active.length === 0 && state.catalog.pendingRetrievalDeletes.length > 0) {
-      return this.syncSlices(state, [], state.catalog.pendingRetrievalDeletes, decide);
+      return this.syncSlices(state, [], state.catalog.pendingRetrievalDeletes, decide, signal);
     }
     for (let offset = 0; offset < active.length; offset += 50) {
+      signal.throwIfAborted();
       state = await this.syncSlices(
         state,
         active.slice(offset, offset + 50),
         offset === 0 ? state.catalog.pendingRetrievalDeletes : [],
-        decide
+        decide,
+        signal
       );
     }
     await this.compression.reconcile(state);
@@ -18925,9 +18964,10 @@ var SummaryCoordinator = class {
       return state2;
     }
     const previousCollectionId = initialState.catalog.retrievalCollectionId;
-    let state = await this.ensureCollection(initialState, embeddingGroup.id);
+    let state = await this.ensureCollection(initialState, embeddingGroup.id, decide, signal);
     const collectionId = state.catalog.retrievalCollectionId;
     const collectionChanged = collectionId !== previousCollectionId;
+    if (collectionChanged && previousCollectionId) return state;
     const targetSlices = collectionChanged ? state.slices.filter((slice) => slice.batch.state !== "stale") : slices;
     if (targetSlices.length > 100 || deletedSliceIds.length > 1e3) {
       const batches = Math.max(
@@ -18986,10 +19026,17 @@ var SummaryCoordinator = class {
     }
     return state;
   }
-  async ensureCollection(state, embeddingGroupId) {
+  async ensureCollection(state, embeddingGroupId, decide = defaultDecision, signal) {
     const group = getSettings().retrieval.embeddingGroups.find((candidate) => candidate.id === embeddingGroupId);
     if (state.catalog.retrievalCollectionId && state.catalog.retrievalEmbeddingSpaceId === group.embeddingSpaceId) {
+      const existing = (await echoesApi.listRetrievalCollections()).find((c) => c.collection.id === state.catalog.retrievalCollectionId);
+      if (existing && (existing.collection.dimensions !== group.dimensions || existing.collection.embeddingSpaceId !== group.embeddingSpaceId)) {
+        throw new Error("\u5411\u91CF\u7A7A\u95F4\u6216\u7EF4\u5EA6\u4E0E\u5DF2\u6709\u603B\u7ED3\u96C6\u5408\u4E0D\u4E00\u81F4\uFF0C\u8BF7\u521B\u5EFA\u65B0\u5411\u91CF\u7A7A\u95F4\u5E76\u8FC1\u79FB\u3002");
+      }
       return state;
+    }
+    if (state.catalog.retrievalCollectionId) {
+      return this.migrateState(state, group, decide, signal ?? new AbortController().signal);
     }
     const digest = await hashIdentifier2(`${state.catalog.namespaceId}\0${group.embeddingSpaceId}`);
     const collectionId = `summary_${digest.slice(0, 48)}`;
@@ -19009,6 +19056,78 @@ var SummaryCoordinator = class {
       }
     }
     return this.store.setRetrievalBinding(state.worldbookName, collectionId, group.embeddingSpaceId);
+  }
+  migrateEmbeddingSpace(groupId) {
+    const chatId = SillyTavern.getContext().chatId;
+    if (!chatId) return Promise.reject(new Error("\u8BF7\u5148\u9009\u62E9\u804A\u5929\u3002"));
+    if (this.activeRuns.has(chatId)) return Promise.reject(new Error("\u8BF7\u5148\u505C\u6B62\u5F53\u524D\u603B\u7ED3\u4EFB\u52A1\u3002"));
+    const group = getSettings().retrieval.embeddingGroups.find((g) => g.id === groupId);
+    if (!group?.endpoints.some((e) => e.enabled)) return Promise.reject(new Error("\u76EE\u6807\u5411\u91CF\u7EC4\u6CA1\u6709\u53EF\u7528\u7AEF\u70B9\u3002"));
+    return this.startRun(chatId, async (signal) => {
+      const state = await this.load();
+      if (state.catalog.chatId !== chatId) throw new Error("\u5F53\u524D\u804A\u5929\u5DF2\u53D8\u5316\u3002");
+      return this.migrateState(state, structuredClone(group), defaultDecision, signal);
+    }, defaultDecision);
+  }
+  async migrateState(state, group, decide, signal) {
+    const guard = () => {
+      signal.throwIfAborted();
+      if (SillyTavern.getContext().chatId !== state.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) {
+        throw new DOMException("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u8FC1\u79FB\u5DF2\u505C\u6B62\u3002", "AbortError");
+      }
+      const latest = getSettings().retrieval.embeddingGroups.find((g) => g.id === group.id);
+      if (JSON.stringify(latest) !== JSON.stringify(group)) throw new Error("\u8FC1\u79FB\u671F\u95F4\u76EE\u6807\u5411\u91CF\u914D\u7F6E\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u8BD5\u3002");
+    };
+    guard();
+    const digest = await hashIdentifier2(`${state.catalog.namespaceId}\0${group.embeddingSpaceId}\0${group.dimensions}\0${summaryMigrationFingerprint(state)}`);
+    const collectionId = `summary_${digest.slice(0, 48)}`;
+    const existing = (await echoesApi.listRetrievalCollections()).find((c) => c.collection.id === collectionId);
+    if (existing && (existing.collection.dimensions !== group.dimensions || existing.collection.embeddingSpaceId !== group.embeddingSpaceId)) {
+      throw new Error("\u76EE\u6807\u96C6\u5408\u7684\u5411\u91CF\u7A7A\u95F4\u6216\u7EF4\u5EA6\u4E0D\u4E00\u81F4\u3002");
+    }
+    if (!existing) await echoesApi.createRetrievalCollection({
+      id: collectionId,
+      name: `\u603B\u7ED3\u8FC1\u79FB - ${state.catalog.chatId}`.slice(0, 120),
+      description: "Echoes summary migration",
+      embeddingSpaceId: group.embeddingSpaceId,
+      dimensions: group.dimensions
+    });
+    const slices = state.slices.filter((s) => s.batch.state !== "stale");
+    const settings = getSettings();
+    for (let offset = 0; offset < slices.length; offset += 50) {
+      guard();
+      const batch = slices.slice(offset, offset + 50);
+      const documents = await Promise.all(batch.map((s) => summaryRetrievalDocument(collectionId, s, state.catalog.chatId)));
+      let resumeAfterEndpointId;
+      while (true) {
+        guard();
+        const result = (await this.trackedJob(state.catalog.chatId, () => echoesApi.syncRetrievalDocuments({
+          documents,
+          deleteDocumentIds: [],
+          embeddingGroup: group,
+          embeddingBatchSize: settings.summary.embeddingBatchSize,
+          failoverPolicy: settings.retrieval.failoverPolicy,
+          ...resumeAfterEndpointId ? { resumeAfterEndpointId } : {}
+        }), signal)).result;
+        if (result.decisionRequired) {
+          if (!await abortable(decide(result.decisionRequired), signal)) throw new DOMException("\u8FC1\u79FB\u5DF2\u505C\u6B62\uFF0C\u539F\u7D22\u5F15\u7ED1\u5B9A\u4FDD\u6301\u4E0D\u53D8\u3002", "AbortError");
+          resumeAfterEndpointId = result.decisionRequired.failedEndpointId;
+          continue;
+        }
+        if (result.failed || result.pending || result.ambiguous) throw new Error("\u76EE\u6807\u5411\u91CF\u5C1A\u672A\u5168\u90E8\u5C31\u7EEA\uFF0C\u539F\u7D22\u5F15\u7ED1\u5B9A\u4FDD\u6301\u4E0D\u53D8\u3002\u53EF\u91CD\u8BD5\u8FC1\u79FB\u3002");
+        break;
+      }
+      const actual = await echoesApi.retrievalDocumentStatus(documents.map((d) => d.documentId));
+      const byId = new Map(actual.documents.map((d) => [d.documentId, d]));
+      for (const [index, slice] of batch.entries()) {
+        const d = byId.get(documents[index].documentId);
+        if (d?.vectorState !== "ready" || d.contentHash !== await summaryRetrievalContentHash(slice)) {
+          throw new Error("\u76EE\u6807\u5411\u91CF\u6821\u9A8C\u672A\u901A\u8FC7\uFF0C\u539F\u7D22\u5F15\u7ED1\u5B9A\u4FDD\u6301\u4E0D\u53D8\u3002");
+        }
+      }
+    }
+    guard();
+    return this.store.activateRetrievalMigration(state, collectionId, group.embeddingSpaceId, signal);
   }
 };
 
@@ -26791,7 +26910,9 @@ function fields(spec, trackChanges = true) {
       control.rows = field.rows ?? 6;
       control.spellcheck = false;
     }
-    control.value = type === "json" ? JSON.stringify(field.value ?? null, null, 2) : String(field.value ?? "");
+    if (!(control instanceof HTMLSelectElement) || field.value !== void 0) {
+      control.value = type === "json" ? JSON.stringify(field.value ?? null, null, 2) : String(field.value ?? "");
+    }
     if (field.readonly) {
       if (control instanceof HTMLSelectElement) control.disabled = true;
       else control.readOnly = true;
@@ -27651,6 +27772,7 @@ async function memoryView(ctx) {
               key: "source",
               label: "\u6765\u6E90\u4E16\u754C\u4E66",
               type: "select",
+              required: true,
               options: store.listWorldbooks().filter((x) => x !== state.worldbookName).map((x) => [x, x])
             },
             {
@@ -27664,13 +27786,13 @@ async function memoryView(ctx) {
               ]
             }
           ]);
-          let source = await store.inspect(
-            choose.controls.get("source").value
-          );
-          const chosen = new Set(source.catalog.types.map((t) => t.id));
+          let source;
+          let loadedName = "";
+          let request = 0;
+          const chosen = /* @__PURE__ */ new Set();
           const host2 = el("div", "ew-list");
           const draw2 = () => host2.replaceChildren(
-            ...source.catalog.types.map(
+            ...(source?.catalog.types ?? []).map(
               (t) => el(
                 "label",
                 "ew-toggle",
@@ -27683,22 +27805,13 @@ async function memoryView(ctx) {
               )
             )
           );
-          draw2();
-          choose.controls.get("source").addEventListener(
-            "change",
-            () => void store.inspect(choose.controls.get("source").value).then((s) => {
-              source = s;
-              chosen.clear();
-              s.catalog.types.forEach((t) => chosen.add(t.id));
-              draw2();
-            })
-          );
-          dialog(
+          const modal = dialog(
             "\u8FC1\u79FB\u8BB0\u5FC6\u7C7B\u578B",
             el("div", "ew-page-content", choose.node, host2),
             async () => {
               ctx.guard();
               const v = choose.values();
+              if (loadedName !== v.source) throw new Error("\u8BF7\u7B49\u5F85\u6765\u6E90\u4E16\u754C\u4E66\u8BFB\u53D6\u5B8C\u6210\u3002");
               if (!chosen.size) throw new Error("\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u7C7B\u578B\u3002");
               if (v.policy === "overwrite" && !confirm("\u8986\u76D6\u4F1A\u66FF\u6362\u76EE\u6807\u8868\u5DF2\u6709\u8BB0\u5F55\uFF0C\u7EE7\u7EED\uFF1F"))
                 return;
@@ -27706,6 +27819,30 @@ async function memoryView(ctx) {
               await ctx.refresh();
             }
           );
+          const submit = modal.querySelector("footer button.primary");
+          const loadSource = async () => {
+            const sequence2 = ++request;
+            const name = choose.controls.get("source").value;
+            loadedName = "";
+            chosen.clear();
+            submit.disabled = true;
+            host2.replaceChildren(empty(name ? "\u6B63\u5728\u8BFB\u53D6\u6765\u6E90\u4E16\u754C\u4E66\u2026" : "\u6CA1\u6709\u53EF\u8FC1\u79FB\u7684\u5176\u4ED6\u4E16\u754C\u4E66"));
+            if (!name) return;
+            try {
+              const result = await store.inspect(name);
+              if (sequence2 !== request || !modal.isConnected || ctx.signal.aborted) return;
+              source = result;
+              loadedName = name;
+              result.catalog.types.forEach((t) => chosen.add(t.id));
+              draw2();
+              submit.disabled = result.catalog.types.length === 0;
+            } catch (error51) {
+              if (sequence2 !== request || !modal.isConnected) return;
+              host2.replaceChildren(empty(error51 instanceof Error ? error51.message : String(error51)));
+            }
+          };
+          choose.controls.get("source").addEventListener("change", () => void loadSource());
+          void loadSource();
         })
       ),
       table(
@@ -30357,20 +30494,10 @@ async function summaryView(ctx) {
         throw new Error("\u5BFC\u5165\u6279\u6B21\u6CA1\u6709\u539F\u804A\u5929\u6D88\u606F\uFF0C\u4E0D\u80FD\u91CD\u65B0\u603B\u7ED3\u3002");
       if (!confirm("\u91CD\u65B0\u603B\u7ED3 " + batches.length + " \u4E2A\u6279\u6B21\u4F1A\u8C03\u7528\u751F\u6210\u6A21\u578B\uFF0C\u7EE7\u7EED\uFF1F"))
         return;
-      let stopped = false;
       await ctx.run(
         "\u6279\u91CF\u91CD\u65B0\u603B\u7ED3",
-        async () => {
-          for (const b of batches) {
-            if (stopped) break;
-            ctx.guard();
-            await coordinator.rebuildBatch(b.batchNumber);
-          }
-        },
-        async () => {
-          stopped = true;
-          await coordinator.stop();
-        }
+        () => coordinator.rebuildBatches(batches.map((b) => b.batchNumber)),
+        () => coordinator.stop()
       );
     } else if (action === "restore") {
       await coordinator.compression.restoreBatch(state, batchIds);
@@ -30555,7 +30682,7 @@ async function summaryView(ctx) {
         button(
           "\u4FEE\u590D\u7D22\u5F15",
           "screwdriver-wrench",
-          () => ctx.run("\u4FEE\u590D\u603B\u7ED3\u7D22\u5F15", () => coordinator.repairIndex()).then(() => ctx.refresh())
+          () => ctx.run("\u4FEE\u590D\u603B\u7ED3\u7D22\u5F15", () => coordinator.repairIndex(), () => coordinator.stop()).then(() => ctx.refresh())
         ),
         button(
           "\u751F\u6210\u603B\u7ED3",
@@ -31449,7 +31576,16 @@ async function connectionsView(ctx) {
     page.append(
       section(
         "\u5411\u91CF\u5316\u4E0E\u68C0\u7D22",
-        saveForm(vector, (v) => {
+        saveForm(vector, async (v) => {
+          ctx.guard();
+          if (ctx.chatId && v.embedding && v.embedding !== getSettings().summary.embeddingGroupId) {
+            const state = await ctx.summary.load();
+            if (state.slices.length || state.catalog.retrievalCollectionId) {
+              if (!confirm("\u5C06\u5F53\u524D\u804A\u5929\u603B\u7ED3\u8FC1\u79FB\u5230\u6240\u9009\u5411\u91CF\u7A7A\u95F4\uFF1F\u5168\u90E8\u6821\u9A8C\u6210\u529F\u540E\u624D\u5207\u6362\u7ED1\u5B9A\uFF0C\u8FC7\u7A0B\u4E2D\u53EF\u505C\u6B62\u3002")) throw new Error("\u672A\u66F4\u6539\u5411\u91CF\u914D\u7F6E\u3002");
+              await ctx.run("\u8FC1\u79FB\u603B\u7ED3\u5411\u91CF\u7A7A\u95F4", () => ctx.summary.migrateEmbeddingSpace(v.embedding), () => ctx.summary.stop());
+              ctx.guard();
+            }
+          }
           const s = getSettings();
           s.summary.embeddingGroupId = v.embedding;
           s.summary.embeddingBatchSize = v.batchSize;
@@ -31561,52 +31697,57 @@ async function connectionsView(ctx) {
     else s.retrieval.rerankSets = replace(s.retrieval.rerankSets);
     saveSettings(s);
   };
-  const editGroup = (group) => editDialog(
-    group ? "\u7F16\u8F91\u7AEF\u70B9\u7EC4" : "\u65B0\u589E\u7AEF\u70B9\u7EC4",
-    [
-      { key: "name", label: "\u7EC4\u540D\u79F0", value: group?.name, required: true },
-      ...kind === "embedding" ? [
-        {
-          key: "embeddingSpaceId",
-          label: "\u5411\u91CF\u7A7A\u95F4 ID",
-          value: group?.embeddingSpaceId ?? id("space"),
-          required: true,
-          readonly: !!group
-        },
-        {
-          key: "dimensions",
-          label: "\u5411\u91CF\u7EF4\u5EA6",
-          type: "number",
-          value: group?.dimensions ?? 1024,
-          min: 1,
-          max: 65536,
-          required: true
-        },
-        {
-          key: "requestDimensions",
-          label: "\u5411\u6A21\u578B\u53D1\u9001\u7EF4\u5EA6\u53C2\u6570",
-          type: "checkbox",
-          value: group?.requestDimensions ?? false
-        }
-      ] : []
-    ],
-    async (v) => {
-      update({
-        ...group,
-        id: group?.id ?? id("group"),
-        name: v.name,
-        endpoints: group?.endpoints ?? [],
-        ...kind === "embedding" ? {
-          embeddingSpaceId: v.embeddingSpaceId,
-          dimensions: v.dimensions,
-          requestDimensions: v.requestDimensions
-        } : {}
-      });
-      await ctx.refresh();
-    }
-  );
+  const editGroup = async (group, copy = false) => {
+    const inUse = kind === "embedding" && group && !copy ? (await echoesApi.listRetrievalCollections()).some((c) => c.collection.embeddingSpaceId === group.embeddingSpaceId) : false;
+    return editDialog(
+      copy ? "\u521B\u5EFA\u65B0\u5411\u91CF\u7A7A\u95F4" : group ? "\u7F16\u8F91\u7AEF\u70B9\u7EC4" : "\u65B0\u589E\u7AEF\u70B9\u7EC4",
+      [
+        { key: "name", label: "\u7EC4\u540D\u79F0", value: copy ? group.name + " \u526F\u672C" : group?.name, required: true },
+        ...kind === "embedding" ? [
+          {
+            key: "embeddingSpaceId",
+            label: "\u5411\u91CF\u7A7A\u95F4 ID",
+            value: copy ? id("space") : group?.embeddingSpaceId ?? id("space"),
+            required: true,
+            readonly: !!group && !copy
+          },
+          {
+            key: "dimensions",
+            label: "\u5411\u91CF\u7EF4\u5EA6",
+            type: "number",
+            value: group?.dimensions ?? 1024,
+            readonly: Boolean(inUse),
+            min: 1,
+            max: 65536,
+            required: true
+          },
+          {
+            key: "requestDimensions",
+            label: "\u5411\u6A21\u578B\u53D1\u9001\u7EF4\u5EA6\u53C2\u6570",
+            type: "checkbox",
+            value: group?.requestDimensions ?? false
+          }
+        ] : []
+      ],
+      async (v) => {
+        update({
+          ...group,
+          id: copy ? id("group") : group?.id ?? id("group"),
+          name: v.name,
+          endpoints: group?.endpoints ?? [],
+          ...kind === "embedding" ? {
+            embeddingSpaceId: v.embeddingSpaceId,
+            dimensions: v.dimensions,
+            requestDimensions: v.requestDimensions
+          } : {}
+        });
+        await ctx.refresh();
+      }
+    );
+  };
   const editEndpoint = async (group, current) => {
     const credentials = await echoesApi.listCredentials();
+    const inUse = kind === "embedding" && (await echoesApi.listRetrievalCollections()).some((c2) => c2.collection.embeddingSpaceId === group.embeddingSpaceId);
     const c = current;
     const f = fields([
       { key: "name", label: "\u7AEF\u70B9\u540D\u79F0", value: current?.name, required: true },
@@ -31620,6 +31761,7 @@ async function connectionsView(ctx) {
         key: "model",
         label: "\u6A21\u578B\u540D\u79F0",
         value: current?.model ?? "",
+        readonly: Boolean(inUse && current),
         required: true
       },
       {
@@ -31706,6 +31848,9 @@ async function connectionsView(ctx) {
       async () => {
         const v = f.values();
         const { credentialId, ...rest } = v;
+        if (inUse && group.endpoints.some((e) => e.model !== rest.model)) {
+          throw new Error("\u5DF2\u6709\u96C6\u5408\u6B63\u5728\u4F7F\u7528\u6B64\u5411\u91CF\u7A7A\u95F4\uFF1B\u66F4\u6362\u6A21\u578B\u8BF7\u5148\u521B\u5EFA\u65B0\u7A7A\u95F4\u526F\u672C\uFF0C\u518D\u8FC1\u79FB\u603B\u7ED3\u3002");
+        }
         const endpoint = {
           ...rest,
           id: current?.id ?? id("endpoint"),
@@ -31737,6 +31882,7 @@ async function connectionsView(ctx) {
           kind === "embedding" ? badge((group.dimensions ?? 0) + " \u7EF4 \xB7 " + group.embeddingSpaceId) : badge(endpoints.length + " \u4E2A\u7AEF\u70B9"),
           button("\u6DFB\u52A0\u7AEF\u70B9", "plus", () => editEndpoint(group)),
           tool("\u7F16\u8F91\u7EC4", "pen", () => editGroup(group)),
+          kind === "embedding" ? button("\u521B\u5EFA\u65B0\u7A7A\u95F4\u526F\u672C", "copy", () => editGroup(group, true)) : null,
           tool(
             "\u5220\u9664\u7EC4",
             "trash",
@@ -31828,7 +31974,7 @@ async function connectionsView(ctx) {
               )
             )
           ])
-        ) : empty("\u6B64\u7EC4\u8FD8\u6CA1\u6709\u7AEF\u70B9")
+        ) : empty("\u672A\u914D\u7F6E\u7AEF\u70B9")
       )
     );
   }
@@ -32476,6 +32622,61 @@ var EchoesBackupManager = class {
 };
 function serializeBackup(backup) {
   return JSON.stringify(backup, null, 2);
+}
+
+// src/extension/maintenance/diagnostics.ts
+init_client();
+async function inspectWorldbookDiagnostics() {
+  const worldbook = {};
+  const errors = [];
+  const helper6 = window.TavernHelper;
+  const name = helper6?.getChatWorldbookName("current");
+  if (!name || !helper6) return { worldbook, errors: ["\u5F53\u524D\u6CA1\u6709\u53EF\u68C0\u67E5\u7684\u804A\u5929\u4E16\u754C\u4E66\u3002"] };
+  let entries;
+  try {
+    entries = await helper6.getWorldbook(name);
+    worldbook.formatVersions = entries.flatMap((entry) => {
+      const data = entry.extra?.echoes;
+      if (!["summary_catalog", "summary_slice"].includes(String(data?.kind))) return [];
+      const version2 = data?.catalog?.formatVersion ?? data?.formatVersion ?? data?.version;
+      return Number.isInteger(version2) ? [Number(version2)] : [];
+    });
+    worldbook.staleInjectionCount = entries.filter((entry) => {
+      const data = entry.extra?.echoes;
+      const time3 = Date.parse(String(data?.updatedAt ?? data?.createdAt ?? ""));
+      return entry.enabled && ["retrieval_injection", "status_injection"].includes(data?.kind) && (!Number.isFinite(time3) || Date.now() - time3 > 3e5);
+    }).length;
+  } catch (error51) {
+    return { worldbook, errors: ["\u4E16\u754C\u4E66\u8BFB\u53D6\u5931\u8D25\uFF1A" + String(error51)] };
+  }
+  if (!entries.some((entry) => entry.extra?.echoes?.kind === "summary_catalog")) {
+    errors.push("\u5F53\u524D\u4E16\u754C\u4E66\u6CA1\u6709\u603B\u7ED3\u76EE\u5F55\uFF0C\u672A\u68C0\u67E5\u603B\u7ED3\u7D22\u5F15\u3002");
+    return { worldbook, errors };
+  }
+  try {
+    const state = await new SummaryWorldbookStore().inspect(name);
+    const slices = state.slices.filter((s) => s.batch.state !== "stale");
+    let mismatches = state.catalog.pendingRetrievalDeletes.length;
+    const collection = state.catalog.retrievalCollectionId;
+    if (!collection) mismatches += slices.length;
+    else for (let offset = 0; offset < slices.length; offset += 1e3) {
+      const expected = await Promise.all(slices.slice(offset, offset + 1e3).map(async (slice) => ({
+        id: await summaryRetrievalDocumentId(collection, slice.id),
+        hash: await summaryRetrievalContentHash(slice)
+      })));
+      const actual = await echoesApi.retrievalDocumentStatus(expected.map((item) => item.id));
+      const byId = new Map(actual.documents.map((item) => [item.documentId, item]));
+      mismatches += expected.filter((item) => {
+        const document2 = byId.get(item.id);
+        return document2?.contentHash !== item.hash || document2.vectorState !== "ready";
+      }).length;
+    }
+    worldbook.summaryIndexMismatches = mismatches;
+  } catch (error51) {
+    errors.push("\u603B\u7ED3\u7D22\u5F15\u68C0\u67E5\u5931\u8D25\uFF1A" + String(error51));
+  }
+  if (helper6.getChatWorldbookName("current") !== name) throw new Error("\u68C0\u67E5\u671F\u95F4\u4E16\u754C\u4E66\u5DF2\u5207\u6362\uFF0C\u8BF7\u91CD\u65B0\u8BCA\u65AD\u3002");
+  return { worldbook, errors };
 }
 
 // src/extension/workbench/logs.ts
@@ -33335,6 +33536,9 @@ async function diagnosticsView(ctx) {
   let checks = [];
   const selected = /* @__PURE__ */ new Set();
   const run = async () => {
+    ctx.guard();
+    const inspected = await inspectWorldbookDiagnostics();
+    ctx.guard();
     const helper6 = window.TavernHelper;
     const settings = getSettings();
     const endpoints = [
@@ -33347,7 +33551,8 @@ async function diagnosticsView(ctx) {
       () => echoesApi.startDiagnostics({
         clientProtocol: ECHOES_BUILD_INFO.apiProtocolVersion,
         clientVersion: ECHOES_BUILD_INFO.appVersion,
-        settingsFormatVersion: settings.formatVersion,
+        settingsFormatVersion: storedSettingsFormatVersion(),
+        worldbook: inspected.worldbook,
         tavernHelper: Object.fromEntries(
           [
             "getWorldbook",
@@ -33366,6 +33571,7 @@ async function diagnosticsView(ctx) {
     checks = result.checks;
     selected.clear();
     host.replaceChildren(
+      ...inspected.errors.map((message) => el("p", "warning", message)),
       table(
         ["\u9009\u62E9", "\u68C0\u67E5\u9879", "\u72B6\u6001", "\u8BE6\u60C5"],
         checks.map((c) => [
@@ -33407,10 +33613,19 @@ async function diagnosticsView(ctx) {
         const frontend = /* @__PURE__ */ new Set([
           "settings_format",
           "summary_format",
-          "temporary_injections"
+          "temporary_injections",
+          "retrieval_index"
         ]);
         if (selected.has("settings_format")) saveSettings(getSettings());
         if (selected.has("summary_format")) await ctx.summary.checkIntegrity();
+        if (selected.has("retrieval_index")) {
+          await ctx.run("\u4FEE\u590D\u603B\u7ED3\u7D22\u5F15", () => ctx.summary.repairIndex(), () => ctx.summary.stop());
+          const verified = await inspectWorldbookDiagnostics();
+          if (verified.worldbook.summaryIndexMismatches !== 0) {
+            await run();
+            throw new Error(verified.errors.join("\uFF1B") || "\u603B\u7ED3\u7D22\u5F15\u4ECD\u6709\u4E0D\u4E00\u81F4\u9879\uFF0C\u8BF7\u67E5\u770B\u4EFB\u52A1\u65E5\u5FD7\u4E2D\u7684\u5931\u8D25\u539F\u56E0\u3002");
+          }
+        }
         if (selected.has("temporary_injections")) {
           await recallCoordinator.clear();
           await statusCoordinator.clearInjection();
@@ -33657,7 +33872,11 @@ var MemoryPanel = class {
   }
   async checkSummaryAutomation() {
     if (!SillyTavern.getContext().chatId || this.summary.isRunning()) return;
-    await this.summary.runAutomatic();
+    try {
+      await this.summary.runAutomatic();
+    } catch (error51) {
+      if (!(error51 instanceof Error) || error51.name !== "AbortError") notifyError(error51);
+    }
     await this.reload();
   }
   async checkExtractionAutomation() {
@@ -33889,9 +34108,16 @@ var MemoryPanel = class {
                 throw new Error(
                   "\u8BF7\u5148\u5207\u56DE\u6B64\u4EFB\u52A1\u6240\u5C5E\u804A\u5929\uFF0C\u6216\u4ECE\u670D\u52A1\u7AEF\u4EFB\u52A1\u65E5\u5FD7\u4E2D\u53D6\u6D88\u4EFB\u52A1\u3002"
                 );
-              await t.stop?.();
-              t.message = "\u5DF2\u8BF7\u6C42\u505C\u6B62\uFF0C\u7B49\u5F85\u4EFB\u52A1\u7ED3\u675F";
+              t.message = "\u6B63\u5728\u505C\u6B62\uFF0C\u7B49\u5F85\u540E\u53F0\u786E\u8BA4";
               this.updateTasks();
+              try {
+                await t.stop?.();
+              } catch (error51) {
+                t.message = error51 instanceof Error ? error51.message : String(error51);
+                throw error51;
+              } finally {
+                this.updateTasks();
+              }
             },
             "danger"
           ) : null
