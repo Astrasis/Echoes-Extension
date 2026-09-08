@@ -322,7 +322,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "2.0.1", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "2.1.0", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
@@ -14966,7 +14966,7 @@ var memoryRowSourceSchema = external_exports.object({
   messageIds: external_exports.array(external_exports.string().max(240)).max(500).default([]),
   jobId: external_exports.string().max(240).optional(),
   batchId: identifierSchema.optional(),
-  extractionMode: external_exports.enum(["auto", "manual"]).optional()
+  extractionMode: external_exports.enum(["auto", "manual", "cleaning"]).optional()
 });
 var memoryRowInputSchema = external_exports.object({
   dataName: external_exports.string().trim().min(1).max(240),
@@ -15051,7 +15051,7 @@ var generationEndpointGroupSchema = external_exports.object({
 }).superRefine((group, context) => validateEndpointOrder(group.endpoints, context));
 var structuredExtractionBatchSchema = external_exports.object({
   id: identifierSchema,
-  mode: external_exports.enum(["auto", "manual"]),
+  mode: external_exports.enum(["auto", "manual", "cleaning"]),
   startMessageId: external_exports.string().min(1).max(240),
   endMessageId: external_exports.string().min(1).max(240),
   messageIds: external_exports.array(external_exports.string().min(1).max(240)).min(1).max(500),
@@ -15090,7 +15090,8 @@ var extractionRequestSchema = external_exports.object({
   messages: external_exports.array(chatMessageSchema).min(1).max(500),
   generationGroup: generationEndpointGroupSchema,
   failoverPolicy: failoverPolicySchema.default("confirm_ambiguous"),
-  resumeAfterEndpointId: identifierSchema.optional()
+  resumeAfterEndpointId: identifierSchema.optional(),
+  additionalInstructions: external_exports.string().max(2e4).optional()
 }).superRefine((request, context) => {
   const requestMessageIds = request.messages.map((message) => message.id);
   if (JSON.stringify(requestMessageIds) !== JSON.stringify(request.batch.messageIds)) {
@@ -15108,6 +15109,7 @@ var extractionRequestSchema = external_exports.object({
     types: request.types,
     rows: request.rows,
     promptMessages: request.promptMessages,
+    additionalInstructions: request.additionalInstructions,
     messages: request.messages
   }).length;
   if (characterCount > MAX_EXTRACTION_CHARACTERS) {
@@ -15995,7 +15997,7 @@ LANGUAGE REQUIREMENT: You MUST answer in Chinese. Write all generated natural-la
 <input_contract>
 The runtime input provides:
 - activeTypes: available tables, their actual IDs, and column definitions.
-- currentRows: existing records and their actual row IDs.
+- currentRows: existing records and their request-local rowId references. Copy the supplied rowId and typeId together when updating or deleting a record; the application resolves the reference to the stored ID.
 - incrementalMessages: the only source of new evidence for this update.
 - responseShape: the supported operation format.
 
@@ -17247,6 +17249,47 @@ function instantiateStatusProfile(template = DEFAULT_STATUS_TEMPLATE) {
   };
 }
 
+// src/extension/chat-message-index.ts
+function indexedChatMessages() {
+  const seen = /* @__PURE__ */ new Set();
+  return SillyTavern.getContext().chat.flatMap((entry, floor) => {
+    const content = String(entry.mes ?? entry.message ?? "").trim();
+    if (!content) return [];
+    const rawId = String(entry.message_id ?? entry.id ?? floor);
+    let id2 = seen.has(rawId) ? `${rawId}:${floor}` : rawId;
+    while (seen.has(id2)) id2 += `:${floor}`;
+    seen.add(id2);
+    return [{ floor, message: {
+      id: id2,
+      role: entry.is_user === true || entry.role === "user" ? "user" : "assistant",
+      content
+    } }];
+  });
+}
+function checkpointFloor(messageId) {
+  return indexedChatMessages().find((entry) => entry.message.id === messageId)?.floor ?? -1;
+}
+function checkpointMessageAtFloor(floor) {
+  if (floor === -1) return null;
+  if (!Number.isInteger(floor) || floor < 0 || floor >= SillyTavern.getContext().chat.length) {
+    throw new Error("\u68C0\u67E5\u70B9\u697C\u5C42\u8D85\u51FA\u5F53\u524D\u804A\u5929\u8303\u56F4\u3002");
+  }
+  const entry = indexedChatMessages().find((entry2) => entry2.floor === floor);
+  if (!entry) throw new Error("\u8BE5\u697C\u5C42\u6CA1\u6709\u6D88\u606F\u6B63\u6587\uFF0C\u8BF7\u9009\u62E9\u6709\u5185\u5BB9\u7684\u697C\u5C42\u3002");
+  return entry.message.id;
+}
+function messageRangeByFloor(start, end) {
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end >= SillyTavern.getContext().chat.length) throw new Error("\u697C\u5C42\u8303\u56F4\u65E0\u6548\u6216\u8D85\u51FA\u5F53\u524D\u804A\u5929\u8303\u56F4\u3002");
+  const indexed = indexedChatMessages();
+  const startIndex = indexed.findIndex((entry) => entry.floor >= start);
+  let endIndex = indexed.length - 1;
+  while (endIndex >= 0 && indexed[endIndex].floor > end) endIndex -= 1;
+  if (startIndex < 0 || endIndex < startIndex) throw new Error("\u6240\u9009\u697C\u5C42\u6CA1\u6709\u53EF\u5904\u7406\u7684\u6D88\u606F\u6B63\u6587\u3002");
+  const messages2 = indexed.slice(startIndex, endIndex + 1).map((entry) => entry.message);
+  if (messages2.length > 500) throw new Error("\u5355\u6B21\u6700\u591A\u5904\u7406 500 \u6761\u6709\u5185\u5BB9\u7684\u6D88\u606F\uFF0C\u8BF7\u7F29\u5C0F\u697C\u5C42\u8303\u56F4\u3002");
+  return { startIndex, endIndex, messages: messages2 };
+}
+
 // src/extension/worldbook/worldbook-write-coordinator.ts
 var WorldbookWriteCoordinator = class {
   chains = /* @__PURE__ */ new Map();
@@ -17576,6 +17619,15 @@ var SummaryWorldbookStore = class {
       return this.inspect(worldbookName);
     });
   }
+  relocateCheckpoint(worldbookName, chatId, messageId) {
+    return this.updateState(worldbookName, (catalog) => {
+      if (catalog.chatId !== chatId || SillyTavern.getContext().chatId !== chatId || helper().getChatWorldbookName("current") !== worldbookName) throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u672A\u4FEE\u6539\u68C0\u67E5\u70B9\u3002");
+      catalog.autoRun = false;
+      if (messageId === null) delete catalog.lastCommittedMessageId;
+      else catalog.lastCommittedMessageId = messageId;
+      return catalog;
+    });
+  }
   activateRetrievalMigration(expected, collectionId, embeddingSpaceId, signal) {
     return this.serialize(expected.worldbookName, async () => {
       signal.throwIfAborted();
@@ -17822,26 +17874,16 @@ function preprocessSummaryMessages(messages2, rules, timeoutMs = 2e3) {
 
 // src/extension/summary/summary-request.ts
 function currentChatMessages() {
-  const seen = /* @__PURE__ */ new Set();
-  return SillyTavern.getContext().chat.flatMap((message, index) => {
-    const content = String(message.mes ?? message.message ?? "").trim();
-    if (!content) return [];
-    const rawId = String(message.message_id ?? message.id ?? index);
-    const id2 = seen.has(rawId) ? `${rawId}:${index}` : rawId;
-    seen.add(id2);
-    return [{
-      id: id2,
-      role: message.is_user === true || message.role === "user" ? "user" : "assistant",
-      content
-    }];
-  });
+  return indexedChatMessages().map((entry) => entry.message);
 }
 async function summarySourceHash(messages2) {
   return sourceMessagesHash(messages2);
 }
 async function automaticSummaryBatch(messages2, catalog, messageCount) {
   const checkpointIndex = catalog.lastCommittedMessageId ? messages2.findIndex((message) => message.id === catalog.lastCommittedMessageId) : -1;
-  if (catalog.lastCommittedMessageId && checkpointIndex < 0) return null;
+  if (catalog.lastCommittedMessageId && checkpointIndex < 0) {
+    throw new Error("\u603B\u7ED3\u68C0\u67E5\u70B9\u6D88\u606F\u5DF2\u4E0D\u5B58\u5728\uFF0C\u8BF7\u4FEE\u6539\u68C0\u67E5\u70B9\u540E\u518D\u7EE7\u7EED\u3002");
+  }
   const start = checkpointIndex + 1;
   const threshold = Math.max(2, Math.min(500, Math.floor(messageCount)));
   if (messages2.length - start < threshold) return null;
@@ -17869,7 +17911,7 @@ async function automaticSummaryBatch(messages2, catalog, messageCount) {
   };
 }
 async function manualSummaryBatch(messages2, catalog, startIndex, endIndex, existingBatch) {
-  if (!Number.isInteger(startIndex) || !Number.isInteger(endIndex) || startIndex < 0 || endIndex < startIndex) {
+  if (!Number.isInteger(startIndex) || !Number.isInteger(endIndex) || startIndex < 0 || endIndex < startIndex || endIndex >= messages2.length) {
     throw new Error("\u624B\u52A8\u603B\u7ED3\u6D88\u606F\u8303\u56F4\u65E0\u6548\u3002");
   }
   const selected = messages2.slice(startIndex, endIndex + 1);
@@ -18535,6 +18577,33 @@ var SummaryCoordinator = class {
   rerunAutomatic = /* @__PURE__ */ new Set();
   controls = /* @__PURE__ */ new Map();
   pausedAutomatic = /* @__PURE__ */ new Set();
+  progressListeners = /* @__PURE__ */ new Set();
+  subscribeProgress(listener) {
+    this.progressListeners.add(listener);
+    return () => {
+      this.progressListeners.delete(listener);
+    };
+  }
+  emitProgress(state) {
+    for (const listener of this.progressListeners) listener(state);
+  }
+  async relocateCheckpointToFloor(floor) {
+    const chatId = SillyTavern.getContext().chatId;
+    if (!chatId) throw new Error("\u8BF7\u5148\u9009\u62E9\u804A\u5929\u3002");
+    if (this.isRunning(chatId)) throw new Error("\u8BF7\u5148\u505C\u6B62\u6B63\u5728\u8FD0\u884C\u7684\u603B\u7ED3\u4EFB\u52A1\uFF0C\u518D\u4FEE\u6539\u68C0\u67E5\u70B9\u3002");
+    const messageId = checkpointMessageAtFloor(floor);
+    this.rerunAutomatic.delete(chatId);
+    this.pausedAutomatic.add(chatId);
+    return await this.startRun(chatId, async (signal) => {
+      const state = await this.load();
+      signal.throwIfAborted();
+      if (checkpointMessageAtFloor(floor) !== messageId) throw new Error("\u4FEE\u6539\u671F\u95F4\u6D88\u606F\u697C\u5C42\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u8BD5\u3002");
+      const updated = await this.store.relocateCheckpoint(state.worldbookName, chatId, messageId);
+      await this.compression.reconcile(updated);
+      this.emitProgress(updated);
+      return updated;
+    }, defaultDecision);
+  }
   isRunning(chatId = SillyTavern.getContext().chatId) {
     return Boolean(chatId && this.activeRuns.has(chatId));
   }
@@ -18734,14 +18803,18 @@ var SummaryCoordinator = class {
       throw new Error("The summary catalog does not belong to the locked chat.");
     }
     const messages2 = currentChatMessages();
+    const range = messageRangeByFloor(startIndex, endIndex);
     const candidate = await manualSummaryBatch(
       messages2,
       state.catalog,
-      startIndex,
-      endIndex
+      range.startIndex,
+      range.endIndex
     );
     const checkpointIndex = state.catalog.lastCommittedMessageId ? messages2.findIndex((message) => message.id === state.catalog.lastCommittedMessageId) : -1;
-    const advancesCheckpoint = startIndex === checkpointIndex + 1;
+    if (state.catalog.lastCommittedMessageId && checkpointIndex < 0) {
+      throw new Error("\u603B\u7ED3\u68C0\u67E5\u70B9\u6D88\u606F\u5DF2\u4E0D\u5B58\u5728\uFF0C\u8BF7\u5148\u4FEE\u6539\u68C0\u67E5\u70B9\u3002");
+    }
+    const advancesCheckpoint = range.startIndex <= checkpointIndex + 1 && range.endIndex > checkpointIndex;
     return this.generate(
       state,
       candidate.batch,
@@ -18796,11 +18869,12 @@ var SummaryCoordinator = class {
   }
   async previewManual(startIndex, endIndex) {
     const state = await this.load();
+    const range = messageRangeByFloor(startIndex, endIndex);
     const candidate = await manualSummaryBatch(
       currentChatMessages(),
       state.catalog,
-      startIndex,
-      endIndex
+      range.startIndex,
+      range.endIndex
     );
     return prepareSummaryRequest({
       batch: candidate.batch,
@@ -18907,6 +18981,7 @@ var SummaryCoordinator = class {
       signal
     });
     const slices = committed.slices.filter((slice) => slice.batch.id === batch.id);
+    this.emitProgress(committed);
     const synced = await this.syncSlices(
       committed,
       slices,
@@ -19173,6 +19248,96 @@ function structuredExtractionContextHash(types, rows) {
 
 // src/extension/memory/extraction-coordinator.ts
 init_client();
+
+// src/shared/extraction-references.ts
+var EXTRACTION_ROW_REFERENCE_GUIDE = `Record references for this request:
+currentRows supplies short rowId references such as R1 and R2. For update or delete, copy the rowId and typeId together from the same currentRows record. These references apply only to this request; the application resolves them to stored IDs.
+For a new record, use add without a rowId and include its complete intended content. Combine changes to a newly proposed record into that add, rather than inventing an ID for a later update. Combine changes to an existing record into one operation.
+Return the operations JSON object only, with Chinese natural-language values.`;
+var EXTRACTION_CLEANING_GUIDE = `This is a user-requested memory cleaning pass over a selected historical message range, not the next incremental batch.
+Look for useful information previously missed. Compare concrete facts with currentRows and propose additions or updates that fill omissions. A previously processed message may still contain unrecorded information.
+Retain valid existing knowledge. Preserve the chronology of historical facts; an earlier condition is not evidence that a later known condition should be reverted. Propose deletions only when explicitly supported. The application will present the proposals for review and preserve the normal extraction checkpoint.`;
+function extractionProviderMessages(request) {
+  return [
+    ...request.promptMessages,
+    { role: "system", content: EXTRACTION_ROW_REFERENCE_GUIDE },
+    ...request.batch.mode === "cleaning" ? [{ role: "system", content: EXTRACTION_CLEANING_GUIDE }] : [],
+    { role: "user", content: JSON.stringify(extractionRuntimeInput(request)) },
+    ...request.additionalInstructions?.trim() ? [{ role: "system", content: request.additionalInstructions.trim() }] : []
+  ];
+}
+function extractionRowReferences(rows) {
+  const storedIds = new Set(rows.map((row) => row.id));
+  const references = /* @__PURE__ */ new Map();
+  let index = 1;
+  for (const row of rows) {
+    while (storedIds.has(`R${index}`)) index += 1;
+    references.set(`R${index++}`, row.id);
+  }
+  return references;
+}
+function extractionRuntimeInput(request) {
+  const referenceById = new Map([...extractionRowReferences(request.rows)].map(([ref, id2]) => [id2, ref]));
+  return {
+    activeTypes: request.types.map((type) => ({
+      id: type.id,
+      name: type.name,
+      columns: type.columns.map((column) => ({
+        id: column.id,
+        name: column.name,
+        type: column.type,
+        required: column.required,
+        description: column.description ?? "",
+        enumValues: column.enumValues ?? []
+      }))
+    })),
+    currentRows: request.rows.map((row) => ({
+      rowId: referenceById.get(row.id),
+      typeId: row.typeId,
+      dataName: row.dataName,
+      keywords: row.keywords,
+      status: row.status,
+      values: row.values
+    })),
+    incrementalMessages: request.messages,
+    responseShape: {
+      operations: [
+        {
+          action: "add",
+          typeId: "existing_type_id",
+          dataName: "row display name",
+          keywords: ["optional keyword"],
+          status: "permanent | keyword | vectorized",
+          values: { column_id: "typed value" }
+        },
+        {
+          action: "update",
+          typeId: "existing_type_id",
+          rowId: "copy_from_currentRows",
+          changes: {
+            dataName: "optional replacement",
+            keywords: ["optional replacement"],
+            status: "optional replacement",
+            values: { column_id: "only changed values" }
+          }
+        },
+        { action: "delete", typeId: "existing_type_id", rowId: "copy_from_currentRows" }
+      ]
+    }
+  };
+}
+function unavailableExtractionRowReason(rowId, typeId, initialRows, currentRows) {
+  const initial = initialRows.find((row) => row.id === rowId);
+  const prefix = `Operation references an unavailable row: ${rowId}. `;
+  if (!initial) return prefix + "\u8BE5\u5F15\u7528\u4E0D\u5728\u672C\u6B21\u8BF7\u6C42\u7684 currentRows \u4E2D\uFF1B\u65B0\u589E\u8BB0\u5F55\u5E94\u4F7F\u7528 add\uFF0C\u4E0D\u80FD\u81EA\u884C\u751F\u6210 rowId\u3002";
+  if (initial.typeId !== typeId) {
+    return prefix + `\u8BB0\u5F55\u201C${initial.dataName}\u201D\u5C5E\u4E8E ${initial.typeId}\uFF0C\u64CD\u4F5C\u5374\u6307\u5B9A\u4E86 ${typeId}\uFF1BrowId \u4E0E typeId \u5FC5\u987B\u6765\u81EA\u540C\u4E00\u6761\u8BB0\u5F55\u3002`;
+  }
+  if (!currentRows.some((row) => row.id === rowId)) {
+    return prefix + `\u8BB0\u5F55\u201C${initial.dataName}\u201D\u5DF2\u88AB\u672C\u6279\u66F4\u65E9\u7684\u64CD\u4F5C\u5220\u9664\uFF1B\u8BF7\u5408\u5E76\u5BF9\u540C\u4E00\u6761\u8BB0\u5F55\u7684\u4FEE\u6539\u3002`;
+  }
+  return prefix + "\u5F53\u524D\u8BB0\u5F55\u5DF2\u4E0D\u53EF\u7528\uFF0C\u8BF7\u5237\u65B0\u8BB0\u5F55\u540E\u91CD\u8BD5\u3002";
+}
 
 // node_modules/yaml/browser/dist/nodes/identity.js
 var ALIAS = /* @__PURE__ */ Symbol.for("yaml.alias");
@@ -25659,6 +25824,7 @@ function applyOperationsToEntries(entries, catalog, operations, sourceBase) {
     rows.push(row);
     entryByRowId.set(row.id, entry);
   }
+  const initialRows = [...rows];
   for (const operation of operations) {
     const type = typeById.get(operation.typeId);
     if (!type) throw new Error(`Operation references an inactive type: ${operation.typeId}`);
@@ -25690,7 +25856,7 @@ function applyOperationsToEntries(entries, catalog, operations, sourceBase) {
     const rowIndex = rows.findIndex((row) => row.id === operation.rowId);
     const current = rowIndex >= 0 ? rows[rowIndex] : void 0;
     if (!entry || !current || current.typeId !== type.id) {
-      throw new Error(`Operation references an unavailable row: ${operation.rowId}`);
+      throw new Error(unavailableExtractionRowReason(operation.rowId, type.id, initialRows, rows));
     }
     if (operation.action === "delete") {
       const entryIndex = entries.indexOf(entry);
@@ -25914,6 +26080,7 @@ var WorldbookMemoryStore = class {
   }
   async relocateCheckpoint(messageId) {
     await this.mutate((_entries, catalog) => {
+      catalog.automation.enabled = false;
       if (messageId === null) delete catalog.lastProcessedMessageId;
       else catalog.lastProcessedMessageId = messageId;
     });
@@ -25943,7 +26110,7 @@ var WorldbookMemoryStore = class {
           batchId: options.batch.id,
           extractionMode: options.batch.mode
         });
-        catalog.lastProcessedMessageId = options.batch.endMessageId;
+        if (options.batch.mode !== "cleaning") catalog.lastProcessedMessageId = options.batch.endMessageId;
         catalog.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
         updateCatalogEntry(catalogEntryValue, catalog);
         structuredMemoryCatalogSchema.parse(catalog);
@@ -26183,19 +26350,15 @@ var ExtractionBatchUnavailableError = class extends Error {
   code = "EXTRACTION_BATCH_UNAVAILABLE";
 };
 function currentExtractionMessages() {
-  const seen = /* @__PURE__ */ new Set();
-  return SillyTavern.getContext().chat.flatMap((message, index) => {
-    const content = String(message.mes ?? message.message ?? "").trim();
-    if (!content) return [];
-    const rawId = String(message.message_id ?? message.id ?? index);
-    const id2 = seen.has(rawId) ? `${rawId}:${index}` : rawId;
-    seen.add(id2);
-    return [{
-      id: id2,
-      role: message.is_user === true || message.role === "user" ? "user" : "assistant",
-      content
-    }];
-  });
+  return indexedChatMessages().map((entry) => entry.message);
+}
+async function prepareCleaningExtraction(state, settings, options) {
+  if (options.instructions.length > 2e4) throw new Error("\u8865\u5145\u8981\u6C42\u6700\u591A 20000 \u5B57\u7B26\u3002");
+  const { messages: messages2 } = messageRangeByFloor(options.startFloor, options.endFloor);
+  const selection = await buildSelection(state, "cleaning", messages2);
+  const prepared = prepareSelectedExtraction(state, settings, selection);
+  prepared.request.additionalInstructions = options.instructions.trim();
+  return prepared;
 }
 function checkpointStart(state, messages2) {
   const checkpoint = state.catalog.lastProcessedMessageId;
@@ -26283,23 +26446,6 @@ function resolvePromptBlocks(state) {
     }];
   });
 }
-function typeShape(type) {
-  return {
-    id: type.id,
-    name: type.name,
-    columns: type.columns
-  };
-}
-function rowShape(row) {
-  return {
-    rowId: row.id,
-    typeId: row.typeId,
-    dataName: row.dataName,
-    keywords: row.keywords,
-    status: row.status,
-    values: row.values
-  };
-}
 function prepareSelectedExtraction(state, settings, selection, resumeAfterEndpointId) {
   const { types, rows } = extractionContext(state);
   if (types.length === 0) throw new Error("\u5F53\u524D\u5BF9\u8BDD\u6CA1\u6709\u6FC0\u6D3B\u7684\u8BB0\u5FC6\u7C7B\u578B\u3002");
@@ -26310,9 +26456,8 @@ function prepareSelectedExtraction(state, settings, selection, resumeAfterEndpoi
   if (!generationGroup) throw new Error("\u8BF7\u5148\u4E3A\u7ED3\u6784\u5316\u8BB0\u5FC6\u914D\u7F6E\u751F\u6210\u7AEF\u70B9\u7EC4\u3002");
   const runtimePreview = JSON.stringify({
     batch: selection.batch,
-    activeTypes: types.map(typeShape),
-    currentRows: rows.map(rowShape),
-    incrementalMessages: selection.messages
+    rowReferenceGuide: EXTRACTION_ROW_REFERENCE_GUIDE,
+    ...extractionRuntimeInput({ types, rows, messages: selection.messages })
   }, null, 2);
   return {
     request: {
@@ -26390,6 +26535,8 @@ var ExtractionCoordinator = class {
   traces = /* @__PURE__ */ new Map();
   listeners = /* @__PURE__ */ new Set();
   rerunAutomatic = /* @__PURE__ */ new Set();
+  cleaningOptions = /* @__PURE__ */ new Map();
+  checkpointUpdates = /* @__PURE__ */ new Set();
   subscribe(listener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -26406,7 +26553,7 @@ var ExtractionCoordinator = class {
     return this.pauses.get(chatId) ?? null;
   }
   isRunning(chatId = SillyTavern.getContext().chatId ?? "") {
-    return this.active.has(chatId);
+    return this.active.has(chatId) || this.checkpointUpdates.has(chatId);
   }
   runAutomatic() {
     return this.start("auto");
@@ -26415,6 +26562,21 @@ var ExtractionCoordinator = class {
     const chatId = SillyTavern.getContext().chatId ?? "";
     if (chatId) this.pauses.delete(chatId);
     return this.start("manual", true);
+  }
+  runCleaning(options) {
+    const chatId = SillyTavern.getContext().chatId;
+    if (!chatId) return Promise.reject(new Error("\u8BF7\u5148\u9009\u62E9\u804A\u5929\u3002"));
+    if (this.isRunning()) return Promise.reject(new Error("\u8BF7\u5148\u505C\u6B62\u6B63\u5728\u8FD0\u884C\u7684\u7ED3\u6784\u5316\u4EFB\u52A1\u3002"));
+    if (this.reviews.has(chatId)) return Promise.reject(new Error("\u8BF7\u5148\u63D0\u4EA4\u6216\u91CD\u8BD5\u5F53\u524D\u5F85\u5BA1\u6838\u6279\u6B21\u3002"));
+    this.cleaningOptions.set(chatId, structuredClone(options));
+    this.pauses.delete(chatId);
+    return this.start("cleaning", true);
+  }
+  async previewCleaning(options) {
+    return prepareCleaningExtraction(await this.store.load(), getSettings(), options);
+  }
+  relocateCheckpointToFloor(floor) {
+    return this.relocateCheckpoint(checkpointMessageAtFloor(floor));
   }
   async retryCurrent() {
     const chatId = SillyTavern.getContext().chatId;
@@ -26506,15 +26668,29 @@ var ExtractionCoordinator = class {
   async relocateCheckpoint(messageId) {
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) return;
-    await this.store.relocateCheckpoint(messageId);
-    this.reviews.delete(chatId);
-    this.pauses.delete(chatId);
-    this.traces.delete(chatId);
-    this.emit();
+    if (this.isRunning(chatId)) throw new Error("\u8BF7\u5148\u505C\u6B62\u6B63\u5728\u8FD0\u884C\u7684\u7ED3\u6784\u5316\u4EFB\u52A1\uFF0C\u518D\u4FEE\u6539\u68C0\u67E5\u70B9\u3002");
+    if (messageId !== null && !currentExtractionMessages().some((message) => message.id === messageId)) {
+      throw new Error("\u68C0\u67E5\u70B9\u6D88\u606F\u4E0D\u5B58\u5728\u4E8E\u5F53\u524D\u804A\u5929\u3002");
+    }
+    this.rerunAutomatic.delete(chatId);
+    this.checkpointUpdates.add(chatId);
+    try {
+      await this.store.relocateCheckpoint(messageId);
+      this.reviews.delete(chatId);
+      this.pauses.delete(chatId);
+      this.traces.delete(chatId);
+      this.cleaningOptions.delete(chatId);
+    } finally {
+      this.checkpointUpdates.delete(chatId);
+      this.emit();
+    }
   }
   start(mode, userInitiated = false) {
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) return Promise.resolve();
+    if (this.checkpointUpdates.has(chatId)) {
+      return userInitiated ? Promise.reject(new Error("\u6B63\u5728\u4FEE\u6539\u68C0\u67E5\u70B9\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5\u3002")) : Promise.resolve();
+    }
     const existing = this.active.get(chatId);
     if (existing) {
       if (mode === "auto" && !userInitiated) this.rerunAutomatic.add(chatId);
@@ -26551,7 +26727,9 @@ var ExtractionCoordinator = class {
         state = await this.store.load();
         if (state.catalog.chatId !== lockedChatId) throw new Error("\u7ED3\u6784\u5316\u8BB0\u5FC6\u4E16\u754C\u4E66\u4E0E\u5F53\u524D\u804A\u5929\u4E0D\u5339\u914D\u3002");
         if (mode === "auto" && !state.catalog.automation.enabled && !userInitiated) return;
-        const prepared = await prepareExtraction(state, getSettings(), mode);
+        const cleaning = this.cleaningOptions.get(lockedChatId);
+        if (mode === "cleaning" && !cleaning) throw new Error("\u6E05\u6D17\u8303\u56F4\u5DF2\u4E0D\u5B58\u5728\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9\u697C\u5C42\u3002");
+        const prepared = mode === "cleaning" ? await prepareCleaningExtraction(state, getSettings(), cleaning) : await prepareExtraction(state, getSettings(), mode);
         const outcome = await this.executePrepared(state, prepared, signal);
         if (outcome !== "committed") return;
       } catch (error51) {
@@ -26663,7 +26841,7 @@ var ExtractionCoordinator = class {
       signal.throwIfAborted();
       const reviewItems = normalizeReviewItems(result);
       result.reviewItems = reviewItems;
-      if (reviewItems.some((item) => item.state === "rejected")) {
+      if (prepared.batch.mode === "cleaning" || reviewItems.some((item) => item.state === "rejected")) {
         const review = {
           chatId: prepared.request.chatId,
           worldbookName: state.worldbookName,
@@ -26674,7 +26852,8 @@ var ExtractionCoordinator = class {
           createdAt: (/* @__PURE__ */ new Date()).toISOString()
         };
         this.reviews.set(prepared.request.chatId, review);
-        this.pauses.set(prepared.request.chatId, "\u6279\u6B21\u5305\u542B\u65E0\u6548\u64CD\u4F5C\uFF0C\u7B49\u5F85\u4EBA\u5DE5\u5BA1\u6838\u3002");
+        const reviewMessage = prepared.batch.mode === "cleaning" ? "\u8BB0\u5FC6\u6E05\u6D17\u7ED3\u679C\u7B49\u5F85\u5BA1\u6838\uFF1B\u63D0\u4EA4\u540E\u4E0D\u4F1A\u79FB\u52A8\u6B63\u5E38\u63D0\u53D6\u68C0\u67E5\u70B9\u3002" : "\u6279\u6B21\u5305\u542B\u65E0\u6548\u64CD\u4F5C\uFF0C\u7B49\u5F85\u4EBA\u5DE5\u5BA1\u6838\u3002";
+        this.pauses.set(prepared.request.chatId, reviewMessage);
         this.traces.set(prepared.request.chatId, {
           chatId: prepared.request.chatId,
           worldbookName: state.worldbookName,
@@ -26685,7 +26864,7 @@ var ExtractionCoordinator = class {
           applied: 0,
           rejected: reviewItems.filter((item) => item.state === "rejected").length,
           attempts,
-          message: "\u6279\u6B21\u5305\u542B\u65E0\u6548\u64CD\u4F5C\uFF0C\u7B49\u5F85\u4EBA\u5DE5\u5BA1\u6838\u3002"
+          message: reviewMessage
         });
         this.emit();
         return "review";
@@ -27971,15 +28150,31 @@ async function memoryView(ctx) {
         el(
           "p",
           "ew-muted",
-          "\u68C0\u67E5\u70B9\uFF1A" + (state.catalog.lastProcessedMessageId ?? "\u5C1A\u672A\u5904\u7406")
+          "\u68C0\u67E5\u70B9\uFF1A" + (state.catalog.lastProcessedMessageId ? checkpointFloor(state.catalog.lastProcessedMessageId) < 0 ? "\u539F\u6D88\u606F\u5DF2\u4E0D\u5B58\u5728" : `\u7B2C ${checkpointFloor(state.catalog.lastProcessedMessageId)} \u697C` : "\u5C1A\u672A\u5904\u7406")
         ),
         trace ? detail("\u6700\u8FD1\u4E00\u6B21\u63D0\u53D6", trace) : empty("\u6682\u65E0\u63D0\u53D6\u4EFB\u52A1")
       ),
       section(
         "\u68C0\u67E5\u70B9",
         actions(
+          button("\u4FEE\u6539\u68C0\u67E5\u70B9", "pen", () => editDialog("\u4FEE\u6539\u7ED3\u6784\u5316\u8BB0\u5FC6\u68C0\u67E5\u70B9", [
+            {
+              key: "floor",
+              label: "\u5DF2\u5904\u7406\u81F3\u697C\u5C42\uFF08-1\uFF1A\u5C1A\u672A\u5904\u7406\uFF09",
+              type: "number",
+              min: -1,
+              max: SillyTavern.getContext().chat.length - 1,
+              required: true,
+              value: checkpointFloor(state.catalog.lastProcessedMessageId)
+            }
+          ], async (v) => {
+            ctx.guard();
+            if (!confirm("\u4FEE\u6539\u68C0\u67E5\u70B9\u4F1A\u5173\u95ED\u81EA\u52A8\u63D0\u53D6\uFF0C\u4FDD\u7559\u5DF2\u6709\u8BB0\u5FC6\u5E76\u6E05\u9664\u5F85\u5BA1\u6838\u7ED3\u679C\u3002\u4E0B\u4E00\u6B21\u4ECE\u6240\u9009\u697C\u5C42\u4E4B\u540E\u5F00\u59CB\uFF0C\u7EE7\u7EED\uFF1F")) return;
+            await extractionCoordinator.relocateCheckpointToFloor(v.floor);
+            await ctx.refresh();
+          })),
           button("\u79FB\u81F3\u6700\u65B0\u6D88\u606F", "forward", async () => {
-            if (confirm("\u8DF3\u8FC7\u5C1A\u672A\u5904\u7406\u7684\u6D88\u606F\uFF0C\u5C06\u68C0\u67E5\u70B9\u79FB\u5230\u6700\u65B0\uFF1F")) {
+            if (confirm("\u5173\u95ED\u81EA\u52A8\u63D0\u53D6\u5E76\u8DF3\u8FC7\u5C1A\u672A\u5904\u7406\u7684\u6D88\u606F\uFF0C\u5C06\u68C0\u67E5\u70B9\u79FB\u5230\u6700\u65B0\uFF1F\u5DF2\u6709\u8BB0\u5FC6\u4FDD\u7559\u3002")) {
               ctx.guard();
               await extractionCoordinator.relocateCheckpoint(
                 currentExtractionMessages().at(-1)?.id ?? null
@@ -27988,7 +28183,7 @@ async function memoryView(ctx) {
             }
           }),
           button("\u4ECE\u5934\u5F00\u59CB", "rotate-left", async () => {
-            if (confirm("\u6E05\u9664\u68C0\u67E5\u70B9\u540E\u5C06\u4ECE\u5F00\u5934\u91CD\u65B0\u63D0\u53D6\uFF0C\u5DF2\u6709\u8BB0\u5FC6\u4E0D\u4F1A\u5220\u9664\u3002\u7EE7\u7EED\uFF1F")) {
+            if (confirm("\u5173\u95ED\u81EA\u52A8\u63D0\u53D6\u5E76\u6E05\u9664\u68C0\u67E5\u70B9\uFF0C\u4E0B\u6B21\u5C06\u4ECE\u5F00\u5934\u91CD\u65B0\u63D0\u53D6\uFF0C\u5DF2\u6709\u8BB0\u5FC6\u4E0D\u4F1A\u5220\u9664\u3002\u7EE7\u7EED\uFF1F")) {
               ctx.guard();
               await extractionCoordinator.relocateCheckpoint(null);
               await ctx.refresh();
@@ -27997,6 +28192,63 @@ async function memoryView(ctx) {
         )
       )
     );
+    return page;
+  }
+  if (ctx.route === "memory/cleaning") {
+    const draft = local(ctx, "extraction-cleaning", () => ({
+      start: 0,
+      end: Math.max(0, SillyTavern.getContext().chat.length - 1),
+      instructions: ""
+    }));
+    const form = fields([
+      {
+        key: "start",
+        label: "\u8D77\u59CB\u697C\u5C42",
+        type: "number",
+        min: 0,
+        max: SillyTavern.getContext().chat.length - 1,
+        value: draft.start,
+        required: true
+      },
+      {
+        key: "end",
+        label: "\u7ED3\u675F\u697C\u5C42",
+        type: "number",
+        min: 0,
+        max: SillyTavern.getContext().chat.length - 1,
+        value: draft.end,
+        required: true
+      },
+      { key: "instructions", label: "\u8865\u5145\u8981\u6C42", type: "textarea", rows: 8, value: draft.instructions }
+    ], false);
+    const options = () => {
+      const values = form.values();
+      Object.assign(draft, values);
+      return { startFloor: values.start, endFloor: values.end, instructions: values.instructions };
+    };
+    form.node.addEventListener("input", () => {
+      try {
+        options();
+      } catch {
+      }
+    });
+    page.append(form.node, actions(
+      button("\u9884\u89C8\u6E05\u6D17\u8BF7\u6C42", "eye", async () => {
+        ctx.guard();
+        const prepared = await extractionCoordinator.previewCleaning(options());
+        ctx.guard();
+        dialog("\u8BB0\u5FC6\u6E05\u6D17\u8BF7\u6C42", detail("\u6700\u7EC8\u63D0\u793A\u8BCD\u4E0E\u6240\u9009\u6D88\u606F", extractionProviderMessages(prepared.request)));
+      }),
+      button("\u5F00\u59CB\u6E05\u6D17", "play", async () => {
+        ctx.guard();
+        await ctx.run("\u7ED3\u6784\u5316\u8BB0\u5FC6\u6E05\u6D17", () => extractionCoordinator.runCleaning(options()), () => extractionCoordinator.stopCurrent());
+        await ctx.refresh();
+      }, "primary"),
+      button("\u505C\u6B62\u6E05\u6D17", "stop", () => extractionCoordinator.stopCurrent(), "danger"),
+      button("\u67E5\u770B\u5BA1\u6838\u7ED3\u679C", "check", () => ctx.navigate("memory/review"))
+    ));
+    const trace = extractionCoordinator.trace();
+    if (trace) page.append(detail("\u6700\u8FD1\u4E00\u6B21\u4EFB\u52A1", trace));
     return page;
   }
   if (ctx.route === "memory/review") {
@@ -30167,41 +30419,63 @@ async function summaryView(ctx) {
   }
   if (ctx.route === "summary/recall") return recallView(ctx, state);
   if (ctx.route === "summary/tasks") {
-    const messages2 = currentChatMessages();
-    const checkpoint = messages2.findIndex(
-      (m) => m.id === state.catalog.lastCommittedMessageId
-    );
+    const checkpoint = checkpointFloor(state.catalog.lastCommittedMessageId);
+    const lastFloor = Math.max(0, SillyTavern.getContext().chat.length - 1);
     const f = fields(
       [
         {
           key: "start",
-          label: "\u8D77\u59CB\u6D88\u606F\u5E8F\u53F7",
+          label: "\u8D77\u59CB\u697C\u5C42",
           type: "number",
           min: 0,
-          max: Math.max(0, messages2.length - 1),
-          value: Math.min(checkpoint + 1, Math.max(0, messages2.length - 1)),
+          max: lastFloor,
+          value: Math.min(checkpoint + 1, lastFloor),
           required: true
         },
         {
           key: "end",
-          label: "\u7ED3\u675F\u6D88\u606F\u5E8F\u53F7",
+          label: "\u7ED3\u675F\u697C\u5C42",
           type: "number",
           min: 0,
-          max: Math.max(0, messages2.length - 1),
-          value: Math.max(0, messages2.length - 1),
+          max: lastFloor,
+          value: lastFloor,
           required: true
         }
       ],
       false
     );
+    const metrics = el("div", "ew-metrics");
+    const updateMetrics = (latest) => {
+      if (ctx.signal.aborted || latest.worldbookName !== state.worldbookName) return;
+      state.catalog = latest.catalog;
+      const floor = checkpointFloor(latest.catalog.lastCommittedMessageId);
+      metrics.replaceChildren(
+        metric("\u804A\u5929\u6D88\u606F", SillyTavern.getContext().chat.length),
+        metric("\u68C0\u67E5\u70B9", !latest.catalog.lastCommittedMessageId ? "\u5C1A\u672A\u5904\u7406" : floor < 0 ? "\u539F\u6D88\u606F\u5DF2\u4E0D\u5B58\u5728" : `\u7B2C ${floor} \u697C`),
+        metric("\u4E0B\u4E00\u6279\u6B21", latest.catalog.nextBatchNumber)
+      );
+    };
+    updateMetrics(state);
+    const unsubscribe = coordinator.subscribeProgress(updateMetrics);
+    ctx.signal.addEventListener("abort", unsubscribe, { once: true });
     page.append(
-      el(
-        "div",
-        "ew-metrics",
-        metric("\u804A\u5929\u6D88\u606F", messages2.length),
-        metric("\u5DF2\u5904\u7406\u81F3", checkpoint < 0 ? "\u5C1A\u672A\u5904\u7406" : checkpoint),
-        metric("\u4E0B\u4E00\u6279\u6B21", state.catalog.nextBatchNumber)
-      ),
+      metrics,
+      actions(button("\u4FEE\u6539\u68C0\u67E5\u70B9", "pen", () => editDialog("\u4FEE\u6539\u603B\u7ED3\u68C0\u67E5\u70B9", [
+        {
+          key: "floor",
+          label: "\u68C0\u67E5\u70B9\u697C\u5C42\uFF08-1\uFF1A\u5C1A\u672A\u5904\u7406\uFF09",
+          type: "number",
+          min: -1,
+          max: SillyTavern.getContext().chat.length - 1,
+          value: checkpointFloor(state.catalog.lastCommittedMessageId),
+          required: true
+        }
+      ], async (v) => {
+        ctx.guard();
+        if (!confirm("\u4FEE\u6539\u68C0\u67E5\u70B9\u4F1A\u5173\u95ED\u81EA\u52A8\u603B\u7ED3\uFF0C\u4FDD\u7559\u5DF2\u6709\u5207\u7247\u3002\u4E0B\u4E00\u6B21\u4ECE\u6240\u9009\u697C\u5C42\u4E4B\u540E\u5F00\u59CB\uFF0C\u7EE7\u7EED\uFF1F")) return;
+        await coordinator.relocateCheckpointToFloor(v.floor);
+        await ctx.refresh();
+      }))),
       section(
         "\u624B\u52A8\u751F\u6210",
         f.node,
@@ -33666,6 +33940,7 @@ var navigation = [
     pages: [
       ["memory/records", "\u8BB0\u5FC6\u6863\u6848"],
       ["memory/tasks", "\u63D0\u53D6\u4EFB\u52A1"],
+      ["memory/cleaning", "\u8BB0\u5FC6\u6E05\u6D17"],
       ["memory/review", "\u64CD\u4F5C\u5BA1\u6838"]
     ]
   },
