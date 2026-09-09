@@ -85,7 +85,7 @@ var init_domain = __esm({
       "cancelled",
       "ambiguous"
     ];
-    API_PROTOCOL_VERSION = 1;
+    API_PROTOCOL_VERSION = 2;
     REPAIR_KINDS = [
       "credential_permissions",
       "settings_format",
@@ -322,7 +322,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "2.1.0", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "2.2.0", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
@@ -15219,6 +15219,7 @@ var summaryBatchMetadataSchema = summaryBatchInputSchema.extend({
   updatedAt: external_exports.string().datetime()
 }).strict();
 var summarySliceSchema = summarySliceCandidateSchema.extend({
+  recallFlags: external_exports.array(identifierSchema).max(100).optional(),
   id: identifierSchema,
   batch: summaryBatchMetadataSchema,
   sliceNumber: external_exports.number().int().min(1).max(50),
@@ -15243,20 +15244,42 @@ var messageCompressionMarkerSchema = external_exports.object({
   hiddenAt: external_exports.string().datetime().optional(),
   updatedAt: external_exports.string().datetime()
 }).strict();
+var recallFlagRulesSchema = external_exports.array(external_exports.object({
+  id: identifierSchema,
+  name: external_exports.string().trim().min(1).max(200),
+  addWeight: external_exports.number().min(-1).max(1).default(0),
+  multiplyWeight: external_exports.number().min(0).max(10).default(0),
+  retentionTurns: external_exports.number().int().min(0).max(100).default(0)
+})).max(100).refine(
+  (tags) => new Set(tags.map((tag) => tag.name)).size === tags.length,
+  "\u6807\u5FD7\u540D\u79F0\u4E0D\u80FD\u91CD\u590D\u3002"
+).refine(
+  (flags) => new Set(flags.map((flag) => flag.id)).size === flags.length,
+  "\u6807\u5FD7 ID \u4E0D\u80FD\u91CD\u590D\u3002"
+);
+var recallPoolReferenceSchema = external_exports.object({ namespaceId: identifierSchema, sliceId: identifierSchema });
+var recallPoolSchema = external_exports.object({
+  floorKey: external_exports.string().max(1e3),
+  entries: external_exports.array(recallPoolReferenceSchema.extend({ remaining: external_exports.number().int().min(1).max(100) })).max(1e3),
+  replay: external_exports.array(recallPoolReferenceSchema).max(1e3)
+});
 var summaryCatalogSchema = external_exports.object({
   formatVersion: external_exports.union([external_exports.literal(1), external_exports.literal(2)]),
   chatId: external_exports.string().trim().min(1).max(240),
   namespaceId: identifierSchema,
   autoRun: external_exports.boolean(),
   recallEnabled: external_exports.boolean().default(false),
-  recallSourceWeight: external_exports.number().min(0.1).max(10).default(1),
+  recallSourceWeight: external_exports.number().min(0).max(10).default(0),
+  recallSourceAddWeight: external_exports.number().min(-1).max(1).default(0),
+  recallPool: recallPoolSchema.optional(),
   recallSourceOrder: external_exports.number().int().min(0).max(1e3).default(0),
   attachedRecallSources: external_exports.array(external_exports.object({
     chatId: external_exports.string().trim().min(1).max(240),
     namespaceId: identifierSchema,
     worldbookName: external_exports.string().trim().min(1).max(500),
     enabled: external_exports.boolean().default(true),
-    weight: external_exports.number().min(0.1).max(10).default(1),
+    weight: external_exports.number().min(0).max(10).default(0),
+    addWeight: external_exports.number().min(-1).max(1).default(0),
     order: external_exports.number().int().min(0).max(1e3)
   })).max(100).default([]),
   compression: summaryCompressionConfigSchema.default({
@@ -15633,13 +15656,21 @@ var statusSnapshotSchema = external_exports.object({
 }).strict();
 var retrievalSourceWeightSchema = external_exports.object({
   collectionId: identifierSchema,
-  weight: external_exports.number().min(0.1).max(10).default(1),
+  weight: external_exports.number().min(0).max(10).default(0),
+  addWeight: external_exports.number().min(-1).max(1).default(0),
   order: external_exports.number().int().min(0).max(1e3)
 });
 var retrievalQueryRequestSchema = external_exports.object({
   collectionIds: external_exports.array(identifierSchema).min(1).max(100),
   vectorCollectionIds: external_exports.array(identifierSchema).max(100).optional(),
   sourceWeights: external_exports.array(retrievalSourceWeightSchema).max(100).optional(),
+  minimumRelevance: external_exports.number().finite().default(0),
+  flagRules: recallFlagRulesSchema.default([]),
+  flagAssignments: external_exports.array(external_exports.object({
+    collectionId: identifierSchema,
+    sourceId: identifierSchema,
+    flags: external_exports.array(identifierSchema).max(100)
+  })).max(1e4).default([]),
   excludeSourceIds: external_exports.array(external_exports.string().trim().min(1).max(500)).max(1e4).optional(),
   query: external_exports.string().trim().min(1).max(12e3),
   vectorEnabled: external_exports.boolean().default(true),
@@ -16741,6 +16772,9 @@ var DEFAULT_SETTINGS = {
       bm25TopK: 30,
       rerankTopK: 30,
       finalTopK: 10,
+      minimumRelevance: 0,
+      flagRules: [],
+      retentionMaxSlices: 20,
       rerankSetId: "",
       injection: {
         position: "at_depth",
@@ -16792,6 +16826,9 @@ var echoesSettingsV2Schema = external_exports.object({
       finalTopK: external_exports.number().int().min(1).max(100)
     }).strict(),
     recall: external_exports.object({
+      minimumRelevance: external_exports.number().finite().default(0),
+      flagRules: recallFlagRulesSchema.default([]),
+      retentionMaxSlices: external_exports.number().int().min(0).max(1e3).default(20),
       queryPreset: retrievalQueryPresetSchema,
       vectorEnabled: external_exports.boolean(),
       bm25Enabled: external_exports.boolean(),
@@ -17353,7 +17390,8 @@ function createCatalog(chatId) {
     namespaceId: uniqueId2("summary_namespace"),
     autoRun: false,
     recallEnabled: false,
-    recallSourceWeight: 1,
+    recallSourceWeight: 0,
+    recallSourceAddWeight: 0,
     recallSourceOrder: 0,
     attachedRecallSources: [],
     compression: {
@@ -17399,6 +17437,7 @@ function sliceEntry(slice) {
         timestamp: slice.timestamp,
         title: slice.title,
         tags: slice.tags,
+        recallFlags: slice.recallFlags ?? [],
         batch: slice.batch,
         sliceNumber: slice.sliceNumber
       }
@@ -17419,6 +17458,7 @@ function readState(worldbookName, entries) {
       title: item.title,
       content: entry.content,
       tags: item.tags,
+      recallFlags: item.recallFlags ?? [],
       batch: item.batch,
       sliceNumber: item.sliceNumber,
       worldbookUid: entry.uid
@@ -17588,6 +17628,7 @@ var SummaryWorldbookStore = class {
       ...catalog,
       recallEnabled: configuration.enabled,
       recallSourceWeight: configuration.weight,
+      recallSourceAddWeight: configuration.addWeight ?? catalog.recallSourceAddWeight ?? 0,
       recallSourceOrder: configuration.order,
       attachedRecallSources: structuredClone(configuration.attachedSources)
     }));
@@ -17700,6 +17741,7 @@ var SummaryWorldbookStore = class {
         if (item?.kind !== "summary_slice" || item.summaryId !== sliceId) return entry;
         const updated = {
           ...parsed,
+          recallFlags: item.recallFlags ?? [],
           id: item.summaryId,
           sliceNumber: item.sliceNumber,
           worldbookUid: entry.uid,
@@ -17713,6 +17755,26 @@ var SummaryWorldbookStore = class {
         return { ...entry, ...sliceEntry(updated) };
       }));
       return this.inspect(worldbookName);
+    });
+  }
+  saveSliceFlags(worldbookName, sliceIds, flags, mode) {
+    return this.serialize(worldbookName, async () => {
+      const targets = new Set(sliceIds);
+      await helper().updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => {
+        const item = metadata(entry);
+        if (item?.kind !== "summary_slice" || !targets.has(item.summaryId)) return entry;
+        const previous = item.recallFlags ?? [];
+        const next = mode === "replace" ? flags : mode === "add" ? [...previous, ...flags] : previous.filter((id2) => !flags.includes(id2));
+        const recallFlags = summarySliceSchema.shape.recallFlags.parse([...new Set(next)]);
+        return { ...entry, extra: { ...entry.extra, echoes: { ...item, recallFlags } } };
+      }));
+      return this.inspect(worldbookName);
+    });
+  }
+  saveRecallPool(worldbookName, pool, guard) {
+    return this.updateState(worldbookName, (catalog) => {
+      guard();
+      return { ...catalog, recallPool: structuredClone(pool) };
     });
   }
   deleteSlice(worldbookName, sliceId) {
@@ -29679,6 +29741,54 @@ ${yaml}`;
 };
 var statusCoordinator = new StatusCoordinator();
 
+// src/extension/recall-retention.ts
+var recallReferenceKey = (item) => `${item.namespaceId}:${item.sliceId}`;
+function advanceRecallPool(options) {
+  const { previous, floorKey, maximum } = options;
+  const available = new Map(options.available.map((item) => [recallReferenceKey(item), item]));
+  const turns = (item) => {
+    const ids = available.get(recallReferenceKey(item))?.slice.recallFlags ?? [];
+    return Math.max(0, ...options.flags.filter((flag) => ids.includes(flag.id)).map((flag) => flag.retentionTurns));
+  };
+  const valid = (item) => available.has(recallReferenceKey(item)) && turns(item) > 0;
+  const selected = new Set(options.selected.map(recallReferenceKey));
+  const included = /* @__PURE__ */ new Set([...selected, ...options.alreadyIncluded.map(recallReferenceKey)]);
+  const sameFloor = previous?.floorKey === floorKey;
+  const entries = (previous?.entries ?? []).filter(valid).map((item) => ({
+    ...item,
+    remaining: Math.min(item.remaining, turns(item))
+  }));
+  for (const item of options.selected) {
+    if (!valid(item)) continue;
+    const existing = entries.find((entry) => recallReferenceKey(entry) === recallReferenceKey(item));
+    if (existing) {
+      if (!sameFloor) existing.remaining = turns(item);
+    } else entries.push({ ...item, remaining: turns(item) });
+  }
+  const evicted = /* @__PURE__ */ new Set();
+  while (entries.length > maximum) {
+    const lowest = Math.min(...entries.map((item) => item.remaining));
+    const removed = entries.splice(entries.findIndex((item) => item.remaining === lowest), 1)[0];
+    evicted.add(recallReferenceKey(removed));
+  }
+  const replay = sameFloor ? (previous?.replay ?? []).filter((item) => valid(item) && !evicted.has(recallReferenceKey(item))) : [];
+  const extraRefs = sameFloor ? replay : entries.filter((item) => !included.has(recallReferenceKey(item)));
+  const extras = extraRefs.filter((item) => !included.has(recallReferenceKey(item))).slice(0, maximum).map((item) => available.get(recallReferenceKey(item)));
+  if (!sameFloor) {
+    for (const item of entries) {
+      if (!selected.has(recallReferenceKey(item))) item.remaining -= 1;
+    }
+  }
+  return {
+    pool: {
+      floorKey,
+      entries: entries.filter((item) => item.remaining > 0),
+      replay: extras.map(({ namespaceId, sliceId }) => ({ namespaceId, sliceId }))
+    },
+    extras
+  };
+}
+
 // src/extension/recall-coordinator.ts
 var RecallRunSupersededError = class extends Error {
   constructor() {
@@ -29789,10 +29899,19 @@ function generationIdentity() {
   };
 }
 function sourcePreference(state, attached) {
-  return attached ? { weight: attached.weight, order: attached.order } : {
+  return attached ? { weight: attached.weight, addWeight: attached.addWeight ?? 0, order: attached.order } : {
     weight: state.catalog.recallSourceWeight,
+    addWeight: state.catalog.recallSourceAddWeight ?? 0,
     order: state.catalog.recallSourceOrder
   };
+}
+function recallFloorKey(generationType) {
+  const chat = SillyTavern.getContext().chat;
+  const tail = chat.at(-1);
+  const replacesAssistant = ["regenerate", "swipe", "continue"].includes(generationType) && tail && tail.is_user !== true && tail.role !== "user";
+  const length = chat.length - (replacesAssistant ? 1 : 0);
+  const preceding = chat[length - 1];
+  return `${length}:${String(preceding?.message_id ?? preceding?.id ?? "")}`;
 }
 var RecallCoordinator = class {
   summaryStore = new SummaryWorldbookStore();
@@ -29839,7 +29958,7 @@ var RecallCoordinator = class {
     try {
       await this.retrieve(chat, generationType, sequence2, true, abort);
     } catch (error51) {
-      if (sequence2 !== this.runSequence) return;
+      if (error51 instanceof RecallRunSupersededError || sequence2 !== this.runSequence) return;
       await this.clear();
       if (this.runSequence !== sequence2 + 1) return;
       const message = error51 instanceof Error ? error51.message : String(error51);
@@ -29883,6 +30002,8 @@ var RecallCoordinator = class {
   }
   async retrieve(chat, generationType, sequence2, inject, abort) {
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const floorKey = recallFloorKey(generationType);
+    const finalize2 = (options) => this.finalizeRecall({ ...options, floorKey });
     const settings = getSettings();
     const recall = settings.retrieval.recall;
     const current = await this.summaryStore.load();
@@ -29901,7 +30022,7 @@ var RecallCoordinator = class {
     const recentBatches = compressionActive ? recentSummaryBatches(current.slices, current.catalog.compression.recentBatchCount) : [];
     const recentSlices = recentBatches.flatMap((coverage) => coverage.slices);
     if (!current.catalog.recallEnabled || !prepared.query) {
-      return this.finalizeRecall({
+      return finalize2({
         current,
         sequence: sequence2,
         inject,
@@ -29924,10 +30045,10 @@ var RecallCoordinator = class {
     try {
       collectionStats = await echoesApi.listRetrievalCollections();
     } catch (error51) {
-      if (recentSlices.length === 0) throw error51;
+      if (recentSlices.length === 0 && !current.catalog.recallPool?.entries.length && !current.catalog.recallPool?.replay.length) throw error51;
       const message = error51 instanceof Error ? error51.message : String(error51);
       toastr.warning(message, "Echoes \u8BED\u4E49\u53EC\u56DE\u5931\u8D25");
-      return this.finalizeRecall({
+      return finalize2({
         current,
         sequence: sequence2,
         inject,
@@ -29956,7 +30077,7 @@ var RecallCoordinator = class {
       recall.vectorEnabled
     );
     if (resolved.active.length === 0) {
-      return this.finalizeRecall({
+      return finalize2({
         current,
         sequence: sequence2,
         inject,
@@ -29986,7 +30107,7 @@ var RecallCoordinator = class {
     }
     const vectorEnabled = recall.vectorEnabled && Boolean(group) && vectorCollectionIds.length > 0;
     if (!vectorEnabled && !recall.bm25Enabled) {
-      return this.finalizeRecall({
+      return finalize2({
         current,
         sequence: sequence2,
         inject,
@@ -30003,7 +30124,7 @@ var RecallCoordinator = class {
       });
     }
     if (recall.rerankEnabled && !rerankSet) {
-      return this.finalizeRecall({
+      return finalize2({
         current,
         sequence: sequence2,
         inject,
@@ -30043,9 +30164,13 @@ var RecallCoordinator = class {
         sourceWeights: resolved.active.map((source) => ({
           collectionId: source.collectionId,
           weight: source.trace.weight,
+          addWeight: source.trace.addWeight ?? 0,
           order: source.trace.order
         })),
         excludeSourceIds: [...excludeSourceIds],
+        minimumRelevance: recall.minimumRelevance ?? 0,
+        flagRules: recall.flagRules ?? [],
+        flagAssignments: resolved.active.flatMap((source) => source.state.slices.filter((slice) => (slice.recallFlags?.length ?? 0) > 0 && !excludeSourceIds.has(slice.id)).map((slice) => ({ collectionId: source.collectionId, sourceId: slice.id, flags: slice.recallFlags }))),
         query: prepared.query,
         vectorEnabled,
         bm25Enabled: recall.bm25Enabled,
@@ -30067,10 +30192,10 @@ var RecallCoordinator = class {
     } catch (error51) {
       clearTrackedJob();
       if (error51 instanceof RecallRunSupersededError || isSuperseded()) throw new RecallRunSupersededError();
-      if (recentSlices.length === 0) throw error51;
+      if (recentSlices.length === 0 && !current.catalog.recallPool?.entries.length && !current.catalog.recallPool?.replay.length) throw error51;
       const message = error51 instanceof Error ? error51.message : String(error51);
       toastr.warning(message, "Echoes \u8BED\u4E49\u53EC\u56DE\u5931\u8D25");
-      return this.finalizeRecall({
+      return finalize2({
         current,
         sequence: sequence2,
         inject,
@@ -30099,7 +30224,7 @@ var RecallCoordinator = class {
         degradedLabel: "\u65E0\u8BB0\u5FC6\u7EE7\u7EED"
       }) : "degraded";
       if (decision === "abort") abort?.();
-      return this.finalizeRecall({
+      return finalize2({
         current,
         sequence: sequence2,
         inject: inject && decision !== "abort",
@@ -30130,7 +30255,7 @@ var RecallCoordinator = class {
       if (decision === "abort") {
         abort?.();
         await this.injectionStore.clear(lockedWorldbookName);
-        return this.finalizeRecall({
+        return finalize2({
           current,
           sequence: sequence2,
           inject: false,
@@ -30181,7 +30306,7 @@ var RecallCoordinator = class {
         degradedLabel: "\u65E0\u8BB0\u5FC6\u7EE7\u7EED"
       }) : "degraded";
       if (decision === "abort") abort?.();
-      return this.finalizeRecall({
+      return finalize2({
         current,
         sequence: sequence2,
         inject: inject && decision !== "abort",
@@ -30208,7 +30333,7 @@ var RecallCoordinator = class {
     if (authoritative.dropped.length > 0) {
       toastr.warning("\u90E8\u5206\u53EC\u56DE\u7ED3\u679C\u4E0E\u6E90\u4E16\u754C\u4E66\u4E0D\u4E00\u81F4\uFF0C\u5DF2\u8DF3\u8FC7\uFF1B\u8BF7\u4FEE\u590D\u5BF9\u5E94\u603B\u7ED3\u7D22\u5F15\u3002", "Echoes");
     }
-    return this.finalizeRecall({
+    return finalize2({
       current,
       sequence: sequence2,
       inject,
@@ -30278,20 +30403,50 @@ var RecallCoordinator = class {
   }
   async finalizeRecall(options) {
     const sequenceMatches = options.generationType === "preview" ? options.sequence === this.previewSequence : options.sequence === this.runSequence;
-    const locked = sequenceMatches && SillyTavern.getContext().chatId === options.current.catalog.chatId && window.TavernHelper?.getChatWorldbookName("current") === options.current.worldbookName;
+    const locked = sequenceMatches && SillyTavern.getContext().chatId === options.current.catalog.chatId && window.TavernHelper?.getChatWorldbookName("current") === options.current.worldbookName && (!options.floorKey || options.floorKey === recallFloorKey(options.generationType));
+    const recall = getSettings().retrieval.recall;
+    let retained = [];
+    let retentionPool = options.current.catalog.recallPool;
+    if (locked && options.current.catalog.recallEnabled && (options.current.catalog.recallPool || recall.flagRules?.some((flag) => flag.retentionTurns > 0))) {
+      const availableSources = await this.summaryStore.listAvailableSources();
+      const current = await this.summaryStore.inspect(options.current.worldbookName);
+      const sources = [current, ...availableSources.filter((source) => source.catalog.namespaceId !== current.catalog.namespaceId && current.catalog.attachedRecallSources.some((attached) => attached.enabled && attached.namespaceId === source.catalog.namespaceId && attached.worldbookName === source.worldbookName))];
+      const available = sources.flatMap((source) => source.slices.filter((slice) => slice.batch.state !== "stale" && !source.catalog.pendingRetrievalDeletes.includes(slice.id)).map((slice) => ({ namespaceId: source.catalog.namespaceId, sliceId: slice.id, slice })));
+      const selected = options.semanticHits.flatMap((hit) => {
+        const source = sources.find((item) => item.catalog.retrievalCollectionId === hit.document.collectionId);
+        return source ? [{ namespaceId: source.catalog.namespaceId, sliceId: hit.document.sourceId }] : [];
+      });
+      const result = advanceRecallPool({
+        previous: current.catalog.recallPool,
+        floorKey: options.floorKey ?? recallFloorKey(options.generationType),
+        available,
+        selected,
+        alreadyIncluded: options.recentSlices.map((slice) => ({ namespaceId: current.catalog.namespaceId, sliceId: slice.id })),
+        flags: recall.flagRules ?? [],
+        maximum: recall.retentionMaxSlices ?? 20
+      });
+      retained = result.extras;
+      retentionPool = result.pool;
+    }
+    const guard = () => {
+      if (options.sequence !== (options.generationType === "preview" ? this.previewSequence : this.runSequence) || SillyTavern.getContext().chatId !== options.current.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== options.current.worldbookName || options.floorKey && options.floorKey !== recallFloorKey(options.generationType)) throw new RecallRunSupersededError();
+    };
+    if (locked) guard();
     let injected = 0;
-    if (options.inject && locked && (options.recentSlices.length > 0 || options.semanticHits.length > 0)) {
+    if (options.inject && locked && (options.recentSlices.length > 0 || options.semanticHits.length > 0 || retained.length > 0)) {
       const recent = renderRecentSummaries(options.recentSlices);
       const memories = options.semanticHits.map((hit, index) => {
         const slice = options.semanticSliceById.get(hit.document.sourceId);
         return `[Memory ${index + 1}: ${slice.timestamp} \xB7 ${slice.title}]
 ${slice.content}`;
       }).join("\n\n");
-      const content = renderInjectionTemplate(
+      const retainedText = retained.map(({ slice }) => `[Retained memory: ${slice.timestamp} \xB7 ${slice.title}]
+${slice.content}`).join("\n\n");
+      const content = [retainedText, renderInjectionTemplate(
         getSettings().retrieval.recall.injection.template,
         recent,
         memories
-      );
+      )].filter(Boolean).join("\n\n");
       if (content) {
         await this.injectionStore.write({
           worldbookName: options.current.worldbookName,
@@ -30300,8 +30455,11 @@ ${slice.content}`;
           content,
           config: getSettings().retrieval.recall.injection
         });
-        injected = options.recentSlices.length + options.semanticHits.length;
+        injected = options.recentSlices.length + options.semanticHits.length + retained.length;
       }
+    }
+    if (options.inject && locked && options.current.catalog.recallEnabled && retentionPool) {
+      await this.summaryStore.saveRecallPool(options.current.worldbookName, retentionPool, guard);
     }
     const recentBatchIds = [...new Set(options.recentSlices.map((slice) => slice.batch.id))];
     const trace = {
@@ -30315,6 +30473,8 @@ ${slice.content}`;
       returned: options.rawReturned,
       injected,
       semanticReturned: options.semanticHits.length,
+      retainedSliceCount: retained.length,
+      ...retentionPool ? { retentionPool } : {},
       recentBatchIds,
       recentSliceCount: options.recentSlices.length,
       compressionActive: options.current.catalog.recallEnabled && options.current.catalog.compression.enabled,
@@ -30324,6 +30484,7 @@ ${slice.content}`;
     if (options.generationType !== "preview") this.lastTrace = trace;
     return {
       hits: options.semanticHits,
+      retainedSlices: retained.map((item) => item.slice),
       recentSlices: structuredClone(options.recentSlices),
       trace
     };
@@ -30343,6 +30504,240 @@ function installRecallInterceptor() {
     }
     await recallCoordinator.runInterceptor(chat, type, abort);
   };
+}
+
+// src/extension/workbench/recall-enhancements.ts
+function weightFields(addWeight = 0, multiplyWeight = 0) {
+  return [
+    { key: "addWeight", label: "\u52A0\u6743\u91CD", type: "number", min: -1, max: 1, step: 0.01, value: addWeight },
+    {
+      key: "multiplyWeight",
+      label: "\u4E58\u6743\u91CD\uFF080\uFF1A\u4E0D\u542F\u7528\uFF09",
+      type: "number",
+      min: 0,
+      max: 10,
+      step: 0.01,
+      value: multiplyWeight
+    }
+  ];
+}
+function assignRecallFlags(ctx, state, slices) {
+  const rules = getSettings().retrieval.recall.flagRules ?? [];
+  if (!rules.length) {
+    dialog("\u8BBE\u7F6E\u6807\u5FD7", empty("\u5C1A\u672A\u521B\u5EFA\u4EBA\u5DE5\u6807\u5FD7", button("\u7BA1\u7406\u6807\u5FD7", "flag", () => ctx.navigate("summary/recall"))));
+    return;
+  }
+  const single = slices.length === 1;
+  const form = fields([
+    ...!single ? [{
+      key: "mode",
+      label: "\u6279\u91CF\u5904\u7406\u65B9\u5F0F",
+      type: "select",
+      value: "add",
+      options: [["add", "\u6DFB\u52A0\u9009\u4E2D\u6807\u5FD7"], ["remove", "\u79FB\u9664\u9009\u4E2D\u6807\u5FD7"], ["replace", "\u66FF\u6362\u5168\u90E8\u6807\u5FD7"]]
+    }] : [],
+    ...rules.map((flag) => ({
+      key: flag.id,
+      label: flag.name,
+      type: "checkbox",
+      value: single && (slices[0]?.recallFlags ?? []).includes(flag.id)
+    }))
+  ]);
+  dialog(single ? "\u8BBE\u7F6E\u5207\u7247\u6807\u5FD7" : `\u6279\u91CF\u8BBE\u7F6E\u6807\u5FD7 \xB7 ${slices.length} \u4E2A\u5207\u7247`, form.node, async () => {
+    const values = form.values();
+    ctx.guard();
+    const activeIds = new Set((getSettings().retrieval.recall.flagRules ?? []).map((flag) => flag.id));
+    const flags = rules.filter((flag) => values[flag.id] && activeIds.has(flag.id)).map((flag) => flag.id);
+    await ctx.summary.store.saveSliceFlags(
+      state.worldbookName,
+      slices.map((slice) => slice.id),
+      flags,
+      single ? "replace" : values.mode
+    );
+    await ctx.refresh();
+  }, form.dirty);
+}
+function recallEnhancements(ctx, state) {
+  const host = section("\u53EC\u56DE\u589E\u5F3A\u7B56\u7565");
+  let sources = [
+    {
+      chatId: state.catalog.chatId,
+      namespaceId: state.catalog.namespaceId,
+      worldbookName: state.worldbookName,
+      enabled: true,
+      weight: state.catalog.recallSourceWeight,
+      addWeight: state.catalog.recallSourceAddWeight ?? 0,
+      order: state.catalog.recallSourceOrder
+    },
+    ...structuredClone(state.catalog.attachedRecallSources).map((s) => ({ ...s, addWeight: s.addWeight ?? 0 }))
+  ].sort((a, b) => a.order - b.order);
+  const sourceHost = el("div");
+  const dirty = () => {
+    sourceHost.dataset.dirty = "true";
+  };
+  const moveSource = (index, offset) => {
+    const target = index + offset;
+    if (target < 0 || target >= sources.length) return;
+    [sources[index], sources[target]] = [sources[target], sources[index]];
+    dirty();
+    drawSources();
+  };
+  const drawSources = () => {
+    sourceHost.replaceChildren(table(["\u6765\u6E90\u804A\u5929", "\u52A0\u6743\u91CD", "\u4E58\u6743\u91CD", "\u542F\u7528", "\u64CD\u4F5C"], sources.map((s, i) => [
+      s.namespaceId === state.catalog.namespaceId ? `${s.chatId}\uFF08\u5F53\u524D\uFF09` : s.chatId,
+      s.addWeight.toFixed(2),
+      s.weight.toFixed(2),
+      s.namespaceId === state.catalog.namespaceId ? "\u5F53\u524D\u804A\u5929" : check2(`\u542F\u7528 ${s.chatId}`, s.enabled, (value) => {
+        s.enabled = value;
+        dirty();
+      }),
+      actions(
+        tool("\u8BBE\u7F6E\u6765\u6E90\u6743\u91CD", "sliders", () => editDialog("\u6765\u6E90\u6743\u91CD", weightFields(s.addWeight, s.weight), (v) => {
+          s.addWeight = v.addWeight;
+          s.weight = v.multiplyWeight;
+          dirty();
+          drawSources();
+        })),
+        tool("\u4E0A\u79FB\u6765\u6E90", "arrow-up", () => moveSource(i, -1)),
+        tool("\u4E0B\u79FB\u6765\u6E90", "arrow-down", () => moveSource(i, 1)),
+        ...s.namespaceId === state.catalog.namespaceId ? [] : [tool("\u79FB\u9664\u6765\u6E90", "trash", () => {
+          sources.splice(i, 1);
+          dirty();
+          drawSources();
+        }, "danger")]
+      )
+    ])));
+  };
+  drawSources();
+  host.append(el("h3", "", "\u6765\u6E90\u6392\u5E8F\u4E0E\u6743\u91CD"), sourceHost, actions(
+    button("\u9644\u52A0\u804A\u5929", "plus", async () => {
+      const available = (await ctx.summary.store.listAvailableSources()).filter((s) => !sources.some((item) => item.namespaceId === s.catalog.namespaceId));
+      if (!available.length) throw new Error("\u6CA1\u6709\u53EF\u9644\u52A0\u7684\u5176\u4ED6\u804A\u5929\u603B\u7ED3\u3002");
+      editDialog("\u9644\u52A0\u53EC\u56DE\u6765\u6E90", [{
+        key: "source",
+        label: "\u804A\u5929",
+        type: "select",
+        options: available.map((s) => [s.catalog.namespaceId, s.catalog.chatId])
+      }], (v) => {
+        const s = available.find((item) => item.catalog.namespaceId === v.source);
+        sources.push({
+          chatId: s.catalog.chatId,
+          namespaceId: s.catalog.namespaceId,
+          worldbookName: s.worldbookName,
+          enabled: true,
+          weight: 0,
+          addWeight: 0,
+          order: sources.length
+        });
+        dirty();
+        drawSources();
+      });
+    }),
+    button("\u4FDD\u5B58\u6765\u6E90", "floppy-disk", async () => {
+      ctx.guard();
+      const fresh = await ctx.summary.load();
+      sources = sources.map((s, order) => ({ ...s, order }));
+      const current = sources.find((s) => s.namespaceId === state.catalog.namespaceId);
+      await ctx.summary.store.saveRecallConfiguration(fresh.worldbookName, {
+        enabled: fresh.catalog.recallEnabled,
+        weight: current.weight,
+        addWeight: current.addWeight,
+        order: current.order,
+        attachedSources: sources.filter((s) => s.namespaceId !== current.namespaceId)
+      });
+      delete sourceHost.dataset.dirty;
+      notify("\u6765\u6E90\u914D\u7F6E\u5DF2\u4FDD\u5B58");
+    }, "primary")
+  ));
+  const flagsHost = el("div");
+  const editFlag = (flag) => editDialog(flag ? "\u7F16\u8F91\u6807\u5FD7" : "\u65B0\u589E\u6807\u5FD7", [
+    { key: "name", label: "\u6807\u5FD7\u540D\u79F0", value: flag?.name ?? "", required: true },
+    ...weightFields(flag?.addWeight, flag?.multiplyWeight),
+    {
+      key: "retentionTurns",
+      label: "\u989D\u5916\u6EDE\u7559\u56DE\u5408\u6570",
+      type: "number",
+      min: 0,
+      max: 100,
+      value: flag?.retentionTurns ?? 0
+    }
+  ], (v) => {
+    ctx.guard();
+    const settings = getSettings();
+    const next = {
+      id: flag?.id ?? `flag_${crypto.randomUUID().replaceAll("-", "")}`,
+      name: String(v.name).trim(),
+      addWeight: v.addWeight,
+      multiplyWeight: v.multiplyWeight,
+      retentionTurns: v.retentionTurns
+    };
+    const rules = settings.retrieval.recall.flagRules ?? [];
+    settings.retrieval.recall.flagRules = flag ? rules.map((item) => item.id === flag.id ? next : item) : [...rules, next];
+    saveSettings(settings);
+    drawFlags();
+  });
+  const drawFlags = () => {
+    const rules = getSettings().retrieval.recall.flagRules ?? [];
+    flagsHost.replaceChildren(rules.length ? table(["\u6807\u5FD7", "\u52A0\u6743\u91CD", "\u4E58\u6743\u91CD", "\u989D\u5916\u6EDE\u7559\u56DE\u5408", "\u64CD\u4F5C"], rules.map((flag) => [
+      flag.name,
+      flag.addWeight.toFixed(2),
+      flag.multiplyWeight.toFixed(2),
+      flag.retentionTurns,
+      actions(tool("\u7F16\u8F91\u6807\u5FD7", "pen", () => editFlag(flag)), tool("\u5220\u9664\u6807\u5FD7", "trash", () => {
+        if (!confirm(`\u5220\u9664\u6807\u5FD7\u201C${flag.name}\u201D\u53CA\u5176\u53EC\u56DE\u6548\u679C\uFF1F`)) return;
+        ctx.guard();
+        const settings = getSettings();
+        settings.retrieval.recall.flagRules = (settings.retrieval.recall.flagRules ?? []).filter((item) => item.id !== flag.id);
+        saveSettings(settings);
+        drawFlags();
+      }, "danger"))
+    ])) : empty("\u5C1A\u672A\u521B\u5EFA\u4EBA\u5DE5\u6807\u5FD7"));
+  };
+  drawFlags();
+  const pool = fields([{
+    key: "maximum",
+    label: "\u989D\u5916\u53EC\u56DE\u6C60\u6700\u5927\u5207\u7247\u6570\uFF080\uFF1A\u5173\u95ED\uFF09",
+    type: "number",
+    min: 0,
+    max: 1e3,
+    value: getSettings().retrieval.recall.retentionMaxSlices ?? 20
+  }]);
+  host.append(
+    el("h3", "", "\u6807\u5FD7\u6743\u91CD"),
+    flagsHost,
+    actions(button("\u65B0\u589E\u6807\u5FD7", "plus", () => editFlag())),
+    el("h3", "", "\u989D\u5916\u53EC\u56DE\u6C60"),
+    saveForm(pool, async (v) => {
+      ctx.guard();
+      const settings = getSettings();
+      settings.retrieval.recall.retentionMaxSlices = v.maximum;
+      saveSettings(settings);
+      const fresh = await ctx.summary.load();
+      const saved = fresh.catalog.recallPool;
+      if (saved) {
+        const evicted = /* @__PURE__ */ new Set();
+        while (saved.entries.length > v.maximum) {
+          const remaining = Math.min(...saved.entries.map((item) => item.remaining));
+          const entry = saved.entries.splice(saved.entries.findIndex((item) => item.remaining === remaining), 1)[0];
+          evicted.add(`${entry.namespaceId}:${entry.sliceId}`);
+        }
+        saved.replay = saved.replay.filter((item) => !evicted.has(`${item.namespaceId}:${item.sliceId}`)).slice(0, v.maximum);
+        await ctx.summary.store.saveRecallPool(fresh.worldbookName, saved, ctx.guard);
+        await ctx.refresh();
+      }
+    }),
+    table(["\u5207\u7247", "\u6765\u6E90", "\u5269\u4F59\u56DE\u5408"], (state.catalog.recallPool?.entries ?? []).map((entry) => [
+      state.slices.find((slice) => slice.id === entry.sliceId)?.title ?? entry.sliceId,
+      sources.find((source) => source.namespaceId === entry.namespaceId)?.chatId ?? entry.namespaceId,
+      entry.remaining
+    ])),
+    actions(button("\u6E05\u7A7A\u989D\u5916\u53EC\u56DE\u6C60", "trash", async () => {
+      ctx.guard();
+      await ctx.summary.store.saveRecallPool(state.worldbookName, { floorKey: "", entries: [], replay: [] }, ctx.guard);
+      await ctx.refresh();
+    }, "danger"))
+  );
+  return host;
 }
 
 // src/extension/workbench/summary.ts
@@ -30791,6 +31186,7 @@ async function summaryView(ctx) {
       ),
       actions(
         button("\u91CD\u65B0\u603B\u7ED3\u6279\u6B21", "rotate", () => operate("rebuild", selected)),
+        button("\u8BBE\u7F6E\u6807\u5FD7", "flag", () => assignRecallFlags(ctx, state, selected)),
         button("\u6062\u590D\u539F\u6D88\u606F", "eye", () => operate("restore", selected)),
         button("\u91CD\u65B0\u9690\u85CF", "eye-slash", () => operate("hide", selected)),
         button(
@@ -30888,6 +31284,7 @@ async function summaryView(ctx) {
               stateBadge(s.batch.state),
               actions(
                 tool("\u7F16\u8F91\u5207\u7247", "pen", () => edit(s)),
+                tool("\u8BBE\u7F6E\u6807\u5FD7", "flag", () => assignRecallFlags(ctx, state, [s])),
                 tool(
                   "\u5220\u9664\u5207\u7247",
                   "trash",
@@ -30992,6 +31389,13 @@ async function recallView(ctx, state) {
       value: state.catalog.recallEnabled
     },
     {
+      key: "minimumRelevance",
+      label: "\u6700\u4F4E\u76F8\u5173\u6027\uFF080\uFF1A\u4E0D\u542F\u7528\uFF09",
+      type: "number",
+      step: 1e-3,
+      value: r.minimumRelevance ?? 0
+    },
+    {
       key: "vectorEnabled",
       label: "\u5411\u91CF\u68C0\u7D22",
       type: "checkbox",
@@ -31038,7 +31442,8 @@ async function recallView(ctx, state) {
           "vectorTopK",
           "bm25TopK",
           "rerankTopK",
-          "finalTopK"
+          "finalTopK",
+          "minimumRelevance"
         ])
           s.retrieval.recall[k] = v[k];
         saveSettings(s);
@@ -31054,155 +31459,7 @@ async function recallView(ctx, state) {
       })
     )
   );
-  let sources = structuredClone(state.catalog.attachedRecallSources);
-  const sourceHost = el("div");
-  const saveSources = async () => {
-    ctx.guard();
-    const fresh = await ctx.summary.load();
-    await ctx.summary.store.saveRecallConfiguration(fresh.worldbookName, {
-      enabled: fresh.catalog.recallEnabled,
-      weight: fresh.catalog.recallSourceWeight,
-      order: fresh.catalog.recallSourceOrder,
-      attachedSources: sources
-    });
-  };
-  const draw = () => sourceHost.replaceChildren(
-    table(
-      ["\u6765\u6E90\u804A\u5929", "\u6743\u91CD", "\u542F\u7528", "\u64CD\u4F5C"],
-      sources.map((s, i) => [
-        s.chatId,
-        s.weight,
-        check2("\u542F\u7528 " + s.chatId, s.enabled, (v) => {
-          s.enabled = v;
-          sourceHost.dataset.dirty = "true";
-        }),
-        actions(
-          tool(
-            "\u8BBE\u7F6E\u6743\u91CD",
-            "sliders",
-            () => editDialog(
-              "\u6765\u6E90\u6743\u91CD",
-              [
-                {
-                  key: "weight",
-                  label: "\u6743\u91CD",
-                  type: "number",
-                  value: s.weight,
-                  min: 0,
-                  max: 100,
-                  step: 0.1
-                }
-              ],
-              (v) => {
-                s.weight = v.weight;
-                sourceHost.dataset.dirty = "true";
-                draw();
-              }
-            )
-          ),
-          tool("\u4E0A\u79FB\u6765\u6E90", "arrow-up", () => {
-            if (i) {
-              [sources[i - 1], sources[i]] = [sources[i], sources[i - 1]];
-              sources = sources.map((x, n) => ({ ...x, order: n }));
-              sourceHost.dataset.dirty = "true";
-              draw();
-            }
-          }),
-          tool(
-            "\u79FB\u9664\u6765\u6E90",
-            "trash",
-            () => {
-              sources.splice(i, 1);
-              sourceHost.dataset.dirty = "true";
-              draw();
-            },
-            "danger"
-          )
-        )
-      ])
-    )
-  );
-  draw();
-  const current = fields([
-    {
-      key: "weight",
-      label: "\u5F53\u524D\u804A\u5929\u6743\u91CD",
-      type: "number",
-      min: 0,
-      max: 100,
-      step: 0.1,
-      value: state.catalog.recallSourceWeight
-    },
-    {
-      key: "order",
-      label: "\u5F53\u524D\u804A\u5929\u987A\u5E8F",
-      type: "number",
-      min: 0,
-      value: state.catalog.recallSourceOrder
-    }
-  ]);
-  page.append(
-    section(
-      "\u6765\u6E90\u6392\u5E8F\u4E0E\u6743\u91CD",
-      saveForm(current, async (v) => {
-        ctx.guard();
-        const fresh = await ctx.summary.load();
-        await ctx.summary.store.saveRecallConfiguration(fresh.worldbookName, {
-          enabled: fresh.catalog.recallEnabled,
-          weight: v.weight,
-          order: v.order,
-          attachedSources: fresh.catalog.attachedRecallSources
-        });
-      }),
-      sourceHost,
-      actions(
-        button("\u9644\u52A0\u804A\u5929", "plus", async () => {
-          const available = (await ctx.summary.store.listAvailableSources()).filter(
-            (s) => s.catalog.namespaceId !== state.catalog.namespaceId && !sources.some((x) => x.namespaceId === s.catalog.namespaceId)
-          );
-          if (!available.length) throw new Error("\u6CA1\u6709\u53EF\u9644\u52A0\u7684\u5176\u4ED6\u804A\u5929\u603B\u7ED3\u3002");
-          editDialog(
-            "\u9644\u52A0\u53EC\u56DE\u6765\u6E90",
-            [
-              {
-                key: "source",
-                label: "\u804A\u5929",
-                type: "select",
-                options: available.map((s) => [
-                  s.catalog.namespaceId,
-                  s.catalog.chatId
-                ])
-              }
-            ],
-            (v) => {
-              const s = available.find(
-                (s2) => s2.catalog.namespaceId === v.source
-              );
-              sources.push({
-                chatId: s.catalog.chatId,
-                namespaceId: s.catalog.namespaceId,
-                worldbookName: s.worldbookName,
-                enabled: true,
-                weight: 1,
-                order: sources.length
-              });
-              sourceHost.dataset.dirty = "true";
-              draw();
-            }
-          );
-        }),
-        button(
-          "\u4FDD\u5B58\u6765\u6E90",
-          "floppy-disk",
-          async () => {
-            await saveSources();
-            delete sourceHost.dataset.dirty;
-          },
-          "primary"
-        )
-      )
-    )
-  );
+  page.append(recallEnhancements(ctx, state));
   page.append(
     section(
       "\u67E5\u8BE2\u7F16\u6392",
