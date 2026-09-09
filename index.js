@@ -322,10 +322,401 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "2.2.0", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "2.2.1", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
+
+// node_modules/@noble/hashes/_u64.js
+var fromNumH = (n) => n / 2 ** 32 | 0;
+var fromNumL = (n) => n >>> 0;
+function setU64FromNum(view, byteOffset, n, isLE) {
+  const h = fromNumH(n);
+  const l = fromNumL(n);
+  view.setUint32(byteOffset, isLE ? l : h, isLE);
+  view.setUint32(byteOffset + 4, isLE ? h : l, isLE);
+}
+
+// node_modules/@noble/hashes/utils.js
+function isBytes(a) {
+  return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array" && "BYTES_PER_ELEMENT" in a && a.BYTES_PER_ELEMENT === 1;
+}
+var atitle = (title) => title ? `"${title}" ` : "";
+function anumber(n, title = "") {
+  if (typeof n !== "number")
+    throw new TypeError(atitle(title) + "expected number, got " + typeof n);
+  if (!Number.isSafeInteger(n) || n < 0)
+    throw new RangeError(atitle(title) + "expected integer >= 0, got " + n);
+  return n;
+}
+function abytes(value, length, title = "") {
+  if (isBytes(value) && (length === void 0 || value.length === length))
+    return value;
+  if (length !== void 0)
+    anumber(length, "length");
+  const bytes = isBytes(value);
+  const ofLen = length !== void 0 ? ` of length ${length}` : "";
+  const got = bytes ? `length=${value.length}` : `type=${typeof value}`;
+  const message = atitle(title) + "expected Uint8Array" + ofLen + ", got " + got;
+  if (!bytes)
+    throw new TypeError(message);
+  throw new RangeError(message);
+}
+var aobject = (value, label) => {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    throw new TypeError((label === "object" ? "" : `"${label}" `) + "expected object, got type=" + typeof value);
+};
+var aopts = (value, label) => {
+  aobject(value, label);
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null)
+    throw new TypeError(`"${label}" expected plain object`);
+  if (Object.hasOwn(value, "__proto__"))
+    throw new TypeError(`"${label}.__proto__" is not allowed`);
+};
+function aexists(instance, checkFinished = true) {
+  if (instance.destroyed)
+    throw new Error("hash was destroyed");
+  if (checkFinished && instance.finished)
+    throw new Error("digest() was already called");
+}
+function aoutput(out, instance) {
+  abytes(out, void 0, "output");
+  const min = instance.outputLen;
+  if (!(out.length >= min)) {
+    throw new RangeError('"output" expected length >= ' + min);
+  }
+}
+function clean(...arrays) {
+  for (let i = 0; i < arrays.length; i++) {
+    arrays[i].fill(0);
+  }
+}
+function createView(arr) {
+  return new DataView(arr.buffer, arr.byteOffset, arr.byteLength);
+}
+function rotr(word, shift) {
+  return word << 32 - shift | word >>> shift;
+}
+function checkOpts(defaults, opts, title = "opts") {
+  aopts(defaults, "defaults");
+  if (opts !== void 0)
+    aopts(opts, title);
+  const merged = Object.assign(/* @__PURE__ */ Object.create(null), defaults, opts);
+  return merged;
+}
+function createHasher(hashCons, info = {}) {
+  if (typeof hashCons !== "function")
+    throw new TypeError('"hashCons" expected function, got type=' + typeof hashCons);
+  info = checkOpts({}, info, "info");
+  const hashC = (msg, opts) => hashCons(opts).update(msg).digest();
+  const tmp = hashCons(void 0);
+  hashC.outputLen = tmp.outputLen;
+  hashC.blockLen = tmp.blockLen;
+  hashC.canXOF = tmp.canXOF;
+  hashC.create = (opts) => hashCons(opts);
+  Object.assign(hashC, info);
+  return Object.freeze(hashC);
+}
+var oidNist = (suffix) => ({
+  // Current NIST hashAlgs suffixes used here fit in one DER subidentifier octet.
+  // Larger suffix values would need base-128 OID encoding and a different length byte.
+  oid: Uint8Array.from([6, 9, 96, 134, 72, 1, 101, 3, 4, 2, suffix])
+});
+
+// node_modules/@noble/hashes/_md.js
+function Chi(a, b, c) {
+  return a & b ^ ~a & c;
+}
+function Maj(a, b, c) {
+  return a & b ^ a & c ^ b & c;
+}
+var HashMD = class {
+  blockLen;
+  outputLen;
+  canXOF = false;
+  padOffset;
+  isLE;
+  // For partial updates less than block size
+  buffer;
+  view;
+  finished = false;
+  length = 0;
+  pos = 0;
+  destroyed = false;
+  constructor(blockLen, outputLen, padOffset, isLE) {
+    this.blockLen = blockLen;
+    this.outputLen = outputLen;
+    this.padOffset = padOffset;
+    this.isLE = isLE;
+    this.buffer = new Uint8Array(blockLen);
+    this.view = createView(this.buffer);
+  }
+  update(data) {
+    aexists(this);
+    abytes(data);
+    const { view, buffer, blockLen } = this;
+    const len = data.length;
+    let processed = false;
+    for (let pos = 0; pos < len; ) {
+      const take = Math.min(blockLen - this.pos, len - pos);
+      if (take === blockLen) {
+        const dataView = createView(data);
+        for (; blockLen <= len - pos; pos += blockLen)
+          this.process(dataView, pos);
+        processed = true;
+        continue;
+      }
+      buffer.set(pos === 0 && take === len ? data : data.subarray(pos, pos + take), this.pos);
+      this.pos += take;
+      pos += take;
+      if (this.pos === blockLen) {
+        this.process(view, 0);
+        this.pos = 0;
+        processed = true;
+      }
+    }
+    this.length += data.length;
+    if (processed)
+      this.roundClean();
+    return this;
+  }
+  digestInto(out) {
+    aexists(this);
+    aoutput(out, this);
+    this.finished = true;
+    const { buffer, view, blockLen, isLE } = this;
+    let { pos } = this;
+    buffer[pos++] = 128;
+    buffer.fill(0, pos);
+    if (this.padOffset > blockLen - pos) {
+      this.process(view, 0);
+      buffer.fill(0);
+    }
+    setU64FromNum(view, blockLen - 8, this.length * 8, isLE);
+    this.process(view, 0);
+    this.roundClean();
+    const oview = out === buffer ? view : createView(out);
+    const len = this.outputLen;
+    const outLen = len / 4;
+    const state = this.get();
+    if (len % 4 || outLen > state.length)
+      throw new Error("invalid outputLen");
+    for (let i = 0; i < outLen; i++)
+      oview.setUint32(4 * i, state[i], isLE);
+  }
+  digest() {
+    const { buffer, outputLen } = this;
+    this.digestInto(buffer);
+    const res = buffer.slice(0, outputLen);
+    this.destroy();
+    return res;
+  }
+  _cloneIntoMeta(to) {
+    const { buffer, length, finished, destroyed, pos } = this;
+    to.destroyed = destroyed;
+    to.finished = finished;
+    to.length = length;
+    to.pos = pos;
+    if (pos)
+      to.buffer.set(buffer);
+    return to;
+  }
+  clone() {
+    return this._cloneInto();
+  }
+};
+var SHA256_IV = /* @__PURE__ */ Uint32Array.from([
+  1779033703,
+  3144134277,
+  1013904242,
+  2773480762,
+  1359893119,
+  2600822924,
+  528734635,
+  1541459225
+]);
+
+// node_modules/@noble/hashes/sha2.js
+var SHA256_K = /* @__PURE__ */ Uint32Array.from([
+  1116352408,
+  1899447441,
+  3049323471,
+  3921009573,
+  961987163,
+  1508970993,
+  2453635748,
+  2870763221,
+  3624381080,
+  310598401,
+  607225278,
+  1426881987,
+  1925078388,
+  2162078206,
+  2614888103,
+  3248222580,
+  3835390401,
+  4022224774,
+  264347078,
+  604807628,
+  770255983,
+  1249150122,
+  1555081692,
+  1996064986,
+  2554220882,
+  2821834349,
+  2952996808,
+  3210313671,
+  3336571891,
+  3584528711,
+  113926993,
+  338241895,
+  666307205,
+  773529912,
+  1294757372,
+  1396182291,
+  1695183700,
+  1986661051,
+  2177026350,
+  2456956037,
+  2730485921,
+  2820302411,
+  3259730800,
+  3345764771,
+  3516065817,
+  3600352804,
+  4094571909,
+  275423344,
+  430227734,
+  506948616,
+  659060556,
+  883997877,
+  958139571,
+  1322822218,
+  1537002063,
+  1747873779,
+  1955562222,
+  2024104815,
+  2227730452,
+  2361852424,
+  2428436474,
+  2756734187,
+  3204031479,
+  3329325298
+]);
+var SHA256_W = /* @__PURE__ */ new Uint32Array(64);
+var SHA2_32B = class extends HashMD {
+  // We cannot use array here since array allows indexing by variable
+  // which means optimizer/compiler cannot use registers.
+  // Numeric initializers matter: starting the fields as `undefined` changes
+  // V8's field representation and makes sha256 3x slower (measured).
+  A = 0;
+  B = 0;
+  C = 0;
+  D = 0;
+  E = 0;
+  F = 0;
+  G = 0;
+  H = 0;
+  constructor(outputLen, IV) {
+    super(64, outputLen, 8, false);
+    this.A = IV[0] | 0;
+    this.B = IV[1] | 0;
+    this.C = IV[2] | 0;
+    this.D = IV[3] | 0;
+    this.E = IV[4] | 0;
+    this.F = IV[5] | 0;
+    this.G = IV[6] | 0;
+    this.H = IV[7] | 0;
+  }
+  get() {
+    const { A, B, C, D, E, F, G, H } = this;
+    return [A, B, C, D, E, F, G, H];
+  }
+  // prettier-ignore
+  set(A, B, C, D, E, F, G, H) {
+    this.A = A | 0;
+    this.B = B | 0;
+    this.C = C | 0;
+    this.D = D | 0;
+    this.E = E | 0;
+    this.F = F | 0;
+    this.G = G | 0;
+    this.H = H | 0;
+  }
+  _cloneInto(to) {
+    (to ||= new this.constructor()).set(...this.get());
+    return this._cloneIntoMeta(to);
+  }
+  process(view, offset) {
+    for (let i = 0; i < 16; i++, offset += 4)
+      SHA256_W[i] = view.getUint32(offset, false);
+    for (let i = 16; i < 64; i++) {
+      const W15 = SHA256_W[i - 15];
+      const W2 = SHA256_W[i - 2];
+      const s0 = rotr(W15, 7) ^ rotr(W15, 18) ^ W15 >>> 3;
+      const s1 = rotr(W2, 17) ^ rotr(W2, 19) ^ W2 >>> 10;
+      SHA256_W[i] = s1 + SHA256_W[i - 7] + s0 + SHA256_W[i - 16] | 0;
+    }
+    let { A, B, C, D, E, F, G, H } = this;
+    for (let i = 0; i < 64; i++) {
+      const sigma1 = rotr(E, 6) ^ rotr(E, 11) ^ rotr(E, 25);
+      const T1 = H + sigma1 + Chi(E, F, G) + SHA256_K[i] + SHA256_W[i] | 0;
+      const sigma0 = rotr(A, 2) ^ rotr(A, 13) ^ rotr(A, 22);
+      const T2 = sigma0 + Maj(A, B, C) | 0;
+      H = G;
+      G = F;
+      F = E;
+      E = D + T1 | 0;
+      D = C;
+      C = B;
+      B = A;
+      A = T1 + T2 | 0;
+    }
+    A = A + this.A | 0;
+    B = B + this.B | 0;
+    C = C + this.C | 0;
+    D = D + this.D | 0;
+    E = E + this.E | 0;
+    F = F + this.F | 0;
+    G = G + this.G | 0;
+    H = H + this.H | 0;
+    this.set(A, B, C, D, E, F, G, H);
+  }
+  roundClean() {
+    clean(SHA256_W);
+  }
+  destroy() {
+    this.destroyed = true;
+    this.set(0, 0, 0, 0, 0, 0, 0, 0);
+    clean(this.buffer);
+  }
+};
+var _SHA256 = class extends SHA2_32B {
+  constructor() {
+    super(32, SHA256_IV);
+  }
+};
+var sha256 = /* @__PURE__ */ createHasher(
+  () => new _SHA256(),
+  /* @__PURE__ */ oidNist(1)
+);
+
+// src/shared/crypto-compat.ts
+function randomUuid() {
+  const crypto = globalThis.crypto;
+  if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = bytes[6] & 15 | 64;
+  bytes[8] = bytes[8] & 63 | 128;
+  const hex3 = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex3.slice(0, 8)}-${hex3.slice(8, 12)}-${hex3.slice(12, 16)}-${hex3.slice(16, 20)}-${hex3.slice(20)}`;
+}
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = typeof globalThis.crypto?.subtle?.digest === "function" ? new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes)) : sha256(bytes);
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 // src/extension/summary/summary-coordinator.ts
 init_client();
@@ -16877,7 +17268,7 @@ function migrateLegacySecondaryApi(raw) {
   }];
 }
 function uniqueId(prefix) {
-  return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
+  return `${prefix}_${randomUuid().replaceAll("-", "")}`;
 }
 function normalizeTemplates(raw) {
   const templates = Array.isArray(raw) ? raw.filter((item) => Boolean(item && typeof item === "object")) : [];
@@ -17366,7 +17757,7 @@ function helper() {
   return window.TavernHelper;
 }
 function uniqueId2(prefix) {
-  return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
+  return `${prefix}_${randomUuid().replaceAll("-", "")}`;
 }
 function metadata(entry) {
   const value = entry.extra?.echoes;
@@ -17875,8 +18266,7 @@ var SummaryWorldbookStore = class {
 // src/shared/source-hash.ts
 async function sourceMessagesHash(messages2) {
   const value = JSON.stringify(messages2.map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content })));
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return sha256Hex(value);
 }
 
 // src/extension/summary/preprocess-core.ts
@@ -18179,19 +18569,15 @@ function recentSummaryBatches(slices, count) {
 }
 
 // src/extension/summary/retrieval-document.ts
-async function hashIdentifier(value) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
 async function summaryRetrievalDocumentId(collectionId, sliceId) {
-  return `summary_doc_${(await hashIdentifier(`${collectionId}\0${sliceId}`)).slice(0, 48)}`;
+  return `summary_doc_${(await sha256Hex(`${collectionId}\0${sliceId}`)).slice(0, 48)}`;
 }
 function summaryRetrievalText(slice) {
   return `[${slice.timestamp}] ${slice.title}
 ${slice.content}`;
 }
 async function summaryRetrievalContentHash(slice) {
-  return hashIdentifier(summaryRetrievalText(slice));
+  return sha256Hex(summaryRetrievalText(slice));
 }
 async function summaryRetrievalDocument(collectionId, slice, chatId) {
   return {
@@ -18264,7 +18650,7 @@ function nextMarker(message, namespaceId, batchId, changes) {
   const now3 = (/* @__PURE__ */ new Date()).toISOString();
   return {
     version: 1,
-    stableId: current?.stableId ?? `echoes_message_${crypto.randomUUID().replaceAll("-", "")}`,
+    stableId: current?.stableId ?? `echoes_message_${randomUuid().replaceAll("-", "")}`,
     namespaceId,
     batchId,
     hiddenByEchoes: current?.hiddenByEchoes ?? false,
@@ -18606,10 +18992,6 @@ function abortable(promise2, signal) {
     void promise2.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
     if (signal.aborted) abort();
   });
-}
-async function hashIdentifier2(value) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 async function waitForJob(job, signal) {
   const deadline = Date.now() + 2 * 60 * 6e4;
@@ -19175,7 +19557,7 @@ var SummaryCoordinator = class {
     if (state.catalog.retrievalCollectionId) {
       return this.migrateState(state, group, decide, signal ?? new AbortController().signal);
     }
-    const digest = await hashIdentifier2(`${state.catalog.namespaceId}\0${group.embeddingSpaceId}`);
+    const digest = await sha256Hex(`${state.catalog.namespaceId}\0${group.embeddingSpaceId}`);
     const collectionId = `summary_${digest.slice(0, 48)}`;
     const collections = await echoesApi.listRetrievalCollections();
     if (!collections.some((item) => item.collection.id === collectionId)) {
@@ -19216,7 +19598,7 @@ var SummaryCoordinator = class {
       if (JSON.stringify(latest) !== JSON.stringify(group)) throw new Error("\u8FC1\u79FB\u671F\u95F4\u76EE\u6807\u5411\u91CF\u914D\u7F6E\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u8BD5\u3002");
     };
     guard();
-    const digest = await hashIdentifier2(`${state.catalog.namespaceId}\0${group.embeddingSpaceId}\0${group.dimensions}\0${summaryMigrationFingerprint(state)}`);
+    const digest = await sha256Hex(`${state.catalog.namespaceId}\0${group.embeddingSpaceId}\0${group.dimensions}\0${summaryMigrationFingerprint(state)}`);
     const collectionId = `summary_${digest.slice(0, 48)}`;
     const existing = (await echoesApi.listRetrievalCollections()).find((c) => c.collection.id === collectionId);
     if (existing && (existing.collection.dimensions !== group.dimensions || existing.collection.embeddingSpaceId !== group.embeddingSpaceId)) {
@@ -19275,16 +19657,14 @@ function canonical(value) {
   const record3 = value;
   return `{${Object.keys(record3).sort().map((key) => `${JSON.stringify(key)}:${canonical(record3[key])}`).join(",")}}`;
 }
-async function sha256(value) {
-  const bytes = new TextEncoder().encode(canonical(value));
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+async function sha2562(value) {
+  return sha256Hex(canonical(value));
 }
 function structuredExtractionMessageHash(messages2) {
-  return sha256(messages2.map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content })));
+  return sha2562(messages2.map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content })));
 }
 function structuredExtractionContextHash(types, rows) {
-  return sha256({
+  return sha2562({
     types: [...types].sort((left, right) => left.id.localeCompare(right.id)).map((type) => ({
       id: type.id,
       templateId: type.templateId,
@@ -25737,7 +26117,7 @@ function decodeMemoryContent(type, content) {
 var CATALOG_ENTRY_NAME = "[Echoes] \u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6\u914D\u7F6E";
 var CATALOG_CONTENT = "Echoes structured-memory metadata. This disabled entry is managed by the plugin.";
 function uniqueId3(prefix) {
-  return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
+  return `${prefix}_${randomUuid().replaceAll("-", "")}`;
 }
 function requiredHelper2() {
   if (!window.TavernHelper) {
@@ -27097,7 +27477,7 @@ function readFile(accept = ".json") {
     input.click();
   });
 }
-var id = (prefix) => prefix + "_" + crypto.randomUUID().replaceAll("-", "");
+var id = (prefix) => prefix + "_" + randomUuid().replaceAll("-", "");
 var now = () => (/* @__PURE__ */ new Date()).toISOString();
 var stateNames = {
   ready: "\u5411\u91CF\u5C31\u7EEA",
@@ -28936,9 +29316,7 @@ function canonicalStatusJson(state) {
   return canonical2(state);
 }
 async function statusStateHash(state) {
-  const bytes = new TextEncoder().encode(canonicalStatusJson(state));
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return sha256Hex(canonicalStatusJson(state));
 }
 
 // src/extension/status/status-coordinator.ts
@@ -28953,7 +29331,7 @@ function helper3() {
   return window.TavernHelper;
 }
 function uniqueId4(prefix) {
-  return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
+  return `${prefix}_${randomUuid().replaceAll("-", "")}`;
 }
 function catalogMetadata(entry) {
   const value = entry.extra?.echoes;
@@ -29314,11 +29692,26 @@ ${renderStatusYaml(state)}`;
 }
 async function prepareStatusRequest(options) {
   const all = currentStatusMessages();
-  const baseIndex = options.baseSnapshot ? all.find((message) => message.id === options.baseSnapshot.targetMessageId)?.messageIndex ?? -1 : -1;
-  const selected = all.filter((message) => message.messageIndex > baseIndex && message.messageIndex <= options.targetMessageIndex).map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content }));
-  if (selected.length === 0 || selected.length > 500) {
-    throw new Error("Status updates require between 1 and 500 incremental messages.");
+  let baseIndex = options.baseSnapshot ? all.find((message) => message.id === options.baseSnapshot.targetMessageId)?.messageIndex ?? -1 : -1;
+  if (options.baseSnapshot && (baseIndex < 0 || baseIndex >= options.targetMessageIndex)) {
+    throw new Error("\u72B6\u6001\u5FEB\u7167\u7684\u6765\u6E90\u697C\u5C42\u5DF2\u5931\u6548\uFF0C\u8BF7\u5148\u68C0\u67E5\u6216\u6062\u590D\u72B6\u6001\u5FEB\u7167\u3002");
   }
+  if (!options.baseSnapshot) {
+    for (let index = all.length - 1; index >= 0; index -= 1) {
+      const message = all[index];
+      if (message.messageIndex < options.targetMessageIndex && message.role === "assistant") {
+        baseIndex = message.messageIndex;
+        break;
+      }
+    }
+  }
+  const incremental = all.filter((message) => message.messageIndex > baseIndex && message.messageIndex <= options.targetMessageIndex);
+  const selected = incremental.slice(-500).map(({ id: id2, role: role2, content }) => ({ id: id2, role: role2, content }));
+  if (selected.length === 0) {
+    throw new Error("\u76EE\u6807\u697C\u5C42\u6CA1\u6709\u53EF\u7528\u4E8E\u66F4\u65B0\u72B6\u6001\u7684\u6D88\u606F\u3002");
+  }
+  const skippedCount = incremental.length - selected.length;
+  const rangeNotice = skippedCount > 0 ? `\u72B6\u6001\u589E\u91CF\u79EF\u538B\u8D85\u8FC7 500 \u6761\uFF0C\u672C\u6B21\u4EC5\u5904\u7406\u6700\u8FD1 500 \u6761\uFF1B\u6B64\u524D ${skippedCount} \u6761\u672A\u56DE\u6EAF\uFF0C\u8BF7\u6838\u5BF9\u5F53\u524D\u72B6\u6001\u3002` : void 0;
   const cleaned = await preprocessSummaryMessages(selected, options.catalog.profile.preprocessRules);
   if (cleaned.length === 0) throw new Error("No status evidence remains after message preprocessing.");
   if (!options.catalog.profile.promptPreset.items.some((item) => item.enabled && item.kind === "messages")) {
@@ -29326,6 +29719,12 @@ async function prepareStatusRequest(options) {
   }
   const baseState = options.baseSnapshot?.state ?? options.catalog.profile.initialState;
   const promptMessages = [];
+  if (skippedCount > 0) {
+    promptMessages.push({
+      role: "system",
+      content: `The supplied incremental messages contain only the latest 500 messages. ${skippedCount} earlier messages after the base state are omitted. Update the current state using the supplied evidence; intermediate changes in the omitted interval are unknown.`
+    });
+  }
   for (const item of options.catalog.profile.promptPreset.items) {
     if (!item.enabled) continue;
     const content = (await itemContent2(item, baseState, cleaned)).trim();
@@ -29336,7 +29735,8 @@ async function prepareStatusRequest(options) {
     originalMessages: selected,
     cleanedMessages: cleaned,
     promptMessages,
-    sourceHash: await statusSourceHash(selected)
+    sourceHash: await statusSourceHash(selected),
+    ...rangeNotice ? { rangeNotice } : {}
   };
 }
 
@@ -29589,6 +29989,10 @@ ${yaml}`;
       return existing;
     }
     const settings = getSettings();
+    if (prepared.rangeNotice) {
+      toastr.warning(prepared.rangeNotice, "Echoes \u72B6\u6001\u66F4\u65B0\u8303\u56F4");
+      console.warn("[Echoes] Status update range limited.", prepared.rangeNotice);
+    }
     const workflow = settings.generationWorkflows.status;
     const group = settings.generationGroups.find((candidate) => candidate.id === workflow.groupId);
     if (!group) throw new Error("\u8BF7\u5148\u914D\u7F6E\u72B6\u6001\u66F4\u65B0\u4F7F\u7528\u7684\u751F\u6210\u7AEF\u70B9\u7EC4\u3002");
@@ -29727,7 +30131,8 @@ ${yaml}`;
       completedAt: (/* @__PURE__ */ new Date()).toISOString(),
       outcome: "completed",
       operationCount: result.operations.length,
-      attempts: result.attempts
+      attempts: result.attempts,
+      ...prepared.rangeNotice ? { message: prepared.rangeNotice } : {}
     });
     return snapshot;
   }
@@ -30665,7 +31070,7 @@ function recallEnhancements(ctx, state) {
     ctx.guard();
     const settings = getSettings();
     const next = {
-      id: flag?.id ?? `flag_${crypto.randomUUID().replaceAll("-", "")}`,
+      id: flag?.id ?? `flag_${randomUuid().replaceAll("-", "")}`,
       name: String(v.name).trim(),
       addWeight: v.addWeight,
       multiplyWeight: v.multiplyWeight,
@@ -32532,11 +32937,6 @@ function stableJson(value) {
   }
   return JSON.stringify(value);
 }
-async function sha2562(value) {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
 function transcriptShape(messages2) {
   return messages2.map(({ role: messageRole, swipeHashes }) => ({ role: messageRole, swipeHashes }));
 }
@@ -32549,7 +32949,7 @@ function targetTranscriptShape(messages2) {
   }));
 }
 async function targetTranscriptFingerprint(messages2) {
-  return sha2562(stableJson(targetTranscriptShape(messages2)));
+  return sha256Hex(stableJson(targetTranscriptShape(messages2)));
 }
 function role(message) {
   if (message.is_user === true || message.role === "user") return "user";
@@ -32569,7 +32969,7 @@ async function describeChat(chat = SillyTavern.getContext().chat) {
     index,
     stableId: stableId(message, index),
     role: role(message),
-    swipeHashes: await Promise.all(swipeTexts(message).map(sha2562)),
+    swipeHashes: await Promise.all(swipeTexts(message).map(sha256Hex)),
     selectedSwipe: Math.max(0, Number(message.swipe_id ?? 0) || 0),
     message
   })));
@@ -32697,11 +33097,11 @@ function withoutIntegrity(backup) {
 async function finalizeBackup(value) {
   return {
     ...value,
-    integrity: { algorithm: "sha256", digest: await sha2562(stableJson(value)) }
+    integrity: { algorithm: "sha256", digest: await sha256Hex(stableJson(value)) }
   };
 }
 function uniqueId5(prefix) {
-  return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
+  return `${prefix}_${randomUuid().replaceAll("-", "")}`;
 }
 function currentWorldbook() {
   const context = SillyTavern.getContext();
@@ -32939,7 +33339,7 @@ var EchoesBackupManager = class {
       source: {
         chatId,
         worldbookName,
-        transcriptFingerprint: await sha2562(stableJson(transcriptShape(messages2)))
+        transcriptFingerprint: await sha256Hex(stableJson(transcriptShape(messages2)))
       },
       ...includeGlobalSettings ? { globalSettings: redactedSettings() } : {},
       worldbookEntries,
@@ -32952,9 +33352,9 @@ var EchoesBackupManager = class {
       throw new Error("Echoes backup exceeds the 100 MB uncompressed limit.");
     }
     const backup = echoesBackupV1Schema.parse(JSON.parse(text));
-    const digest = await sha2562(stableJson(withoutIntegrity(backup)));
+    const digest = await sha256Hex(stableJson(withoutIntegrity(backup)));
     if (digest !== backup.integrity.digest) throw new Error("Echoes backup integrity verification failed.");
-    const transcriptFingerprint = await sha2562(stableJson(transcriptShape(backup.messages)));
+    const transcriptFingerprint = await sha256Hex(stableJson(transcriptShape(backup.messages)));
     if (transcriptFingerprint !== backup.source.transcriptFingerprint) {
       throw new Error("Echoes backup transcript fingerprint is inconsistent.");
     }
