@@ -322,7 +322,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "2.2.2", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "2.2.3", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
@@ -18674,6 +18674,12 @@ var CompressionCoordinator = class {
   inspect(state) {
     return this.serialize(async () => this.statusFromSnapshot(await this.snapshot(state)));
   }
+  inspectVisibility(state) {
+    return this.serialize(async () => {
+      const snapshot = await this.snapshot(state, false);
+      return this.statusFromSnapshot(snapshot).batches.map(({ batchId, covered, hidden }) => ({ batchId, covered, hidden }));
+    });
+  }
   reconcile(state) {
     return this.serialize(async () => {
       let snapshot = await this.snapshot(state);
@@ -18853,7 +18859,7 @@ var CompressionCoordinator = class {
     await this.apply(state, updates);
     return this.statusFromSnapshot(await this.snapshot(state));
   }
-  async snapshot(state) {
+  async snapshot(state, verifyIndex = true) {
     const current = state ?? await this.store.load();
     this.assertCurrent(current);
     const raw = requiredHelper().getChatMessages("0-{{lastMessageId}}", {
@@ -18870,7 +18876,7 @@ var CompressionCoordinator = class {
     let safeBatchIds = /* @__PURE__ */ new Set();
     let unsafeBatchIds = plan.chain.map((coverage) => coverage.batch.id);
     try {
-      ({ safeBatchIds, unsafeBatchIds } = await this.indexSafety(current, plan.chain));
+      if (verifyIndex) ({ safeBatchIds, unsafeBatchIds } = await this.indexSafety(current, plan.chain));
     } catch {
     }
     return { raw, messages: messages2, state: current, plan, safeBatchIds, unsafeBatchIds };
@@ -18918,9 +18924,13 @@ var CompressionCoordinator = class {
   }
   statusFromSnapshot(snapshot) {
     const active = snapshot.state.catalog.recallEnabled && snapshot.state.catalog.compression.enabled;
+    const rawById = new Map(snapshot.raw.map((message) => [String(message.message_id), message]));
     const batchStatus = snapshot.plan.chain.map((coverage) => {
       const messageIds = new Set(coverage.batch.messageIds);
-      const messages2 = snapshot.raw.filter((message) => messageIds.has(String(message.message_id)));
+      const messages2 = [...messageIds].flatMap((id2) => {
+        const message = rawById.get(id2);
+        return message ? [message] : [];
+      });
       return {
         batchId: coverage.batch.id,
         batchNumber: coverage.batch.batchNumber,
@@ -26338,8 +26348,8 @@ var WorldbookMemoryStore = class {
   }
   async load() {
     return this.enqueue(async (target) => {
-      const worldbookName = await this.ensureCurrentCatalog(target);
-      return this.readWorldbook(worldbookName);
+      const { worldbookName, entries } = await this.ensureCurrentCatalog(target);
+      return this.stateFromEntries(worldbookName, entries);
     });
   }
   async inspect(worldbookName) {
@@ -26437,8 +26447,8 @@ var WorldbookMemoryStore = class {
   async saveRow(typeId, rawInput, rowId) {
     const input = memoryRowInputSchema.parse(rawInput);
     return this.enqueue(async (target) => {
-      const worldbookName = await this.ensureCurrentCatalog(target);
-      const state = await this.readWorldbook(worldbookName);
+      const { worldbookName, entries } = await this.ensureCurrentCatalog(target);
+      const state = this.stateFromEntries(worldbookName, entries);
       const type = state.catalog.types.find((candidate) => candidate.id === typeId);
       if (!type) throw new Error("Memory type not found.");
       if (!uniqueDataName(state.rows, typeId, input.dataName, rowId)) {
@@ -26469,8 +26479,8 @@ var WorldbookMemoryStore = class {
         return { ...row, ...created ? { worldbookUid: created.uid } : {} };
       }
       let saved = null;
-      await requiredHelper2().updateWorldbookWith(worldbookName, (entries) => {
-        const entry = entries.find((candidate) => {
+      await requiredHelper2().updateWorldbookWith(worldbookName, (entries2) => {
+        const entry = entries2.find((candidate) => {
           const metadata3 = echoesMetadata(candidate);
           return metadata3?.kind === "row" && metadata3.rowId === rowId;
         });
@@ -26488,7 +26498,7 @@ var WorldbookMemoryStore = class {
           updatedAt: now3
         };
         applyRowToEntry(entry, type, saved);
-        return entries;
+        return entries2;
       }, { render: "debounced" });
       if (!saved) throw new Error("Memory row was not updated.");
       return saved;
@@ -26564,7 +26574,7 @@ var WorldbookMemoryStore = class {
   }
   async applyOperations(operations, jobId) {
     return this.enqueue(async (target) => {
-      const worldbookName = await this.ensureCurrentCatalog(target);
+      const { worldbookName } = await this.ensureCurrentCatalog(target);
       let summary = { added: 0, updated: 0, deleted: 0 };
       await requiredHelper2().updateWorldbookWith(worldbookName, (entries) => {
         const { catalog } = catalogFromEntries(entries);
@@ -26581,7 +26591,7 @@ var WorldbookMemoryStore = class {
   async migrateFrom(sourceWorldbookName, selectedTypeIds, policy) {
     return this.enqueue(async (target) => {
       const source = await this.inspect(sourceWorldbookName);
-      const targetWorldbookName = await this.ensureCurrentCatalog(target);
+      const { worldbookName: targetWorldbookName } = await this.ensureCurrentCatalog(target);
       if (sourceWorldbookName === targetWorldbookName) {
         throw new Error("The source and target worldbooks are the same.");
       }
@@ -26714,13 +26724,14 @@ var WorldbookMemoryStore = class {
       }
     }
     if (!entries.some((entry) => echoesMetadata(entry)?.kind === "catalog")) {
-      await helper6.createWorldbookEntries(
+      const created = await helper6.createWorldbookEntries(
         worldbookName,
         [catalogEntry2(createDefaultCatalog(target.chatId))],
         { render: "debounced" }
       );
+      entries = created.worldbook;
     }
-    return worldbookName;
+    return { worldbookName, entries };
   }
   async readWorldbook(worldbookName) {
     const entries = await requiredHelper2().getWorldbook(worldbookName);
@@ -26749,7 +26760,7 @@ var WorldbookMemoryStore = class {
   }
   async mutate(mutator) {
     await this.enqueue(async (target) => {
-      const worldbookName = await this.ensureCurrentCatalog(target);
+      const { worldbookName } = await this.ensureCurrentCatalog(target);
       await requiredHelper2().updateWorldbookWith(worldbookName, (entries) => {
         const { entry, catalog } = catalogFromEntries(entries);
         mutator(entries, catalog);
@@ -27431,13 +27442,16 @@ function empty(title, action) {
 }
 function detail(title, value) {
   const node = el("details", "ew-detail", el("summary", "", title));
-  node.append(
-    el(
+  let rendered = false;
+  node.addEventListener("toggle", () => {
+    if (!node.open || rendered) return;
+    node.append(el(
       "pre",
       "ew-code",
       typeof value === "string" ? value : JSON.stringify(value, null, 2)
-    )
-  );
+    ));
+    rendered = true;
+  });
   return node;
 }
 function metric(label, value) {
@@ -28751,7 +28765,8 @@ async function memoryView(ctx) {
   const ui = local(ctx, "memory-filter", () => ({
     typeId: state.catalog.types[0]?.id ?? "",
     query: "",
-    status: "all"
+    status: "all",
+    page: 0
   }));
   if (!state.catalog.types.some((t) => t.id === ui.typeId))
     ui.typeId = state.catalog.types[0]?.id ?? "";
@@ -28768,6 +28783,7 @@ async function memoryView(ctx) {
   ].forEach(([v, l]) => select.add(new Option(l, v)));
   select.value = ui.status;
   const grid = el("div");
+  const searchText = /* @__PURE__ */ new Map();
   const editRow = (type, row) => {
     const spec = [
       {
@@ -28839,9 +28855,21 @@ async function memoryView(ctx) {
       );
       return;
     }
+    const query = ui.query.toLocaleLowerCase();
     const rows = state.rows.filter(
-      (r) => r.typeId === type.id && (ui.status === "all" || r.status === ui.status) && JSON.stringify(r).toLocaleLowerCase().includes(ui.query.toLocaleLowerCase())
+      (r) => r.typeId === type.id && (ui.status === "all" || r.status === ui.status) && (!query || (() => {
+        let text = searchText.get(r.id);
+        if (text === void 0) {
+          text = JSON.stringify(r).toLocaleLowerCase();
+          searchText.set(r.id, text);
+        }
+        return text.includes(query);
+      })())
     );
+    const pageSize = 50;
+    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+    ui.page = Math.max(0, Math.min(ui.page, totalPages - 1));
+    const visibleRows = rows.slice(ui.page * pageSize, (ui.page + 1) * pageSize);
     grid.replaceChildren(
       rows.length ? table(
         [
@@ -28850,7 +28878,7 @@ async function memoryView(ctx) {
           "\u6FC0\u6D3B\u65B9\u5F0F",
           "\u64CD\u4F5C"
         ],
-        rows.map((row) => [
+        visibleRows.map((row) => [
           el("strong", "", row.dataName),
           ...type.columns.slice(0, 3).map(
             (c) => el(
@@ -28878,6 +28906,23 @@ async function memoryView(ctx) {
         ])
       ) : empty("\u6CA1\u6709\u5339\u914D\u7684\u8BB0\u5F55")
     );
+    if (rows.length > pageSize) {
+      const previous = tool("\u4E0A\u4E00\u9875\u6863\u6848", "chevron-left", () => {
+        ui.page -= 1;
+        draw();
+      });
+      const next = tool("\u4E0B\u4E00\u9875\u6863\u6848", "chevron-right", () => {
+        ui.page += 1;
+        draw();
+      });
+      previous.disabled = ui.page === 0;
+      next.disabled = ui.page === totalPages - 1;
+      grid.append(actions(
+        previous,
+        el("span", "ew-muted", `${ui.page + 1} / ${totalPages} \u9875`),
+        next
+      ));
+    }
     nav.replaceChildren(
       ...state.catalog.types.map(
         (t) => button(
@@ -28885,6 +28930,7 @@ async function memoryView(ctx) {
           "table-cells",
           () => {
             ui.typeId = t.id;
+            ui.page = 0;
             draw();
           },
           t.id === ui.typeId ? "is-selected" : ""
@@ -28904,6 +28950,7 @@ async function memoryView(ctx) {
           ui.query,
           (v) => {
             ui.query = v;
+            ui.page = 0;
             drawGrid();
           },
           "\u641C\u7D22\u540D\u79F0\u6216\u5185\u5BB9"
@@ -28927,6 +28974,7 @@ async function memoryView(ctx) {
   };
   select.addEventListener("change", () => {
     ui.status = select.value;
+    ui.page = 0;
     draw();
   });
   draw();
@@ -31148,7 +31196,6 @@ function recallEnhancements(ctx, state) {
 // src/extension/workbench/summary.ts
 async function summaryView(ctx) {
   const coordinator = ctx.summary;
-  const state = await coordinator.load();
   const page = el("div", "ew-page-content");
   const settings = getSettings();
   if (ctx.route === "summary/rules") {
@@ -31217,6 +31264,8 @@ async function summaryView(ctx) {
     );
     return page;
   }
+  const state = await coordinator.load();
+  if (ctx.signal.aborted) return page;
   if (ctx.route === "summary/recall") return recallView(ctx, state);
   if (ctx.route === "summary/tasks") {
     const checkpoint = checkpointFloor(state.catalog.lastCommittedMessageId);
@@ -31476,12 +31525,20 @@ async function summaryView(ctx) {
   const ids = new Set(state.slices.map((s) => s.id));
   for (const selected of ui.selected)
     if (!ids.has(selected)) ui.selected.delete(selected);
-  const groups = [...new Set(state.slices.map((s) => s.batch.id))].map((batchId) => state.slices.filter((s) => s.batch.id === batchId)).sort((a, b) => b[0].batch.batchNumber - a[0].batch.batchNumber);
+  const slicesByBatch = /* @__PURE__ */ new Map();
+  for (const slice of state.slices) {
+    const batch = slicesByBatch.get(slice.batch.id);
+    if (batch) batch.push(slice);
+    else slicesByBatch.set(slice.batch.id, [slice]);
+  }
+  const groups = [...slicesByBatch.values()].sort((a, b) => b[0].batch.batchNumber - a[0].batch.batchNumber);
   let compression2;
   try {
-    compression2 = await coordinator.compression.inspect(state);
+    compression2 = await coordinator.compression.inspectVisibility(state);
   } catch {
   }
+  if (ctx.signal.aborted) return page;
+  const visibilityByBatch = new Map(compression2?.map((batch) => [batch.batchId, batch]));
   const host = el("div");
   const selection = el("div", "ew-selection");
   const edit = (slice) => editDialog(
@@ -31617,7 +31674,7 @@ async function summaryView(ctx) {
     host.replaceChildren();
     const visible = groups.map(
       (slices) => slices.filter(
-        (s) => (ui.status === "all" || s.batch.state === ui.status) && [s.title, s.content, s.timestamp, ...s.tags].join(" ").toLowerCase().includes(ui.query.toLowerCase())
+        (s) => (ui.status === "all" || s.batch.state === ui.status) && (!ui.query || [s.title, s.content, s.timestamp, ...s.tags].join(" ").toLowerCase().includes(ui.query.toLowerCase()))
       )
     ).filter((s) => s.length);
     const totalPages = Math.max(1, Math.ceil(visible.length / 20));
@@ -31633,8 +31690,8 @@ async function summaryView(ctx) {
     }
     for (const slices of visible.slice(ui.page * 20, (ui.page + 1) * 20)) {
       const b = slices[0].batch;
-      const all = state.slices.filter((s) => s.batch.id === b.id);
-      const c = compression2?.batches.find((x) => x.batchId === b.id);
+      const all = slicesByBatch.get(b.id);
+      const c = visibilityByBatch.get(b.id);
       const head = el(
         "div",
         "ew-batch-head",
