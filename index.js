@@ -18493,7 +18493,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "3.0.1", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "3.0.2", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
@@ -28021,6 +28021,21 @@ var WorldbookMemoryStore = class {
       entries.splice(index, 1);
     });
   }
+  async deleteRows(rowIds) {
+    const targets = new Set(rowIds);
+    if (targets.size === 0) return 0;
+    let deleted = 0;
+    await this.mutate((entries) => {
+      for (let index = entries.length - 1; index >= 0; index -= 1) {
+        const metadata3 = echoesMetadata(entries[index]);
+        if (metadata3?.kind !== "row" || !targets.has(metadata3.rowId)) continue;
+        entries.splice(index, 1);
+        deleted += 1;
+      }
+      if (deleted === 0) throw new Error("No matching memory rows were found.");
+    });
+    return deleted;
+  }
   async savePromptPreset(preset) {
     const parsed = promptPresetSchema.parse(preset);
     await this.mutate((_entries, catalog) => {
@@ -33230,10 +33245,45 @@ async function memoryView(ctx) {
     typeId: state.catalog.types[0]?.id ?? "",
     query: "",
     status: "all",
-    page: 0
+    page: 0,
+    selected: /* @__PURE__ */ new Set()
   }));
+  if (!(ui.selected instanceof Set)) ui.selected = /* @__PURE__ */ new Set();
   if (!state.catalog.types.some((t) => t.id === ui.typeId))
     ui.typeId = state.catalog.types[0]?.id ?? "";
+  const selectedRows = () => state.rows.filter((row) => row.typeId === ui.typeId && ui.selected.has(row.id));
+  const selectionBar = el("div", "ew-selection");
+  const drawSelection = () => {
+    const selected = selectedRows();
+    selectionBar.hidden = selected.length === 0;
+    if (!selected.length) {
+      selectionBar.replaceChildren();
+      return;
+    }
+    selectionBar.replaceChildren(
+      el("strong", "", `\u5DF2\u9009 ${selected.length} \u6761`),
+      actions(
+        button(
+          "\u5220\u9664\u9009\u4E2D\u6761\u76EE",
+          "trash",
+          async () => {
+            ctx.guard();
+            const targets = selectedRows();
+            if (!targets.length) return;
+            if (!confirm(`\u5220\u9664\u9009\u4E2D\u7684 ${targets.length} \u6761\u7ED3\u6784\u5316\u8BB0\u5FC6\uFF1F\u6761\u76EE\u4F1A\u4ECE\u4E16\u754C\u4E66\u79FB\u9664\uFF0C\u4ECD\u53EF\u5728\u201C\u5386\u53F2\u53D8\u5316\u201D\u4E2D\u67E5\u770B\u4FEE\u6539\u8BB0\u5F55\uFF1B\u6307\u5411\u8FD9\u4E9B\u6761\u76EE\u7684\u8BB0\u5FC6\u5173\u8054\u4F1A\u663E\u793A\u4E3A\u5DF2\u5220\u9664\u3002`)) return;
+            await ctx.run("\u6279\u91CF\u5220\u9664\u7ED3\u6784\u5316\u8BB0\u5FC6", () => store.deleteRows(targets.map((row) => row.id)));
+            ui.selected.clear();
+            await ctx.refresh();
+          },
+          "danger"
+        ),
+        tool("\u53D6\u6D88\u9009\u62E9", "xmark", () => {
+          ui.selected.clear();
+          draw();
+        })
+      )
+    );
+  };
   const nav = el("aside", "ew-list");
   const host = el("div", "ew-page-content");
   const split = el("div", "ew-split", nav, host);
@@ -33337,15 +33387,23 @@ async function memoryView(ctx) {
     const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
     ui.page = Math.max(0, Math.min(ui.page, totalPages - 1));
     const visibleRows = rows.slice(ui.page * pageSize, (ui.page + 1) * pageSize);
+    const liveIds = new Set(state.rows.filter((row) => row.typeId === type.id).map((row) => row.id));
+    for (const id2 of ui.selected) if (!liveIds.has(id2)) ui.selected.delete(id2);
+    drawSelection();
     grid.replaceChildren(
       rows.length ? table(
         [
+          "\u9009\u62E9",
           "\u6761\u76EE\u540D\u79F0",
           ...type.columns.slice(0, 3).map((c) => c.name),
           "\u6FC0\u6D3B\u65B9\u5F0F",
           "\u64CD\u4F5C"
         ],
         visibleRows.map((row) => [
+          check2("\u9009\u62E9 " + row.dataName, ui.selected.has(row.id), (v) => {
+            v ? ui.selected.add(row.id) : ui.selected.delete(row.id);
+            drawSelection();
+          }),
           el("strong", "", row.dataName),
           ...type.columns.slice(0, 3).map(
             (c) => el(
@@ -33430,6 +33488,14 @@ async function memoryView(ctx) {
         ),
         select
       ),
+      actions(
+        button("\u9009\u62E9\u7B5B\u9009\u7ED3\u679C", "check-double", () => {
+          rows.forEach((row) => ui.selected.add(row.id));
+          draw();
+        }),
+        el("span", "ew-muted", `\u7B5B\u9009\u7ED3\u679C ${rows.length} \u6761`)
+      ),
+      selectionBar,
       grid
     );
   };
