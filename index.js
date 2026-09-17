@@ -14052,8 +14052,8 @@ var init_schemas2 = __esm({
           reg.add(this, meta3);
           return this;
         },
-        refine(check4, params) {
-          return this.check(refine(check4, params));
+        refine(check3, params) {
+          return this.check(refine(check3, params));
         },
         superRefine(refinement, params) {
           return this.check(superRefine(refinement, params));
@@ -18493,7 +18493,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "3.0.0", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "3.0.1", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
@@ -19278,10 +19278,10 @@ async function automaticSummaryBatch(messages2, catalog, messageCount) {
   }
   const start = checkpointIndex + 1;
   const threshold = Math.max(2, Math.min(500, Math.floor(messageCount)));
-  if (messages2.length - start < threshold) return null;
-  const boundary = Math.min(messages2.length - 1, start + threshold - 1);
+  const minimumEnd = start + threshold - 1;
+  if (minimumEnd >= messages2.length) return null;
   let end = -1;
-  for (let index = boundary; index >= start; index -= 1) {
+  for (let index = minimumEnd; index < messages2.length; index += 1) {
     if (messages2[index]?.role !== "assistant") continue;
     if (!messages2.slice(index + 1).some((message) => message.role === "user")) continue;
     end = index;
@@ -19610,10 +19610,29 @@ function chatMessages(raw) {
   });
 }
 function marker(message) {
-  const parsed = messageCompressionMarkerSchema.safeParse(
-    message.extra?.echoes?.compression
-  );
-  return parsed.success ? parsed.data : null;
+  const raw = SillyTavern.getContext().chat[message.message_id];
+  const candidates = [
+    message.extra?.echoes?.compression,
+    // TavernHelper surfaces swipe_info entries as `extra`, so a rewritten swipe
+    // entry can nest the original extra object one level deeper.
+    message.extra?.extra?.echoes?.compression,
+    raw?.extra?.echoes?.compression
+  ];
+  for (const candidate of candidates) {
+    const parsed = messageCompressionMarkerSchema.safeParse(candidate);
+    if (parsed.success) return parsed.data;
+  }
+  return null;
+}
+function compressionPatch(message, compression2, hidden) {
+  const extra = withMarker(message, compression2);
+  const carrier = message.data && typeof message.data === "object" && !Array.isArray(message.data) ? { data: message.data } : { message: String(message.message ?? "") };
+  return {
+    message_id: message.message_id,
+    ...hidden === void 0 ? {} : { is_hidden: hidden },
+    extra,
+    ...carrier
+  };
 }
 function withMarker(message, value) {
   return {
@@ -19681,7 +19700,7 @@ var CompressionCoordinator = class {
         const targetBatchId = snapshot.plan.batchByMessageId.get(id2);
         const shouldHide = index <= targetEnd && Boolean(targetBatchId) && snapshot.safeBatchIds.has(targetBatchId) && !(currentOwned && item.pinnedVisible);
         const shouldRestoreForCutoff = index > targetEnd && index <= safeEnd;
-        if (shouldHide && !message.is_hidden) {
+        if (shouldHide && (!currentOwned || !message.is_hidden)) {
           const compression2 = nextMarker(
             message,
             snapshot.state.catalog.namespaceId,
@@ -19689,14 +19708,14 @@ var CompressionCoordinator = class {
             {
               hiddenByEchoes: true,
               pinnedVisible: false,
-              hiddenAt: (/* @__PURE__ */ new Date()).toISOString()
+              ...message.is_hidden ? {} : { hiddenAt: (/* @__PURE__ */ new Date()).toISOString() }
             }
           );
-          updates.push({
-            message_id: message.message_id,
-            is_hidden: true,
-            extra: withMarker(message, compression2)
-          });
+          updates.push(compressionPatch(
+            message,
+            compression2,
+            message.is_hidden ? void 0 : true
+          ));
         } else if (shouldRestoreForCutoff && message.is_hidden && currentOwned && item.hiddenByEchoes && snapshot.plan.coveredMessageIds.has(id2) && snapshot.plan.chain.some((coverage) => coverage.batch.id === item.batchId)) {
           const compression2 = nextMarker(
             message,
@@ -19704,11 +19723,7 @@ var CompressionCoordinator = class {
             item.batchId,
             { hiddenByEchoes: false }
           );
-          updates.push({
-            message_id: message.message_id,
-            is_hidden: false,
-            extra: withMarker(message, compression2)
-          });
+          updates.push(compressionPatch(message, compression2, false));
         }
       }
       await this.apply(snapshot.state, updates);
@@ -19747,7 +19762,7 @@ var CompressionCoordinator = class {
           batchId,
           { pinnedVisible: false }
         );
-        updates.push({ message_id: message.message_id, extra: withMarker(message, compression2) });
+        updates.push(compressionPatch(message, compression2));
       }
       await this.apply(state, updates);
       return this.reconcileUnlocked(state);
@@ -19783,11 +19798,11 @@ var CompressionCoordinator = class {
             pinnedVisible: pinVisible
           }
         );
-        updates.push({
-          message_id: message.message_id,
-          ...owned && message.is_hidden ? { is_hidden: false } : {},
-          extra: withMarker(message, compression2)
-        });
+        updates.push(compressionPatch(
+          message,
+          compression2,
+          owned && message.is_hidden ? false : void 0
+        ));
       }
       await this.apply(state, updates);
       return this.statusFromSnapshot(await this.snapshot(state));
@@ -19804,7 +19819,7 @@ var CompressionCoordinator = class {
         item.batchId,
         { hiddenByEchoes: false, pinnedVisible: true }
       );
-      updates.push({ message_id: message.message_id, extra: withMarker(message, compression2) });
+      updates.push(compressionPatch(message, compression2));
     }
     await this.apply(snapshot.state, updates);
     return updates.length > 0;
@@ -19829,11 +19844,7 @@ var CompressionCoordinator = class {
         pinnedVisible: false,
         hiddenAt: (/* @__PURE__ */ new Date()).toISOString()
       });
-      updates.push({
-        message_id: message.message_id,
-        is_hidden: true,
-        extra: withMarker(message, compression2)
-      });
+      updates.push(compressionPatch(message, compression2, true));
     }
     await this.apply(state, updates);
     return this.statusFromSnapshot(await this.snapshot(state));
@@ -28965,16 +28976,16 @@ function newMemoryLink(from, to, relation) {
   return { id: randomUuid(), from, to, relation, enabled: true };
 }
 async function summaryOriginalSource(slice, owner) {
-  const check4 = () => {
+  const check3 = () => {
     if (SillyTavern.getContext().chatId !== owner.chatId || window.TavernHelper.getChatWorldbookName("current") !== owner.worldbookName)
       throw new Error("\u8BF7\u5207\u6362\u5230\u5207\u7247\u6240\u5C5E\u804A\u5929\u67E5\u770B\u539F\u6587\u3002");
   };
-  check4();
+  check3();
   if (slice.batch.source?.kind === "imported") throw new Error("\u5BFC\u5165\u5207\u7247\u6CA1\u6709\u5F53\u524D\u804A\u5929\u7684\u539F\u6587\u5B9A\u4F4D\uFF0C\u4E0D\u80FD\u5C06\u76F8\u540C\u697C\u5C42\u5F53\u4F5C\u8BC1\u636E\u3002");
   const messages2 = currentChatMessages();
   const selected = messages2.filter((message) => slice.batch.messageIds.includes(message.id));
   if (selected.map((message) => message.id).join("\0") !== slice.batch.messageIds.join("\0") || await sourceMessagesHash(selected) !== slice.batch.sourceHash) throw new Error("\u6E90\u6D88\u606F\u5DF2\u53D8\u5316\u6216\u4E0D\u5B58\u5728\uFF0C\u65E0\u6CD5\u9A8C\u8BC1\u8BE5\u6279\u6B21\u539F\u6587\u3002");
-  check4();
+  check3();
   return { scope: "\u6279\u6B21\u539F\u6587\uFF0C\u4E0D\u662F\u8BE5\u5207\u7247\u7684\u7CBE\u786E\u8BC1\u636E", messages: selected };
 }
 
@@ -30036,9 +30047,26 @@ ${yaml}`).trim();
     const state = await this.load();
     traceContext.chatId = state.catalog.chatId;
     traceContext.namespaceId = state.catalog.namespaceId;
-    if (!state.catalog.enabled || origin === "auto" && !state.catalog.autoUpdate) return null;
+    const skip = (message, record3 = true) => {
+      if (record3) {
+        this.setTrace({
+          ...traceContext,
+          startedAt,
+          completedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          outcome: "skipped",
+          operationCount: 0,
+          attempts: [],
+          message
+        });
+      }
+      return null;
+    };
+    if (!state.catalog.enabled) {
+      return skip("\u72B6\u6001\u8BB0\u5FC6\u672A\u542F\u7528\uFF1A\u8BF7\u5728\u672C\u9875\u6216\u201C\u72B6\u6001\u6CE8\u5165\u201D\u9875\u6253\u5F00\u201C\u72B6\u6001\u8BB0\u5FC6\u201D\u5F00\u5173\u540E\u91CD\u8BD5\u3002\u4EC5\u6253\u5F00\u201C\u81EA\u52A8\u66F4\u65B0\u72B6\u6001\u201D\u4E0D\u4F1A\u542F\u52A8\u540C\u6B65\u3002");
+    }
+    if (origin === "auto" && !state.catalog.autoUpdate) return skip("\u81EA\u52A8\u66F4\u65B0\u672A\u542F\u7528\uFF0C\u5DF2\u8DF3\u8FC7\u3002", false);
     const targetIndex = lastAssistantIndex();
-    if (targetIndex < 0) return null;
+    if (targetIndex < 0) return skip("\u5F53\u524D\u804A\u5929\u6CA1\u6709\u53EF\u7528\u4E8E\u627F\u8F7D\u72B6\u6001\u5FEB\u7167\u7684 AI \u56DE\u590D\u3002", origin === "manual");
     const target = SillyTavern.getContext().chat[targetIndex];
     const targetMessageId = statusMessageId(target, targetIndex);
     const targetSwipeId = statusSwipeId(target);
@@ -35174,10 +35202,73 @@ async function statusView(ctx) {
       actions(
         button("\u5B57\u6BB5\u89C6\u56FE", "list-tree", showTree),
         button("YAML \u7F16\u8F91", "code", showYaml),
+        el(
+          "label",
+          "ew-toggle",
+          check2("\u542F\u7528\u72B6\u6001\u8BB0\u5FC6", state.catalog.enabled, async (enabled) => {
+            ctx.guard();
+            await statusCoordinator.worldbook.saveConfiguration(state.worldbookName, { enabled });
+            await ctx.refresh();
+          }),
+          el("span", "", "\u542F\u7528\u72B6\u6001\u8BB0\u5FC6")
+        ),
+        el(
+          "label",
+          "ew-toggle",
+          check2("\u81EA\u52A8\u66F4\u65B0\u72B6\u6001", state.catalog.autoUpdate, async (autoUpdate) => {
+            ctx.guard();
+            await statusCoordinator.worldbook.saveConfiguration(state.worldbookName, { autoUpdate });
+            await ctx.refresh();
+          }),
+          el("span", "", "\u81EA\u52A8\u66F4\u65B0\u72B6\u6001")
+        ),
+        (() => {
+          const select = el("select");
+          select.setAttribute("aria-label", "\u672A\u58F0\u660E\u5B57\u6BB5");
+          select.add(new Option("\u672A\u58F0\u660E\u5B57\u6BB5\uFF1A\u5141\u8BB8", "allow"));
+          select.add(new Option("\u672A\u58F0\u660E\u5B57\u6BB5\uFF1A\u62D2\u7EDD", "reject"));
+          select.value = profile.validation.unknownFields;
+          select.addEventListener("change", async () => {
+            try {
+              ctx.guard();
+              const fresh = await statusCoordinator.load();
+              await statusCoordinator.worldbook.saveConfiguration(state.worldbookName, {
+                profile: {
+                  ...fresh.catalog.profile,
+                  validation: {
+                    ...fresh.catalog.profile.validation,
+                    unknownFields: select.value
+                  },
+                  updatedAt: now()
+                }
+              });
+              await ctx.refresh();
+            } catch (error51) {
+              notify(error51 instanceof Error ? error51.message : String(error51), true);
+            }
+          });
+          return select;
+        })(),
         button(
           "\u624B\u52A8\u540C\u6B65",
           "arrows-rotate",
-          () => ctx.run("\u72B6\u6001\u8BB0\u5FC6\u540C\u6B65", () => statusCoordinator.synchronize()).then(() => ctx.refresh()),
+          async () => {
+            ctx.guard();
+            const snapshot = await ctx.run("\u72B6\u6001\u8BB0\u5FC6\u540C\u6B65", () => statusCoordinator.synchronize());
+            const trace2 = statusCoordinator.trace;
+            if (trace2?.outcome === "skipped" || trace2?.outcome === "failed") {
+              notify(trace2.message ?? "\u72B6\u6001\u540C\u6B65\u672A\u6267\u884C\u3002", true);
+            } else if (trace2?.outcome === "unchanged") {
+              notify(trace2.message ?? "\u5F53\u524D\u697C\u5C42\u5DF2\u6709\u5339\u914D\u7684\u72B6\u6001\u5FEB\u7167\uFF0C\u65E0\u9700\u66F4\u65B0\u3002");
+            } else if (trace2?.outcome === "decision_required" || trace2?.outcome === "discarded") {
+              notify(trace2.message ?? "\u72B6\u6001\u7ED3\u679C\u672A\u5199\u5165\u3002", true);
+            } else if (!snapshot) {
+              notify(trace2?.message ?? "\u672C\u6B21\u6CA1\u6709\u751F\u6210\u65B0\u7684\u72B6\u6001\u5FEB\u7167\u3002", true);
+            } else {
+              notify(`\u72B6\u6001\u5DF2\u540C\u6B65\uFF1A\u5FEB\u7167\u6765\u6E90\u6D88\u606F ${snapshot.targetMessageId}\u3002`);
+            }
+            await ctx.refresh();
+          },
           "primary"
         ),
         button("\u6062\u590D\u521D\u59CB\u503C", "rotate-left", async () => {
@@ -35196,6 +35287,18 @@ async function statusView(ctx) {
       host
     );
     showTree();
+    const trace = statusCoordinator.trace;
+    page.append(
+      section(
+        "\u6700\u8FD1\u4EFB\u52A1\u8BCA\u65AD",
+        trace ? actions(
+          badge(trace.outcome, trace.outcome === "failed" || trace.outcome === "skipped" ? "warning" : ""),
+          el("span", "ew-muted", new Date(trace.completedAt).toLocaleString())
+        ) : empty("\u672C\u6B21\u4F1A\u8BDD\u5C1A\u65E0\u72B6\u6001\u4EFB\u52A1"),
+        trace?.message ? el("p", "ew-muted", trace.message) : null,
+        trace ? detail("\u4EFB\u52A1\u8BE6\u60C5", trace) : null
+      )
+    );
     return page;
   }
   if (ctx.route === "status/history") {
@@ -35331,41 +35434,6 @@ async function statusView(ctx) {
     return page;
   }
   if (ctx.route === "status/rules") {
-    const f = fields([
-      {
-        key: "auto",
-        label: "\u81EA\u52A8\u66F4\u65B0\u72B6\u6001",
-        type: "checkbox",
-        value: state.catalog.autoUpdate
-      },
-      {
-        key: "unknownFields",
-        label: "\u672A\u58F0\u660E\u5B57\u6BB5",
-        type: "select",
-        value: profile.validation.unknownFields,
-        options: [
-          ["allow", "\u5141\u8BB8"],
-          ["reject", "\u62D2\u7EDD"]
-        ]
-      }
-    ]);
-    page.append(
-      saveForm(f, async (v) => {
-        ctx.guard();
-        const fresh = await statusCoordinator.load();
-        await statusCoordinator.worldbook.saveConfiguration(state.worldbookName, {
-          autoUpdate: v.auto,
-          profile: {
-            ...fresh.catalog.profile,
-            validation: {
-              ...fresh.catalog.profile.validation,
-              unknownFields: v.unknownFields
-            },
-            updatedAt: now()
-          }
-        });
-      })
-    );
     const rules = profile.validation.rules.map((r) => ({
       ...r,
       enabled: true
@@ -37210,19 +37278,23 @@ function consoleView(ctx) {
     const items = snapshot.filter(
       (r) => (ui.level === "all" || ui.level === r.level) && r.text.toLowerCase().includes(ui.query.toLowerCase())
     );
-    host.replaceChildren(
-      items.length ? table(
-        ["\u65F6\u95F4", "\u7EA7\u522B", "\u8F93\u51FA"],
-        items.slice().reverse().map((r) => [
-          new Date(r.time).toLocaleTimeString(),
-          badge(
-            r.level,
-            r.level === "error" ? "danger" : r.level === "warn" ? "warning" : ""
-          ),
-          el("pre", "ew-console-text", r.text)
-        ])
-      ) : empty("\u672C\u6B21\u9875\u9762\u52A0\u8F7D\u540E\u6682\u65E0\u5339\u914D\u7684 Echoes \u6D4F\u89C8\u5668\u65E5\u5FD7")
+    if (!items.length) {
+      host.replaceChildren(empty("\u672C\u6B21\u9875\u9762\u52A0\u8F7D\u540E\u6682\u65E0\u5339\u914D\u7684 Echoes \u6D4F\u89C8\u5668\u65E5\u5FD7"));
+      return;
+    }
+    const grid = table(
+      ["\u65F6\u95F4", "\u7EA7\u522B", "\u8F93\u51FA"],
+      items.slice().reverse().map((r) => [
+        new Date(r.time).toLocaleTimeString(),
+        badge(
+          r.level,
+          r.level === "error" ? "danger" : r.level === "warn" ? "warning" : ""
+        ),
+        el("pre", "ew-console-text", r.text)
+      ])
     );
+    grid.classList.add("ew-console-table");
+    host.replaceChildren(grid);
   };
   f.controls.get("level").addEventListener("change", () => {
     ui.level = f.controls.get("level").value;
@@ -37839,7 +37911,7 @@ var navigation = [
     pages: [
       ["status/current", "\u5F53\u524D\u72B6\u6001"],
       ["status/history", "\u5386\u53F2\u5FEB\u7167"],
-      ["status/rules", "\u66F4\u65B0\u4E0E\u6821\u9A8C"],
+      ["status/rules", "\u6821\u9A8C"],
       ["status/prompts", "\u63D0\u793A\u8BCD\u4E0E\u6E05\u6D17"],
       ["status/injection", "\u72B6\u6001\u6CE8\u5165"],
       ["status/templates", "\u521D\u59CB\u503C\u4E0E\u6A21\u677F"]

@@ -540,6 +540,24 @@
   overflow: auto;
   margin: 0;
 }
+#echoes-workbench .ew-console-table .ew-table {
+  table-layout: fixed;
+  min-width: 720px;
+}
+#echoes-workbench .ew-console-table .ew-table td:nth-child(1),
+#echoes-workbench .ew-console-table .ew-table th:nth-child(1) {
+  width: 110px;
+  white-space: nowrap;
+}
+#echoes-workbench .ew-console-table .ew-table td:nth-child(2),
+#echoes-workbench .ew-console-table .ew-table th:nth-child(2) {
+  width: 100px;
+}
+#echoes-workbench .ew-console-table .ew-table td:last-child {
+  width: auto;
+  max-width: none;
+  white-space: normal;
+}
 #echoes-workbench .ew-code {
   background: var(--ew-bg);
   color: var(--ew-text);
