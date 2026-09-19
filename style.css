@@ -446,11 +446,47 @@
 #echoes-workbench .ew-form-footer {
   grid-column: 1/-1;
 }
+#echoes-workbench .ew-recall-stage {
+  grid-column: 1/-1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 16px 20px;
+  min-width: 0;
+  margin: 0;
+  padding: 16px 0 0;
+  border: 0;
+  border-top: 1px solid var(--ew-line);
+}
+#echoes-workbench .ew-recall-stage > legend {
+  padding: 0 10px 0 0;
+  color: var(--ew-text);
+  font-size: 13px;
+  font-weight: 600;
+}
 #echoes-workbench .ew-toggle {
+  display: inline-flex;
   flex-direction: row;
+  gap: 8px;
   align-items: center;
   min-height: 36px;
   color: var(--ew-text);
+}
+#echoes-workbench .ew-status-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  padding-block: 12px;
+  border-bottom: 1px solid var(--ew-line);
+}
+#echoes-workbench .ew-status-controls .ew-toggle {
+  margin: 0;
+  white-space: nowrap;
+}
+#echoes-workbench .ew-status-controls select {
+  width: 220px;
+  max-width: 100%;
 }
 #echoes-workbench .ew-form-footer {
   justify-content: flex-end;
@@ -762,7 +798,8 @@
   #echoes-workbench .ew-list .ew-button {
     flex-shrink: 0;
   }
-  #echoes-workbench .ew-form {
+  #echoes-workbench .ew-form,
+  #echoes-workbench .ew-recall-stage {
     grid-template-columns: 1fr;
   }
   #echoes-workbench .ew-dialog {

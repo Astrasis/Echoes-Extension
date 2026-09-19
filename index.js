@@ -18493,7 +18493,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "3.0.2", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "3.0.3", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
@@ -19598,17 +19598,6 @@ function requiredHelper() {
   }
   return window.TavernHelper;
 }
-function chatMessages(raw) {
-  return raw.flatMap((message) => {
-    const content = String(message.message ?? "").trim();
-    if (!content || message.role !== "user" && message.role !== "assistant") return [];
-    return [{
-      id: String(message.message_id),
-      role: message.role,
-      content
-    }];
-  });
-}
 function marker(message) {
   const raw = SillyTavern.getContext().chat[message.message_id];
   const candidates = [
@@ -19692,7 +19681,8 @@ var CompressionCoordinator = class {
       const messageIndexById = new Map(snapshot.messages.map((message, index) => [message.id, index]));
       const updates = [];
       for (const message of snapshot.raw) {
-        const id2 = String(message.message_id);
+        const id2 = snapshot.messageIdByFloor.get(message.message_id);
+        if (id2 === void 0) continue;
         const index = messageIndexById.get(id2);
         if (index === void 0) continue;
         const item = marker(message);
@@ -19731,8 +19721,8 @@ var CompressionCoordinator = class {
     });
   }
   restoreBatch(state, batchIds, pinVisible = true) {
-    return this.restore(state, (message, item, plan) => {
-      const batchId = item?.batchId ?? plan.batchByMessageId.get(String(message.message_id));
+    return this.restore(state, (_message, item, _plan, coveredBatchId) => {
+      const batchId = item?.batchId ?? coveredBatchId;
       return Boolean(batchId && batchIds.includes(batchId));
     }, pinVisible);
   }
@@ -19754,7 +19744,7 @@ var CompressionCoordinator = class {
       const updates = [];
       for (const message of snapshot.raw) {
         const item = marker(message);
-        const batchId = item?.batchId ?? snapshot.plan.batchByMessageId.get(String(message.message_id));
+        const batchId = item?.batchId ?? snapshot.plan.batchByMessageId.get(snapshot.messageIdByFloor.get(message.message_id) ?? "");
         if (!batchId || !batchIds.includes(batchId) || !item?.pinnedVisible) continue;
         const compression2 = nextMarker(
           message,
@@ -19783,11 +19773,13 @@ var CompressionCoordinator = class {
       const updates = [];
       for (const message of snapshot.raw) {
         const item = marker(message);
-        const batchId = item?.batchId ?? snapshot.plan.batchByMessageId.get(String(message.message_id));
-        if (!batchId || !matches(message, item, snapshot.plan)) continue;
+        const id2 = snapshot.messageIdByFloor.get(message.message_id) ?? "";
+        const coveredBatchId = snapshot.plan.batchByMessageId.get(id2);
+        const batchId = item?.batchId ?? coveredBatchId;
+        if (!batchId || !matches(message, item, snapshot.plan, coveredBatchId)) continue;
         if (item && !includeOtherNamespaces && item.namespaceId !== state.catalog.namespaceId) continue;
         const owned = Boolean(item?.hiddenByEchoes);
-        const covered = snapshot.plan.coveredMessageIds.has(String(message.message_id));
+        const covered = snapshot.plan.coveredMessageIds.has(id2);
         if (!owned && !covered) continue;
         const compression2 = nextMarker(
           message,
@@ -19834,10 +19826,11 @@ var CompressionCoordinator = class {
     const messageIndexById = new Map(snapshot.messages.map((message, index) => [message.id, index]));
     const updates = [];
     for (const message of snapshot.raw) {
-      const index = messageIndexById.get(String(message.message_id));
+      const id2 = snapshot.messageIdByFloor.get(message.message_id) ?? "";
+      const index = messageIndexById.get(id2);
       if (index === void 0) continue;
       const item = marker(message);
-      const batchId = snapshot.plan.batchByMessageId.get(String(message.message_id));
+      const batchId = snapshot.plan.batchByMessageId.get(id2);
       if (index > targetEnd || !batchId || !snapshot.safeBatchIds.has(batchId) || item?.pinnedVisible || message.is_hidden) continue;
       const compression2 = nextMarker(message, state.catalog.namespaceId, batchId, {
         hiddenByEchoes: true,
@@ -19856,7 +19849,9 @@ var CompressionCoordinator = class {
       include_swipes: false,
       hide_state: "all"
     });
-    const messages2 = chatMessages(raw);
+    const indexed = indexedChatMessages();
+    const messages2 = indexed.map((entry) => entry.message);
+    const messageIdByFloor = new Map(indexed.map((entry) => [entry.floor, entry.message.id]));
     const plan = compressionPlan(
       messages2,
       current.slices,
@@ -19865,11 +19860,13 @@ var CompressionCoordinator = class {
     );
     let safeBatchIds = /* @__PURE__ */ new Set();
     let unsafeBatchIds = plan.chain.map((coverage) => coverage.batch.id);
+    let indexError;
     try {
       if (verifyIndex) ({ safeBatchIds, unsafeBatchIds } = await this.indexSafety(current, plan.chain));
-    } catch {
+    } catch (error51) {
+      indexError = error51 instanceof Error ? error51.message : String(error51);
     }
-    return { raw, messages: messages2, state: current, plan, safeBatchIds, unsafeBatchIds };
+    return { raw, messages: messages2, state: current, plan, safeBatchIds, unsafeBatchIds, messageIdByFloor, indexError };
   }
   async indexSafety(state, chain) {
     const collectionId = state.catalog.retrievalCollectionId;
@@ -19914,7 +19911,7 @@ var CompressionCoordinator = class {
   }
   statusFromSnapshot(snapshot) {
     const active = snapshot.state.catalog.recallEnabled && snapshot.state.catalog.compression.enabled;
-    const rawById = new Map(snapshot.raw.map((message) => [String(message.message_id), message]));
+    const rawById = new Map(snapshot.raw.map((message) => [snapshot.messageIdByFloor.get(message.message_id), message]));
     const batchStatus = snapshot.plan.chain.map((coverage) => {
       const messageIds = new Set(coverage.batch.messageIds);
       const messages2 = [...messageIds].flatMap((id2) => {
@@ -19942,11 +19939,13 @@ var CompressionCoordinator = class {
     }).length;
     const pinned = snapshot.raw.filter((message) => marker(message)?.pinnedVisible).length;
     const compressible = active ? snapshot.raw.filter((message) => {
-      const index = messageIndexById.get(String(message.message_id));
+      const id2 = snapshot.messageIdByFloor.get(message.message_id) ?? "";
+      const index = messageIndexById.get(id2);
       const item = marker(message);
-      const batchId = snapshot.plan.batchByMessageId.get(String(message.message_id));
+      const batchId = snapshot.plan.batchByMessageId.get(id2);
       return index !== void 0 && index <= targetEnd && Boolean(batchId) && !message.is_hidden && !item?.pinnedVisible;
     }).length : 0;
+    const blockedReason = !snapshot.state.catalog.recallEnabled ? "\u603B\u7ED3\u53EC\u56DE\u672A\u542F\u7528\uFF0C\u5DF2\u6682\u505C\u65B0\u589E\u9690\u85CF\u3002" : !snapshot.state.catalog.compression.enabled ? "\u81EA\u52A8\u9690\u85CF\u672A\u542F\u7528\uFF0C\u8BF7\u4FDD\u5B58\u9690\u85CF\u7B56\u7565\u540E\u91CD\u8BD5\u3002" : snapshot.plan.chain.length === 0 ? "\u6CA1\u6709\u4ECE\u804A\u5929\u5F00\u5934\u8FDE\u7EED\u8986\u76D6\u5230\u68C0\u67E5\u70B9\u4EE5\u5185\u7684\u6709\u6548\u603B\u7ED3\uFF0C\u8BF7\u68C0\u67E5\u6279\u6B21\u8303\u56F4\u3001\u5931\u6548\u72B6\u6001\u548C\u68C0\u67E5\u70B9\u3002" : snapshot.indexError ? `\u65E0\u6CD5\u6821\u9A8C\u68C0\u7D22\u7D22\u5F15\uFF1A${snapshot.indexError}` : snapshot.unsafeBatchIds.length > 0 ? "\u90E8\u5206\u603B\u7ED3\u5207\u7247\u7684\u68C0\u7D22\u7D22\u5F15\u7F3A\u5931\u6216\u5185\u5BB9\u4E0D\u4E00\u81F4\uFF0C\u5DF2\u963B\u6B62\u9690\u85CF\u5BF9\u5E94\u6D88\u606F\u53CA\u540E\u7EED\u6D88\u606F\uFF0C\u8BF7\u4FEE\u590D\u7D22\u5F15\u3002" : targetEnd < 0 ? "\u5F53\u524D\u5DF2\u603B\u7ED3\u6D88\u606F\u5747\u5728\u4FDD\u7559\u8303\u56F4\u5185\uFF1B\u4FDD\u7559\u6700\u8FD1\u539F\u6D88\u606F\u6570\u4ECE\u8FDE\u7EED\u603B\u7ED3\u7EC8\u70B9\u5411\u524D\u8BA1\u7B97\u3002" : void 0;
     return {
       active,
       hidden,
@@ -19957,6 +19956,7 @@ var CompressionCoordinator = class {
       staleBatchNumbers: uniqueBatches2(snapshot.state.slices).filter((batch) => batch.state === "stale").map((batch) => batch.batchNumber),
       batches: batchStatus,
       messageCount: snapshot.messages.length,
+      ...blockedReason ? { blockedReason } : {},
       ...targetEnd >= 0 ? { hideThroughMessageId: snapshot.messages[targetEnd]?.id } : {}
     };
   }
@@ -20271,7 +20271,7 @@ var SummaryCoordinator = class {
   }
   runAutomatic(decide = defaultDecision) {
     const lockedChatId = SillyTavern.getContext().chatId;
-    if (!lockedChatId || this.pausedAutomatic.has(lockedChatId) || this.supplements.has(lockedChatId)) return Promise.resolve(null);
+    if (!lockedChatId || this.supplements.has(lockedChatId)) return Promise.resolve(null);
     const existing = this.activeRuns.get(lockedChatId);
     if (existing) {
       this.rerunAutomatic.add(lockedChatId);
@@ -20289,8 +20289,7 @@ var SummaryCoordinator = class {
     if (state.catalog.chatId !== lockedChatId) {
       throw new Error("The summary catalog does not belong to the locked chat.");
     }
-    if (state.slices.some((slice) => slice.batch.state === "stale" && slice.batch.source?.kind !== "imported" && slice.batch.purpose !== "supplement")) return state;
-    if (!state.catalog.autoRun) {
+    if (!state.catalog.autoRun || this.pausedAutomatic.has(lockedChatId) || state.slices.some((slice) => slice.batch.state === "stale" && slice.batch.source?.kind !== "imported" && slice.batch.purpose !== "supplement")) {
       await this.compression.reconcile(state);
       return state;
     }
@@ -29027,14 +29026,14 @@ function messages(chat) {
 function macro2(value, characterName, userName) {
   return value.replaceAll("{{char}}", characterName).replaceAll("{{user}}", userName);
 }
-function itemContent(item, chatMessages2, input) {
-  const current = chatMessages2.at(-1);
+function itemContent(item, chatMessages, input) {
+  const current = chatMessages.at(-1);
   if (item.kind === "current_message") {
     return current ? { content: `${current.role}: ${current.content}`, messageIds: [current.id] } : { content: "", messageIds: [] };
   }
   if (item.kind === "recent_messages") {
     const count = Math.max(0, item.count);
-    const selected = chatMessages2.slice(Math.max(0, chatMessages2.length - count - 1), -1);
+    const selected = chatMessages.slice(Math.max(0, chatMessages.length - count - 1), -1);
     return {
       content: selected.map((message) => `${message.role}: ${message.content}`).join("\n"),
       messageIds: selected.map((message) => message.id)
@@ -29068,10 +29067,10 @@ ${input.personaDescription.trim()}` : "",
   return { content: "", messageIds: [] };
 }
 function prepareRecallQuery(input) {
-  const chatMessages2 = messages(input.chat);
+  const chatMessages = messages(input.chat);
   const blocks = input.preset.items.flatMap((item) => {
     if (!item.enabled) return [];
-    const prepared = itemContent(item, chatMessages2, input);
+    const prepared = itemContent(item, chatMessages, input);
     return prepared.content ? [{ id: item.id, title: item.title, ...prepared, sourceLength: prepared.content.length }] : [];
   });
   const maximum = input.preset.maxCharacters ?? 12e3;
@@ -34548,17 +34547,19 @@ async function summaryView(ctx) {
         metric("\u53EF\u9690\u85CF", status.compressible),
         metric("\u53EC\u56DE", state.catalog.recallEnabled ? "\u5DF2\u542F\u7528" : "\u672A\u542F\u7528")
       ),
-      ...!status.indexSafe ? [el("p", "warning", "\u90E8\u5206\u6279\u6B21\u7684\u68C0\u7D22\u7D22\u5F15\u4E0D\u5B8C\u6574\u3002")] : [],
+      ...status.blockedReason ? [el("p", "ew-muted", status.blockedReason)] : [],
       section(
         "\u9690\u85CF\u7B56\u7565",
         saveForm(f, async (v) => {
           ctx.guard();
           await coordinator.saveCompression(v);
+          await ctx.refresh();
         }),
         actions(
           button("\u91CD\u65B0\u5E94\u7528\u9690\u85CF", "arrows-rotate", async () => {
             ctx.guard();
-            await coordinator.compression.reconcile();
+            const result = await ctx.run("\u91CD\u65B0\u5E94\u7528\u9690\u85CF", () => coordinator.compression.reconcile());
+            notify(result.blockedReason ?? `\u5DF2\u5E94\u7528\u9690\u85CF\u7B56\u7565\uFF1A\u5DF2\u9690\u85CF ${result.hidden} \u6761\uFF0C\u56FA\u5B9A\u53EF\u89C1 ${result.pinned} \u6761\u3002`);
             await ctx.refresh();
           }),
           button(
@@ -35016,6 +35017,16 @@ async function recallView(ctx, state) {
       })
     )
   ]);
+  f.controls.get("enabled").closest("label").classList.add("wide");
+  for (const [title, keys] of [
+    ["\u5019\u9009\u68C0\u7D22", ["vectorEnabled", "vectorTopK", "bm25Enabled", "bm25TopK"]],
+    ["\u7ED3\u679C\u91CD\u6392\u5E8F", ["rerankEnabled", "rerankTopK"]],
+    ["\u7ED3\u679C\u8F93\u51FA\u4E0E\u8FC7\u6EE4", ["finalTopK", "minimumRelevance"]]
+  ]) {
+    const group = el("fieldset", "ew-recall-stage", el("legend", "", title));
+    for (const key of keys) group.append(f.controls.get(key).closest("label"));
+    f.node.append(group);
+  }
   page.append(
     section(
       "\u53EC\u56DE\u7B56\u7565",
@@ -35267,7 +35278,11 @@ async function statusView(ctx) {
     page.append(
       actions(
         button("\u5B57\u6BB5\u89C6\u56FE", "list-tree", showTree),
-        button("YAML \u7F16\u8F91", "code", showYaml),
+        button("YAML \u7F16\u8F91", "code", showYaml)
+      ),
+      el(
+        "div",
+        "ew-status-controls",
         el(
           "label",
           "ew-toggle",
@@ -35314,7 +35329,9 @@ async function statusView(ctx) {
             }
           });
           return select;
-        })(),
+        })()
+      ),
+      actions(
         button(
           "\u624B\u52A8\u540C\u6B65",
           "arrows-rotate",
