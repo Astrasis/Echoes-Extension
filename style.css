@@ -1,5 +1,6 @@
 #echoes-workbench,
-.ew-dialog {
+.ew-dialog,
+.echoes-recall-decision {
   --ew-bg: #191b1d;
   --ew-surface: #222426;
   --ew-raised: #2b2e30;
@@ -21,7 +22,8 @@
   letter-spacing: 0;
 }
 #echoes-workbench[data-theme="light"],
-.ew-dialog[data-theme="light"] {
+.ew-dialog[data-theme="light"],
+.echoes-recall-decision[data-theme="light"] {
   --ew-bg: #f4f5f6;
   --ew-surface: #fff;
   --ew-raised: #eef0f2;
@@ -34,6 +36,114 @@
   --ew-warning: #916108;
   --ew-success: #267e43;
   color-scheme: light;
+}
+dialog.echoes-recall-decision {
+  box-sizing: border-box;
+  width: min(660px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--ew-line);
+  border-radius: 8px;
+  background: var(--ew-surface);
+  color: var(--ew-text);
+  overflow: auto;
+  text-shadow: none;
+}
+.echoes-recall-decision::backdrop {
+  background: rgb(0 0 0 / 60%);
+}
+.echoes-recall-decision *,
+.echoes-recall-decision *::before,
+.echoes-recall-decision *::after {
+  box-sizing: border-box;
+}
+.echoes-recall-decision > form {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+.echoes-recall-decision .echoes-dialog-header {
+  padding: 20px 24px 0;
+}
+.echoes-recall-decision h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--ew-text);
+  text-shadow: none;
+}
+.echoes-recall-decision .echoes-dialog-body {
+  padding: 16px 24px 24px;
+  min-width: 0;
+}
+.echoes-recall-decision p {
+  margin: 0;
+  color: var(--ew-text);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-shadow: none;
+}
+.echoes-recall-decision .echoes-dialog-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--ew-line);
+}
+.echoes-recall-decision button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 110px;
+  max-width: 100%;
+  min-height: 40px;
+  margin: 0;
+  padding: 9px 14px;
+  border: 1px solid var(--ew-line);
+  border-radius: 5px;
+  background: var(--ew-raised);
+  color: var(--ew-text);
+  font: inherit;
+  line-height: 1.5;
+  letter-spacing: 0;
+  white-space: normal;
+  word-break: normal;
+  text-shadow: none;
+  box-shadow: none;
+  cursor: pointer;
+}
+.echoes-recall-decision button[data-decision="degraded"] {
+  background: var(--ew-accent-bg);
+  border-color: var(--ew-accent);
+}
+.echoes-recall-decision button:hover:not(:disabled) {
+  border-color: var(--ew-accent);
+}
+.echoes-recall-decision button:focus-visible {
+  outline: 2px solid var(--ew-accent);
+  outline-offset: 2px;
+}
+.echoes-recall-decision button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+@media (max-width: 600px) {
+  .echoes-recall-decision .echoes-dialog-footer {
+    flex-direction: column;
+  }
+  .echoes-recall-decision button {
+    width: 100%;
+  }
 }
 #echoes-workbench[hidden] {
   display: none !important;
@@ -364,6 +474,81 @@
 }
 #echoes-workbench .ew-table .ew-actions {
   flex-wrap: nowrap;
+}
+#echoes-workbench .ew-variable-table {
+  min-width: 700px;
+}
+#echoes-workbench .ew-variable-table :is(th, td):first-child {
+  min-width: 120px;
+}
+#echoes-workbench .ew-variable-table :is(th, td):nth-child(3),
+#echoes-workbench .ew-variable-table :is(th, td):nth-child(4) {
+  min-width: 160px;
+}
+#echoes-workbench .ew-variable-value {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#echoes-workbench .ew-variable-value code {
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#echoes-workbench .ew-variable-preview {
+  margin: 0;
+  line-height: 1.8;
+}
+
+#echoes-workbench .ew-records-table :is(th, td):nth-child(2) {
+  min-width: 120px;
+}
+#echoes-workbench .ew-records-table :is(th, td):nth-child(n+3):nth-last-child(n+3) {
+  min-width: 140px;
+}
+#echoes-workbench .ew-records-table :is(th, td):nth-last-child(2),
+#echoes-workbench .ew-summary-table :is(th, td):nth-child(5) {
+  min-width: 88px;
+}
+#echoes-workbench .ew-table.ew-summary-table {
+  min-width: 720px;
+}
+#echoes-workbench .ew-summary-table :is(th, td):nth-child(2) {
+  min-width: 60px;
+}
+#echoes-workbench .ew-summary-table :is(th, td):nth-child(3) {
+  min-width: 128px;
+  white-space: nowrap;
+}
+#echoes-workbench .ew-summary-table :is(th, td):nth-child(4) {
+  min-width: 200px;
+}
+#echoes-workbench .ew-page-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--ew-line);
+  padding-bottom: 8px;
+}
+#echoes-workbench .ew-page-tab {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ew-muted);
+}
+#echoes-workbench .ew-page-tab[aria-selected="true"] {
+  background: var(--ew-accent-bg);
+  border-color: var(--ew-accent);
+  color: var(--ew-accent);
+}
+#echoes-workbench .ew-bulk-mobile {
+  display: none;
+}
+#echoes-workbench .ew-bulk-commands {
+  display: grid;
+  gap: 12px;
+}
+#echoes-workbench .ew-bulk-commands .ew-button {
+  justify-content: flex-start;
 }
 #echoes-workbench .ew-badge {
   display: inline-flex;
@@ -737,6 +922,43 @@
     grid-template-columns: 150px minmax(0, 1fr);
   }
 }
+@media (max-width: 1100px) {
+  #echoes-workbench .ew-split.ew-memory-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #echoes-workbench .ew-memory-split > .ew-list {
+    flex-direction: row;
+    overflow: auto;
+    padding-bottom: 8px;
+  }
+  #echoes-workbench .ew-memory-split > .ew-list .ew-button {
+    flex-shrink: 0;
+    max-width: 260px;
+  }
+  #echoes-workbench .ew-summary-table .ew-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 34px);
+    gap: 4px;
+  }
+  #echoes-workbench .ew-summary-selection {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+  }
+  #echoes-workbench .ew-summary-selection .ew-selection-count {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+  #echoes-workbench .ew-bulk-inline {
+    display: none;
+  }
+  #echoes-workbench .ew-bulk-mobile {
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+}
 @media (max-width: 700px) {
   #echoes-workbench {
     padding: 0;
@@ -824,6 +1046,9 @@
   }
   #echoes-workbench .ew-batch-head > .ew-actions {
     width: 100%;
+  }
+  #echoes-workbench .ew-summary-table .ew-actions {
+    grid-template-columns: repeat(3, 40px);
   }
   #echoes-workbench .ew-table {
     min-width: 620px;
