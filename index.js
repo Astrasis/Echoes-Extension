@@ -15698,7 +15698,20 @@ var init_continuity = __esm({
     });
     DEFAULT_CONTINUITY = continuitySettingsSchema.parse({});
     states = { known: "\u5DF2\u77E5", believed: "\u76F8\u4FE1", suspected: "\u6000\u7591", misunderstood: "\u8BEF\u89E3", unknown: "\u672A\u77E5" };
-    CONTINUITY_EXTRACTION_GUIDE = `Optional temporal and knowledge attributes are enabled. Use Chinese natural-language values. Preserve the original independent timestamp and complete narrative content. You may additionally return "continuity": {"eventTime":"YYYY[-MM[-DD[THH]]] | unknown","learnedTime":"same time format","validFrom":"same time format","validUntil":"same time format","validity":"current | historical | superseded","changeKind":"fact_change | knowledge_change | canon_correction | unclassified","note":"uncertainty or scope","knowledge":[{"character":"exact character name","state":"known | believed | suspected | misunderstood | unknown","claim":"specific proposition","learnedTime":"optional supported time"}]}. All fields are optional. Only use supported dates; omit unknown attributes rather than inventing precision. Knowledge states refer to specific claims, not the entire scene. Preserve uncertainty; a later discovery is not earlier knowledge. Omission does not change existing attributes or default character-known rules. Distinguish an actual change from a correction to a previously erroneous record. Use superseded only if the entire record is invalidated. No conflict-priority rules or evidenceMessageIds.`;
+    CONTINUITY_EXTRACTION_GUIDE = `Optional temporal and knowledge attributes are enabled. Preserve the independent timestamp and complete narrative content. Each record may include an optional continuity object; every field inside it is optional.
+
+Use Chinese for character, claim and note. Field names and the following enum codes must remain in English. Choose ONE code, not a combined list or a translated label:
+- changeKind: fact_change (\u4E8B\u5B9E\u53D1\u751F\u53D8\u5316), knowledge_change (\u89D2\u8272\u8BA4\u77E5\u53D8\u5316), canon_correction (\u66F4\u6B63\u65E7\u8BBE\u5B9A), unclassified (\u672A\u5206\u7C7B).
+- validity: current (\u5F53\u524D\u6709\u6548), historical (\u5386\u53F2\u7ECF\u5386), superseded (\u5DF2\u88AB\u66F4\u6B63\u5931\u6548).
+- knowledge[].state: known (\u5DF2\u77E5), believed (\u76F8\u4FE1), suspected (\u6000\u7591), misunderstood (\u8BEF\u89E3), unknown (\u672A\u77E5).
+Use unclassified or omit changeKind when no classification is supported. An event type such as relationship, plan or discovery is not a changeKind code.
+
+eventTime, learnedTime, validFrom, validUntil and knowledge[].learnedTime use the same single-time formats: YYYY, YYYY-MM, YYYY-MM-DD, YYYY-MM-DDTHH, or unknown. For example "2087-04-09T16" is valid. Keep ranges and approximate qualifiers in note or content. Only use supported dates; omit unknown attributes rather than inventing precision.
+
+Fictional format example, not source facts:
+{"continuity":{"eventTime":"2087-04","changeKind":"knowledge_change","knowledge":[{"character":"\u6D1B\u79BE","state":"suspected","claim":"\u7F57\u76D8\u7684\u5C01\u6761\u53EF\u80FD\u88AB\u66F4\u6362"}]}}
+
+Knowledge states refer to specific claims, not the entire scene. Preserve uncertainty; a later discovery is not earlier knowledge. Omission does not change existing attributes or default character-known rules. Distinguish an actual change from a correction to a previously erroneous record. Use superseded only if the entire record is invalidated. No conflict-priority rules or evidenceMessageIds.`;
     memoryReferenceSchema = external_exports.object({ kind: external_exports.enum(["row", "summary"]), id: external_exports.string().min(1).max(240) }).strict();
     memoryLinkSchema = external_exports.object({
       id: external_exports.string().min(1).max(240),
@@ -18645,7 +18658,7 @@ __export(client_exports, {
   echoesApi: () => echoesApi
 });
 async function requestJson(path, init) {
-  if (init?.method === "POST" && typeof init.body === "string" && /^(\/memory\/extractions|\/summaries\/(?:generate|coverage)|\/status\/updates|\/retrieval\/|\/endpoints\/)/.test(path)) {
+  if (init?.method === "POST" && typeof init.body === "string" && /^(\/memory\/extractions|\/summaries\/(?:generate|coverage|batch-overview)|\/status\/updates|\/retrieval\/|\/endpoints\/)/.test(path)) {
     const body = JSON.parse(init.body);
     const globalBudget = getSettings().taskBudget;
     const requested = body.taskBudget;
@@ -18893,7 +18906,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "3.2.0", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "3.2.1", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
@@ -19876,6 +19889,29 @@ function preprocessSummaryMessages(messages2, rules, timeoutMs = 2e3) {
 
 // src/extension/summary/summary-request.ts
 init_batch_overview();
+
+// src/shared/summary-protocol.ts
+init_continuity();
+var SUMMARY_OUTPUT_PROTOCOL = `Use Chinese for every title, content and tag. Return one complete JSON object containing a summaries array of 1 to 50 independently readable memories. Keep the narrative detail and coverage requested in the summary instructions.
+
+Each item has timestamp (string), title (string), content (string), and tags (string array).
+Each timestamp is ONE in-universe time: YYYY, YYYY-MM, YYYY-MM-DD, YYYY-MM-DDTHH, or unknown. Examples of valid values: "2087", "2087-04", "2087-04-09", "2087-04-09T16".
+Use zero-padded months, days and hours; T is the literal separator before the hour. Precision ends at the hour, without minutes, seconds or timezone. Use unknown only when no in-universe year can be established.
+For a continuous period, timestamp is its supported beginning or decisive change; preserve the complete period in content. Distinct events at different times remain distinct memories. Do not put ranges, alternatives, explanatory text or format placeholders in timestamp.
+
+Fictional format example only; never extract these example facts:
+{"summaries":[{"timestamp":"2087-04","title":"\u6D1B\u79BE\u6682\u5B58\u7F57\u76D8","content":"\u6D1B\u79BE\u5728\u6625\u5B63\u6D4B\u7ED8\u524D\u5C06\u65E7\u7F57\u76D8\u4EA4\u7ED9\u949F\u8868\u5320\u6E29\u781A\u4FDD\u7BA1\u3002\u6E29\u781A\u7B54\u5E94\u53EA\u68C0\u67E5\u5916\u58F3\uFF0C\u4E0D\u62C6\u5F00\u5185\u90E8\u9F7F\u8F6E\uFF1B\u53CC\u65B9\u5C1A\u672A\u7EA6\u5B9A\u53D6\u56DE\u65E5\u671F\u3002","tags":["\u6D1B\u79BE","\u6E29\u781A","\u65E7\u7F57\u76D8"]}]}
+
+JSON property names and enum codes remain in English; only natural-language values use Chinese. Return the final JSON directly, without Markdown fences, memory XML blocks, commentary or drafting notes.`;
+function summaryProviderMessages(request) {
+  return [
+    ...request.promptMessages,
+    ...request.extractAttributes ? [{ role: "system", content: CONTINUITY_EXTRACTION_GUIDE }] : [],
+    { role: "user", content: SUMMARY_OUTPUT_PROTOCOL + (request.extractAttributes ? "\nEach summary may additionally contain the optional continuity object described above. Choose exactly one documented English code for each enum; these codes are not titles or tags." : "\nTemporal/knowledge attributes are disabled. Use only timestamp, title, content and tags; retain relevant uncertainty and attribution in content.") }
+  ];
+}
+
+// src/extension/summary/summary-request.ts
 function currentChatMessages() {
   return indexedChatMessages().map((entry) => entry.message);
 }
@@ -20961,11 +20997,28 @@ var SummaryCoordinator = class {
       decide
     );
   }
-  async performAutomatic(lockedChatId, decide, signal) {
+  checkPending(decide = defaultDecision) {
+    const chatId = SillyTavern.getContext().chatId;
+    if (!chatId) return Promise.reject(new Error("\u8BF7\u5148\u9009\u62E9\u804A\u5929\u3002"));
+    if (this.supplements.has(chatId)) return Promise.reject(new Error("\u8BF7\u5148\u5904\u7406\u5F85\u786E\u8BA4\u7684\u603B\u7ED3\u8865\u5168\u7ED3\u679C\u3002"));
+    return this.startRun(chatId, (signal) => this.performAutomatic(chatId, decide, signal, true), decide);
+  }
+  async performAutomatic(lockedChatId, decide, signal, explicitCheck = false) {
     if (SillyTavern.getContext().chatId !== lockedChatId) return null;
     let state = await this.checkIntegrity(void 0, signal);
     if (state.catalog.chatId !== lockedChatId) {
       throw new Error("The summary catalog does not belong to the locked chat.");
+    }
+    if (explicitCheck) {
+      signal.throwIfAborted();
+      if (SillyTavern.getContext().chatId !== lockedChatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) {
+        throw new Error("\u804A\u5929\u6216\u4E16\u754C\u4E66\u5DF2\u5207\u6362\uFF0C\u8BF7\u91CD\u65B0\u68C0\u67E5\u3002");
+      }
+      if (!state.catalog.autoRun) throw new Error("\u81EA\u52A8\u603B\u7ED3\u5DF2\u5173\u95ED\uFF0C\u8BF7\u5148\u5F00\u542F\u81EA\u52A8\u603B\u7ED3\uFF0C\u6216\u4F7F\u7528\u624B\u52A8\u603B\u7ED3\u3002");
+      if (state.slices.some((slice) => slice.batch.state === "stale" && slice.batch.source?.kind !== "imported" && slice.batch.purpose !== "supplement")) {
+        throw new Error("\u5B58\u5728\u6E90\u6D88\u606F\u5DF2\u53D8\u5316\u7684\u5931\u6548\u6279\u6B21\uFF0C\u8BF7\u5148\u91CD\u5EFA\u6216\u5904\u7406\u5931\u6548\u6279\u6B21\uFF0C\u518D\u68C0\u67E5\u5F85\u5904\u7406\u6D88\u606F\u3002");
+      }
+      this.pausedAutomatic.delete(lockedChatId);
     }
     if (!state.catalog.autoRun || this.pausedAutomatic.has(lockedChatId) || state.slices.some((slice) => slice.batch.state === "stale" && slice.batch.source?.kind !== "imported" && slice.batch.purpose !== "supplement")) {
       await this.compression.reconcile(state);
@@ -21008,6 +21061,9 @@ var SummaryCoordinator = class {
       completedBatches += 1;
     }
     await this.compression.reconcile(state);
+    if (explicitCheck && completedBatches === 0 && !this.pausedAutomatic.has(lockedChatId)) {
+      toastr.info("\u6682\u65E0\u7B26\u5408\u81EA\u52A8\u603B\u7ED3\u6761\u4EF6\u7684\u6D88\u606F\uFF1A\u9700\u8FBE\u5230\u6D88\u606F\u9608\u503C\uFF0C\u5E76\u7531\u540E\u7EED\u7528\u6237\u6D88\u606F\u786E\u8BA4\u52A9\u624B\u56DE\u590D\u3002", "Echoes");
+    }
     return state;
   }
   runManual(startIndex, endIndex, decide = defaultDecision) {
@@ -35306,19 +35362,6 @@ async function summaryCoverageView(ctx) {
   return root;
 }
 
-// src/shared/summary-protocol.ts
-init_continuity();
-var OUTPUT_PROTOCOL = `Return exactly one JSON object with this shape:
-{"summaries":[{"timestamp":"YYYY | YYYY-MM | YYYY-MM-DD | YYYY-MM-DDTHH | unknown","title":"short title","content":"self-contained factual summary in Chinese","tags":["entity or plot keyword"]}]}
-Every summary must have its own timestamp. Use unknown only when no in-universe year can be established. Produce between 1 and 50 summaries. Do not use Markdown fences or include any text outside the JSON object.`;
-function summaryProviderMessages(request) {
-  return [
-    ...request.promptMessages,
-    ...request.extractAttributes ? [{ role: "system", content: CONTINUITY_EXTRACTION_GUIDE }] : [],
-    { role: "user", content: OUTPUT_PROTOCOL + (request.extractAttributes ? "\nEach summary may additionally contain the optional continuity object described above." : "") }
-  ];
-}
-
 // src/extension/workbench/summary.ts
 init_batch_overview();
 async function summaryView(ctx) {
@@ -35539,7 +35582,10 @@ async function summaryView(ctx) {
             "rotate",
             () => ctx.run(
               "\u81EA\u52A8\u603B\u7ED3",
-              () => coordinator.runAutomatic(),
+              () => {
+                ctx.guard();
+                return coordinator.checkPending();
+              },
               () => coordinator.stop()
             ).then(() => ctx.refresh())
           )
