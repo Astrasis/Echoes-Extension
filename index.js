@@ -18939,7 +18939,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "3.2.2", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "3.2.3", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
@@ -20390,7 +20390,7 @@ var CompressionCoordinator = class {
   inspectVisibility(state) {
     return this.serialize(async () => {
       const snapshot = await this.snapshot(state, false);
-      return this.statusFromSnapshot(snapshot).batches.map(({ batchId, covered, hidden }) => ({ batchId, covered, hidden }));
+      return this.statusFromSnapshot(snapshot).batches.map(({ batchId, covered, hidden, pinned }) => ({ batchId, covered, hidden, pinned }));
     });
   }
   reconcile(state) {
@@ -35703,7 +35703,14 @@ async function summaryView(ctx) {
         actions(
           button("\u91CD\u65B0\u5E94\u7528\u9690\u85CF", "arrows-rotate", async () => {
             ctx.guard();
-            const result = await ctx.run("\u91CD\u65B0\u5E94\u7528\u9690\u85CF", () => coordinator.compression.reconcile());
+            const current = await coordinator.load();
+            const visibility = await coordinator.compression.inspectVisibility(current);
+            ctx.guard();
+            const pinnedBatches = visibility.filter((batch) => batch.pinned > 0);
+            const unpin = pinnedBatches.length > 0 && confirm(
+              "\u6709\u6548\u603B\u7ED3\u6279\u6B21\u4E2D\u5B58\u5728\u56FA\u5B9A\u53EF\u89C1\u7684\u539F\u6D88\u606F\uFF0C\u53EF\u80FD\u6765\u81EA\u6062\u590D\u64CD\u4F5C\u6216\u65E7\u7248\u5220\u9664\u5207\u7247\u3002\u662F\u5426\u89E3\u9664\u8FD9\u4E9B\u6279\u6B21\u7684\u56FA\u5B9A\u53EF\u89C1\u5E76\u91CD\u65B0\u5E94\u7528\u9690\u85CF\uFF1F\u53D6\u6D88\u5219\u4FDD\u7559\u56FA\u5B9A\u53EF\u89C1\u3002"
+            );
+            const result = await ctx.run("\u91CD\u65B0\u5E94\u7528\u9690\u85CF", () => unpin ? coordinator.compression.recompressBatch(current, pinnedBatches.map((batch) => batch.batchId)) : coordinator.compression.reconcile(current));
             notify(result.blockedReason ?? `\u5DF2\u5E94\u7528\u9690\u85CF\u7B56\u7565\uFF1A\u5DF2\u9690\u85CF ${result.hidden} \u6761\uFF0C\u56FA\u5B9A\u53EF\u89C1 ${result.pinned} \u6761\u3002`);
             await ctx.refresh();
           }),
@@ -35886,7 +35893,7 @@ async function summaryView(ctx) {
       const policy = state.catalog.compression.deletionPolicy;
       if (policy === "restore_first" || policy === "confirm_restore" && confirm("\u540C\u65F6\u6062\u590D\u8FD9\u4E9B\u6279\u6B21\u7684\u539F\u6D88\u606F\uFF1F")) {
         ctx.guard();
-        await coordinator.compression.restoreBatch(state, batchIds);
+        await coordinator.compression.restoreBatch(state, batchIds, false);
       }
       ctx.guard();
       await ctx.run(
@@ -35921,7 +35928,8 @@ async function summaryView(ctx) {
     } else if (action === "restore") {
       await coordinator.compression.restoreBatch(state, batchIds);
     } else if (action === "hide") {
-      await coordinator.compression.recompressBatch(state, batchIds);
+      const result = await coordinator.compression.recompressBatch(state, batchIds);
+      notify(result.blockedReason ?? `\u5DF2\u5E94\u7528\u9690\u85CF\u7B56\u7565\uFF1A\u5DF2\u9690\u85CF ${result.hidden} \u6761\uFF0C\u56FA\u5B9A\u53EF\u89C1 ${result.pinned} \u6761\u3002`);
     }
     await ctx.refresh();
   };
@@ -36025,10 +36033,11 @@ async function summaryView(ctx) {
           el(
             "span",
             "ew-muted",
-            c ? "\u5DF2\u9690\u85CF " + c.hidden + " / " + c.covered + " \u6761\u539F\u6D88\u606F" : "\u9690\u85CF\u72B6\u6001\u4E0D\u53EF\u7528"
+            c ? "\u5DF2\u9690\u85CF " + c.hidden + " / " + c.covered + " \u6761\u539F\u6D88\u606F" + (c.pinned ? " \xB7 \u56FA\u5B9A\u53EF\u89C1 " + c.pinned + " \u6761" : "") : "\u9690\u85CF\u72B6\u6001\u4E0D\u53EF\u7528"
           ),
           tool("\u91CD\u65B0\u603B\u7ED3\u6B64\u6279\u6B21", "rotate", () => operate("rebuild", all)),
           tool("\u6062\u590D\u6B64\u6279\u6B21\u539F\u6D88\u606F", "eye", () => operate("restore", all)),
+          tool("\u91CD\u65B0\u9690\u85CF\u6B64\u6279\u6B21\u539F\u6D88\u606F", "eye-slash", () => operate("hide", all)),
           tool("\u68C0\u67E5\u6B64\u6279\u6B21\u8986\u76D6", "magnifying-glass", () => {
             ctx.state.set("summary-coverage-range", {
               start: checkpointFloor(b.startMessageId),
