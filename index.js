@@ -16092,7 +16092,7 @@ function validateMemoryValues(columns, rawValues, options = {}) {
   }
   return values;
 }
-var MAX_EXTRACTION_CHARACTERS, DATA_NAME_KEY, taskBudgetSchema, identifierSchema, summaryBatchingSchema, extractionContextPolicySchema, injectionBudgetSchema, memoryColumnDefinitionSchema, columnCollectionSchema, memoryTypeTemplateInputSchema, memoryTypeInputSchema, persistedFields, memoryTypeTemplateSchema, memoryTypeDefinitionSchema, promptPresetItemSchema, promptPresetSchema, structuredMemoryCatalogSchema, memoryRowSourceSchema, memoryRowInputSchema, memoryRowSchema, extractionOperationSchema, extractionPayloadSchema, promptMessageSchema, chatMessageSchema, failoverPolicySchema, generationEndpointSchema, generationEndpointGroupSchema, structuredExtractionBatchSchema, extractionReviewItemSchema, extractionRequestSchema, summaryPromptBase, summaryPromptItemSchema, summaryPromptPresetSchema, summaryPreprocessRuleSchema, summaryBatchInputSchema, summaryTimestampSchema, summarySliceCandidateSchema, summaryBatchMetadataSchema, summarySliceSchema, summaryPayloadSchema, summaryCompressionConfigSchema, messageCompressionMarkerSchema, recallFlagRulesSchema, recallPoolReferenceSchema, recallPoolSchema, summaryCatalogSchema, summaryGenerationRequestSchema, summaryCoverageRequestSchema, summaryCoveragePayloadSchema, jsonValueSchema, statusStateSchema, statusPromptBase, statusPromptItemSchema, statusPromptPresetSchema, statusValidationRuleSchema, statusValidationConfigSchema, statusPatchOperationSchema, statusPayloadSchema, statusProviderOperationSchema, statusProviderPayloadSchema, statusUpdateRequestSchema, jobStatusSchema, vectorStateSchema, retrievalEndpointSchema, embeddingEndpointGroupSchema, rerankEndpointSetSchema, retrievalCollectionInputSchema, retrievalCollectionSchema, retrievalDocumentInputSchema, retrievalRequestOptions, retrievalUpsertRequestSchema, retrievalDeleteRequestSchema, retrievalDocumentSyncRequestSchema, retrievalDocumentStatusRequestSchema, retrievalRebuildRequestSchema, retrievalQueryPresetBase, retrievalQueryPresetItemSchema, retrievalQueryPresetSchema, retrievalInjectionConfigSchema, statusProfileFields, statusTemplateSchema, statusProfileSchema, statusCatalogSchema, statusSnapshotSchema, retrievalSourceWeightSchema, retrievalQueryRequestSchema, retrievalQueryContinueRequestSchema, endpointTestRequestSchema, endpointModelListRequestSchema, buildInfoSchema, subsystemStateSchema, systemStatusSchema, diagnosticCheckSchema, repairRequestSchema, systemDiagnosticRequestSchema, repairResultSchema, credentialMetadataSchema, credentialCreateSchema, credentialMigrationSchema, credentialUpdateSchema, endpointCredentialRefSchema, backupWorldbookEntrySchema, backupMessageSwipeSchema, echoesBackupV1Schema, restorePlanSchema, restoreResultSchema;
+var MAX_EXTRACTION_CHARACTERS, DATA_NAME_KEY, taskBudgetSchema, identifierSchema, summaryBatchingSchema, extractionContextPolicySchema, injectionBudgetSchema, memoryColumnDefinitionSchema, columnCollectionSchema, memoryTypeTemplateInputSchema, memoryTypeInputSchema, persistedFields, memoryTypeTemplateSchema, memoryTypeDefinitionSchema, promptPresetItemSchema, promptPresetSchema, structuredMemoryCatalogSchema, memoryRowSourceSchema, memoryRowInputSchema, memoryRowSchema, extractionOperationSchema, extractionPayloadSchema, promptMessageSchema, chatMessageSchema, failoverPolicySchema, generationEndpointSchema, generationEndpointGroupSchema, structuredExtractionBatchSchema, extractionReviewItemSchema, extractionRequestSchema, summaryPromptBase, summaryPromptItemSchema, summaryPromptPresetSchema, summaryPreprocessRuleSchema, summaryBatchInputSchema, summaryTimestampSchema, summarySliceCandidateSchema, summaryBatchMetadataSchema, summarySliceSchema, summaryPayloadSchema, summaryCompressionConfigSchema, messageCompressionMarkerSchema, recallFlagRulesSchema, recallPoolReferenceSchema, recallPoolSchema, summaryCatalogSchema, summaryGenerationRequestSchema, summaryCoverageRequestSchema, summaryCoveragePayloadSchema, jsonValueSchema, statusStateSchema, statusPromptBase, statusPromptItemSchema, statusPromptPresetSchema, statusValidationRuleSchema, statusValidationConfigSchema, statusPatchOperationSchema, statusPayloadSchema, statusProviderPathSchema, statusProviderOperationSchema, statusProviderPayloadSchema, statusUpdateRequestSchema, jobStatusSchema, vectorStateSchema, retrievalEndpointSchema, embeddingEndpointGroupSchema, rerankEndpointSetSchema, retrievalCollectionInputSchema, retrievalCollectionSchema, retrievalDocumentInputSchema, retrievalRequestOptions, retrievalUpsertRequestSchema, retrievalDeleteRequestSchema, retrievalDocumentSyncRequestSchema, retrievalDocumentStatusRequestSchema, retrievalRebuildRequestSchema, retrievalQueryPresetBase, retrievalQueryPresetItemSchema, retrievalQueryPresetSchema, retrievalInjectionConfigSchema, statusProfileFields, statusTemplateSchema, statusProfileSchema, statusCatalogSchema, statusSnapshotSchema, retrievalSourceWeightSchema, retrievalQueryRequestSchema, retrievalQueryContinueRequestSchema, endpointTestRequestSchema, endpointModelListRequestSchema, buildInfoSchema, subsystemStateSchema, systemStatusSchema, diagnosticCheckSchema, repairRequestSchema, systemDiagnosticRequestSchema, repairResultSchema, credentialMetadataSchema, credentialCreateSchema, credentialMigrationSchema, credentialUpdateSchema, endpointCredentialRefSchema, backupWorldbookEntrySchema, backupMessageSwipeSchema, echoesBackupV1Schema, restorePlanSchema, restoreResultSchema;
 var init_schemas3 = __esm({
   "src/shared/schemas.ts"() {
     "use strict";
@@ -16719,22 +16719,42 @@ var init_schemas3 = __esm({
     statusPayloadSchema = external_exports.object({
       operations: external_exports.array(statusPatchOperationSchema).max(500)
     }).strict();
-    statusProviderOperationSchema = external_exports.discriminatedUnion("op", [
+    statusProviderPathSchema = external_exports.preprocess((value) => {
+      if (typeof value === "string" && value.startsWith("/")) {
+        return value.slice(1).split("/").map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
+      }
+      return value;
+    }, external_exports.array(external_exports.string().trim().min(1).max(200)).min(1).max(32));
+    statusProviderOperationSchema = external_exports.preprocess((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+      const operation = value;
+      const op = typeof operation.op === "string" ? operation.op.trim().toLowerCase() : operation.op;
+      return { ...operation, op: op === "add" || op === "replace" ? "set" : op === "remove" ? "delete" : op };
+    }, external_exports.discriminatedUnion("op", [
       external_exports.object({
         op: external_exports.literal("set"),
-        path: external_exports.array(external_exports.string().trim().min(1).max(200)).min(1).max(32),
-        value: jsonValueSchema,
-        evidenceMessageIds: external_exports.array(external_exports.string().trim().min(1).max(240)).max(500).optional()
-      }).strict(),
+        path: statusProviderPathSchema,
+        value: jsonValueSchema
+      }),
       external_exports.object({
         op: external_exports.literal("delete"),
-        path: external_exports.array(external_exports.string().trim().min(1).max(200)).min(1).max(32),
-        evidenceMessageIds: external_exports.array(external_exports.string().trim().min(1).max(240)).max(500).optional()
-      }).strict()
-    ]);
-    statusProviderPayloadSchema = external_exports.object({
+        path: statusProviderPathSchema
+      })
+    ]));
+    statusProviderPayloadSchema = external_exports.preprocess((value) => {
+      if (Array.isArray(value)) return { operations: value };
+      if (!value || typeof value !== "object") return value;
+      const payload = value;
+      if (!Object.hasOwn(payload, "operations") && Object.hasOwn(payload, "op")) {
+        return { operations: [payload] };
+      }
+      if (payload.operations && typeof payload.operations === "object" && !Array.isArray(payload.operations)) {
+        return { ...payload, operations: [payload.operations] };
+      }
+      return value;
+    }, external_exports.object({
       operations: external_exports.array(statusProviderOperationSchema).max(500)
-    }).strict();
+    }));
     statusUpdateRequestSchema = external_exports.object({
       chatId: external_exports.string().trim().min(1).max(240),
       namespaceId: identifierSchema,
@@ -17331,6 +17351,46 @@ The content field contains the narrative itself. Output no memory slices, analys
   }
 });
 
+// src/shared/status-prompts.ts
+var DEFAULT_STATUS_TASK_PROMPT, DEFAULT_STATUS_BACKGROUND_PROMPT, STATUS_OUTPUT_PROTOCOL, DEFAULT_STATUS_UPDATE_PROMPT, DEFAULT_STATUS_EMPHASIS_PROMPT;
+var init_status_prompts = __esm({
+  "src/shared/status-prompts.ts"() {
+    "use strict";
+    DEFAULT_STATUS_TASK_PROMPT = `<task>
+\u4F60\u8D1F\u8D23\u7EF4\u62A4\u6545\u4E8B\u7684\u5F53\u524D\u72B6\u6001\u3002\u5BF9\u7167 <outdated_data>\uFF0C\u6839\u636E <new_plot> \u8F93\u51FA\u53D1\u751F\u53D8\u5316\u7684\u5B57\u6BB5\u3002
+\u4F7F\u7528\u4E2D\u6587\u8BB0\u5F55\u72B6\u6001\u3002\u6CA1\u6709\u53D8\u5316\u7684\u5185\u5BB9\u4E0D\u8F93\u51FA\uFF0C\u7A0B\u5E8F\u4F1A\u4FDD\u7559\u539F\u503C\u3002
+\u9ED8\u8BA4\u5206\u4E3A\u201C\u65F6\u7A7A\u72B6\u6001\u201D\u201C\u626E\u6F14\u4EBA\u7269\u72B6\u6001\u201D\u201C\u8BA1\u5212\u4E0E\u627F\u8BFA\u201D\uFF0C\u6CBF\u7528\u5DF2\u6709\u5B57\u6BB5\u548C\u4EBA\u7269\u540D\u79F0\u3002
+\u4EC5\u8F93\u51FA\u4E00\u4E2A JSON \u5BF9\u8C61\uFF0C\u4E0D\u8F93\u51FA\u601D\u8003\u8FC7\u7A0B\u3002
+</task>`;
+    DEFAULT_STATUS_BACKGROUND_PROMPT = `<background_info>
+\u7528\u6237\u901A\u5E38\u626E\u6F14\u4E3B\u6301\u4EBA\u3001\u4E16\u754C\u4E0E\u5176\u4ED6\u4EBA\u7269\uFF0C\u4E0D\u662F\u6545\u4E8B\u4E2D\u540D\u4E3A User \u7684\u89D2\u8272\uFF1BAI \u53EF\u4EE5\u626E\u6F14\u4E00\u4E2A\u6216\u591A\u4E2A\u4EBA\u7269\u3002
+\u8FD9\u91CC\u7684\u89D2\u8272\u5361\u548C\u4E16\u754C\u4E66\u7528\u4E8E\u7406\u89E3\u5267\u60C5\uFF0C\u4E0D\u9700\u8981\u6284\u5165\u72B6\u6001\u3002
+\u6309\u672C\u6A21\u677F\u7684\u77E5\u60C5\u7EA6\u5B9A\uFF0C<new_plot> \u4E2D\u7684\u4FE1\u606F\u89C6\u4E3A\u626E\u6F14\u4EBA\u7269\u5DF2\u77E5\uFF1B\u5BF9\u4E8E\u6000\u7591\u3001\u63A8\u6D4B\u548C\u672A\u786E\u8BA4\u4E8B\u9879\uFF0C\u4FDD\u7559\u8FD9\u4E9B\u9650\u5B9A\u8BCD\u3002
+\u72B6\u6001\u8BB0\u5F55\u5F53\u524D\u65F6\u7A7A\u3001\u626E\u6F14\u4EBA\u7269\u7684\u52A8\u6001\u72B6\u51B5\uFF0C\u4EE5\u53CA\u4ECD\u672A\u5B8C\u6210\u7684\u8BA1\u5212\u4E0E\u627F\u8BFA\u3002\u957F\u671F\u4EBA\u7269\u6863\u6848\u548C\u5386\u53F2\u7ECF\u5386\u7531\u5176\u4ED6\u8BB0\u5FC6\u6A21\u5757\u4FDD\u5B58\u3002
+\u65E7\u72B6\u6001\u6CA1\u6709\u88AB\u65B0\u5267\u60C5\u6539\u53D8\u65F6\u7EE7\u7EED\u4FDD\u7559\uFF1B\u53EA\u5728\u660E\u786E\u5B8C\u6210\u3001\u53D6\u6D88\u3001\u5931\u6548\u6216\u88AB\u66FF\u4EE3\u65F6\u5220\u9664\u5BF9\u5E94\u4E8B\u9879\u3002`;
+    STATUS_OUTPUT_PROTOCOL = `\u56DE\u590D\u683C\u5F0F\uFF1A\u4EC5\u8F93\u51FA\u4E00\u4E2A JSON \u5BF9\u8C61 {"operations":[...]}\uFF0C\u4E0D\u9700\u8981 <thinking> \u6216\u5176\u4ED6\u5206\u6790\u6587\u5B57\u3002
+\u65B0\u589E\u6216\u66F4\u65B0\uFF1A{"op":"set","path":["\u5206\u7C7B","\u5B57\u6BB5"],"value":"\u65B0\u503C"}
+\u5220\u9664\uFF1A{"op":"delete","path":["\u5206\u7C7B","\u5B57\u6BB5"]}
+\u6CA1\u6709\u53D8\u5316\uFF1A{"operations":[]}
+path \u4F7F\u7528\u5B57\u6BB5\u540D\u79F0\u7EC4\u6210\u7684\u6570\u7EC4\uFF1Bvalue \u53EF\u4EE5\u662F\u5B57\u7B26\u4E32\u3001\u6570\u5B57\u3001\u5E03\u5C14\u503C\u3001\u5BF9\u8C61\u6216\u6570\u7EC4\uFF0C\u6CBF\u7528\u5DF2\u6709\u5B57\u6BB5\u7684\u6570\u636E\u7C7B\u578B\u3002
+\u66F4\u65B0\u5DF2\u6709\u5BF9\u8C61\u65F6\u4F18\u5148\u4FEE\u6539\u5177\u4F53\u5B50\u5B57\u6BB5\uFF1Bset \u6574\u4E2A\u5BF9\u8C61\u4F1A\u66FF\u6362\u5176\u539F\u5185\u5BB9\uFF0C\u56E0\u6B64\u5E94\u4FDD\u7559\u4ECD\u7136\u6709\u6548\u7684\u5B50\u5B57\u6BB5\u3002
+\u64CD\u4F5C\u6309\u6570\u7EC4\u987A\u5E8F\u6267\u884C\uFF0C\u540E\u9762\u7684\u64CD\u4F5C\u53EF\u4EE5\u8986\u76D6\u524D\u9762\u7684\u64CD\u4F5C\u3002\u65E0\u53D8\u5316\u7684\u5B57\u6BB5\u4E0D\u7528\u8F93\u51FA\uFF0C\u4E5F\u4E0D\u7528\u586B\u5199\u6765\u6E90\u6D88\u606F\u7F16\u53F7\u3002
+\u4E0A\u8FF0\u4EC5\u4E3A\u683C\u5F0F\u793A\u610F\uFF0C\u4E0D\u662F\u5F85\u5199\u5165\u7684\u5267\u60C5\u3002`;
+    DEFAULT_STATUS_UPDATE_PROMPT = `<response_format>
+\u5148\u786E\u5B9A\u672C\u6BB5\u5267\u60C5\u7ED3\u675F\u65F6\u7684\u5C40\u9762\uFF0C\u518D\u53EA\u8F93\u51FA\u9700\u8981\u66F4\u65B0\u7684\u72B6\u6001\uFF1A
+- \u65F6\u7A7A\u72B6\u6001\uFF1A\u65E5\u671F\u3001\u65F6\u95F4\u3001\u5F53\u524D\u5730\u70B9\u3001\u5728\u573A\u89D2\u8272\u3001\u5F53\u524D\u5C40\u52BF\u53CA\u884C\u52A8\u9650\u5236\u3002\u65F6\u95F4\u4E0D\u660E\u786E\u65F6\u4FDD\u7559\u539F\u503C\u6216\u539F\u6709\u7684\u4E0D\u786E\u5B9A\u6027\u3002
+- \u626E\u6F14\u4EBA\u7269\u72B6\u6001\uFF1A\u4EE5\u4EBA\u7269\u59D3\u540D\u533A\u5206\uFF0C\u8BB0\u5F55\u5F53\u524D\u6240\u5728\u5730\u70B9\u3001\u8EAB\u4F53\u72B6\u51B5\u3001\u7A7F\u7740\u53D8\u5316\u3001\u5F71\u54CD\u884C\u52A8\u7684\u5FC3\u7406\u72B6\u6001\u548C\u4E34\u65F6\u9650\u5236\u3002
+- \u8BA1\u5212\u4E0E\u627F\u8BFA\uFF1A\u4FDD\u7559\u672A\u5B8C\u6210\u7684\u76EE\u6807\u3001\u7EA6\u5B9A\u3001\u627F\u8BFA\u548C\u9700\u8981\u5904\u7406\u7684\u95EE\u9898\u3002\u660E\u786E\u7ED3\u675F\u7684\u4E8B\u9879\u4F7F\u7528 delete \u79FB\u9664\u3002
+\u6CBF\u7528\u5F53\u524D\u72B6\u6001\u7684\u7EC4\u7EC7\u65B9\u5F0F\uFF0C\u4E0D\u4E3A\u51D1\u9F50\u6A21\u677F\u589E\u52A0\u672A\u77E5\u5B57\u6BB5\uFF0C\u4E5F\u4E0D\u5C06\u672A\u63D0\u53CA\u7684\u4E8B\u9879\u89C6\u4E3A\u5DF2\u5B8C\u6210\u3002
+${STATUS_OUTPUT_PROTOCOL}
+
+\u865A\u6784\u683C\u5F0F\u793A\u4F8B\uFF1A
+{"operations":[{"op":"set","path":["\u65F6\u7A7A\u72B6\u6001","\u5F53\u524D\u5730\u70B9"],"value":"\u82D4\u6E7E\u9547\u7684\u949F\u697C"},{"op":"set","path":["\u626E\u6F14\u4EBA\u7269\u72B6\u6001","\u6E29\u781A","\u8EAB\u4F53\u72B6\u6001"],"value":"\u5DE6\u624B\u64E6\u4F24\uFF0C\u5DF2\u5305\u624E"},{"op":"delete","path":["\u8BA1\u5212\u4E0E\u627F\u8BFA","\u5DF2\u63A5\u53D7\u4EFB\u52A1\u6216\u7EA6\u5B9A","\u5F52\u8FD8\u7F57\u76D8"]}]}
+</response_format>`;
+    DEFAULT_STATUS_EMPHASIS_PROMPT = '\u8BF7\u4EC5\u8F93\u51FA {"operations":[...]}\uFF1B\u65E0\u53D8\u5316\u65F6\u8F93\u51FA {"operations":[]}\u3002\u4E0D\u8F93\u51FA\u601D\u8003\u8FC7\u7A0B\u3002';
+  }
+});
+
 // src/extension/recall-invalidation.ts
 function onRecallInvalidated(listener) {
   listeners.add(listener);
@@ -17367,6 +17427,22 @@ function builtInMemoryTemplate(id2, name, description, columns, writePrompt) {
     createdAt: DEFAULT_TEMPLATE_TIME,
     updatedAt: DEFAULT_TEMPLATE_TIME
   };
+}
+function refreshStatusPromptPreset(preset) {
+  const replacements = /* @__PURE__ */ new Map([
+    [LEGACY_STATUS_TASK_PROMPT, DEFAULT_STATUS_TASK_PROMPT],
+    [LEGACY_STATUS_BACKGROUND_PROMPT, DEFAULT_STATUS_BACKGROUND_PROMPT],
+    [LEGACY_STATUS_UPDATE_PROMPT, DEFAULT_STATUS_UPDATE_PROMPT],
+    [
+      "IMPORTANT: MUST output BOTH <thinking> and the JSON object. NEVER skip either section. The JSON object MUST appear after </thinking>.",
+      DEFAULT_STATUS_EMPHASIS_PROMPT
+    ]
+  ]);
+  return { ...preset, items: preset.items.map((item) => {
+    if (item.kind !== "custom") return item;
+    const content = replacements.get(item.content.replace(/\r\n/g, "\n").trim());
+    return content ? { ...item, content } : item;
+  }) };
 }
 function migrateLegacySecondaryApi(raw) {
   if (!raw || typeof raw !== "object") return [];
@@ -17407,7 +17483,7 @@ function normalizeStatusTemplates(raw) {
   const templates = Array.isArray(raw) ? raw.filter((item) => Boolean(item && typeof item === "object")) : [];
   return [
     structuredClone(DEFAULT_STATUS_TEMPLATE),
-    ...structuredClone(templates.filter((template) => template.id !== DEFAULT_STATUS_TEMPLATE_ID))
+    ...structuredClone(templates.filter((template) => template.id !== DEFAULT_STATUS_TEMPLATE_ID)).map((template) => ({ ...template, promptPreset: refreshStatusPromptPreset(template.promptPreset) }))
   ];
 }
 function normalizeSummaryPromptPreset(raw) {
@@ -17793,7 +17869,7 @@ function instantiateStatusProfile(template = DEFAULT_STATUS_TEMPLATE) {
     name: template.name,
     description: template.description,
     initialState: structuredClone(template.initialState),
-    promptPreset: structuredClone(template.promptPreset),
+    promptPreset: refreshStatusPromptPreset(structuredClone(template.promptPreset)),
     preprocessRules: structuredClone(template.preprocessRules),
     validation: structuredClone(template.validation),
     injection: structuredClone(template.injection),
@@ -17802,13 +17878,14 @@ function instantiateStatusProfile(template = DEFAULT_STATUS_TEMPLATE) {
     updatedAt: now3
   };
 }
-var SETTINGS_KEY, DEFAULT_TEMPLATE_ID, DEFAULT_STATUS_TEMPLATE_ID, LEGACY_MAIN_PROMPT, STRUCTURED_JSON_INTEGRITY_GUARD, DEFAULT_MAIN_PROMPT, PREVIOUS_DEFAULT_MAIN_PROMPT, LEGACY_WRITE_PROMPT, DEFAULT_WRITE_PROMPT, DEFAULT_TEMPLATE_TIME, DEFAULT_TYPE_TEMPLATE, PEOPLE_MEMORY_TEMPLATE_ID, RELATIONSHIP_MEMORY_TEMPLATE_ID, CONCEPT_MEMORY_TEMPLATE_ID, FACTION_MEMORY_TEMPLATE_ID, LOCATION_MEMORY_TEMPLATE_ID, OBJECT_MEMORY_TEMPLATE_ID, PEOPLE_MEMORY_TEMPLATE, RELATIONSHIP_MEMORY_TEMPLATE, CONCEPT_MEMORY_TEMPLATE, FACTION_MEMORY_TEMPLATE, LOCATION_MEMORY_TEMPLATE, OBJECT_MEMORY_TEMPLATE, BUILT_IN_MEMORY_TYPE_TEMPLATES, DEFAULT_CHAT_MEMORY_TYPE_TEMPLATES, BUILT_IN_MEMORY_TEMPLATE_IDS, CURRENT_BUILT_IN_MEMORY_TYPE_SET_VERSION, DEFAULT_STATUS_TASK_PROMPT, DEFAULT_STATUS_BACKGROUND_PROMPT, DEFAULT_STATUS_UPDATE_PROMPT, DEFAULT_STATUS_TEMPLATE, LEGACY_DEFAULT_SUMMARY_MAIN_PROMPT, DEFAULT_SUMMARY_TASK_PROMPT, DEFAULT_SUMMARY_BACKGROUND_PROMPT, DEFAULT_SUMMARY_EXTRACTION_PROMPT, DEFAULT_SUMMARY_PROMPT_TIME, DEFAULT_SUMMARY_PROMPT_PRESET, DEFAULT_SETTINGS, workflowConfigSchema, echoesSettingsV2Schema;
+var SETTINGS_KEY, DEFAULT_TEMPLATE_ID, DEFAULT_STATUS_TEMPLATE_ID, LEGACY_MAIN_PROMPT, STRUCTURED_JSON_INTEGRITY_GUARD, DEFAULT_MAIN_PROMPT, PREVIOUS_DEFAULT_MAIN_PROMPT, LEGACY_WRITE_PROMPT, DEFAULT_WRITE_PROMPT, DEFAULT_TEMPLATE_TIME, DEFAULT_TYPE_TEMPLATE, PEOPLE_MEMORY_TEMPLATE_ID, RELATIONSHIP_MEMORY_TEMPLATE_ID, CONCEPT_MEMORY_TEMPLATE_ID, FACTION_MEMORY_TEMPLATE_ID, LOCATION_MEMORY_TEMPLATE_ID, OBJECT_MEMORY_TEMPLATE_ID, PEOPLE_MEMORY_TEMPLATE, RELATIONSHIP_MEMORY_TEMPLATE, CONCEPT_MEMORY_TEMPLATE, FACTION_MEMORY_TEMPLATE, LOCATION_MEMORY_TEMPLATE, OBJECT_MEMORY_TEMPLATE, BUILT_IN_MEMORY_TYPE_TEMPLATES, DEFAULT_CHAT_MEMORY_TYPE_TEMPLATES, BUILT_IN_MEMORY_TEMPLATE_IDS, CURRENT_BUILT_IN_MEMORY_TYPE_SET_VERSION, LEGACY_STATUS_TASK_PROMPT, LEGACY_STATUS_BACKGROUND_PROMPT, LEGACY_STATUS_UPDATE_PROMPT, DEFAULT_STATUS_TEMPLATE, LEGACY_DEFAULT_SUMMARY_MAIN_PROMPT, DEFAULT_SUMMARY_TASK_PROMPT, DEFAULT_SUMMARY_BACKGROUND_PROMPT, DEFAULT_SUMMARY_EXTRACTION_PROMPT, DEFAULT_SUMMARY_PROMPT_TIME, DEFAULT_SUMMARY_PROMPT_PRESET, DEFAULT_SETTINGS, workflowConfigSchema, echoesSettingsV2Schema;
 var init_settings = __esm({
   "src/extension/state/settings.ts"() {
     "use strict";
     init_crypto_compat();
     init_batch_overview();
     init_continuity();
+    init_status_prompts();
     init_recall_invalidation();
     init_zod();
     init_schemas3();
@@ -18148,7 +18225,7 @@ Write all generated field content in concise Chinese.`
       BUILT_IN_MEMORY_TYPE_TEMPLATES.map((template) => template.id)
     );
     CURRENT_BUILT_IN_MEMORY_TYPE_SET_VERSION = 1;
-    DEFAULT_STATUS_TASK_PROMPT = `<task>
+    LEGACY_STATUS_TASK_PROMPT = `<task>
 Act as a STRICT Character-Known Active State Recorder.
 
 Ground yourself in <background_info>. Carefully track the latest changes in <new_plot> against <outdated_data>.
@@ -18164,7 +18241,7 @@ You MUST analyze in <thinking>. Execute:
 
 The only allowed root keys are "\u65F6\u7A7A\u72B6\u6001", "\u626E\u6F14\u4EBA\u7269\u72B6\u6001", and "\u8BA1\u5212\u4E0E\u627F\u8BFA".
 </task>`;
-    DEFAULT_STATUS_BACKGROUND_PROMPT = `<background_info>
+    LEGACY_STATUS_BACKGROUND_PROMPT = `<background_info>
 [CRITICAL: <background_info> contains ALREADY KNOWN facts and reference material. Use it for continuity, interpretation, and deduplication. Do NOT copy or re-extract facts merely because they appear here.]
 
 1. Narrative roles:
@@ -18197,7 +18274,7 @@ The only allowed root keys are "\u65F6\u7A7A\u72B6\u6001", "\u626E\u6F14\u4EBA\u
    - If <new_plot> corrects, replaces, completes, cancels, narrows, or invalidates older state, the newest clear version must prevail.
    - If an old entry remains valid and is not mentioned in <new_plot>, preserve it by omitting it from the incremental operations.
    - Never rewrite an unchanged field merely to improve its wording.`;
-    DEFAULT_STATUS_UPDATE_PROMPT = `<response_format>
+    LEGACY_STATUS_UPDATE_PROMPT = `<response_format>
 !!IMPORTANT!!
 
 You MUST output <thinking> FIRST, addressing every analysis step. The JSON object must appear AFTER </thinking>.
@@ -18349,7 +18426,7 @@ Before closing </thinking>, verify:
             title: "\u5F3A\u8C03",
             role: "system",
             enabled: true,
-            content: "IMPORTANT: MUST output BOTH <thinking> and the JSON object. NEVER skip either section. The JSON object MUST appear after </thinking>."
+            content: DEFAULT_STATUS_EMPHASIS_PROMPT
           }
         ]
       },
@@ -18939,7 +19016,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "3.2.3", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "3.2.4", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
@@ -21916,6 +21993,26 @@ init_crypto_compat();
 init_schemas3();
 
 // src/shared/memory-schema-migration.ts
+function parseMemoryDefaultValue(column, input) {
+  const text = input.trim();
+  let value;
+  if (["text", "long_text", "date", "enum"].includes(column.type)) {
+    if (text.startsWith('"') && text.endsWith('"')) {
+      try {
+        value = JSON.parse(text);
+      } catch {
+        value = text;
+      }
+    } else value = text;
+  } else {
+    try {
+      value = JSON.parse(text);
+    } catch {
+      throw new Error(`\u201C${column.name}\u201D\u7684\u9ED8\u8BA4\u503C\u4E0D\u662F\u6709\u6548\u7684 ${column.type} \u503C\u3002`);
+    }
+  }
+  return value;
+}
 var MemorySchemaBackfillRequiredError = class extends Error {
   constructor(missing) {
     super(`\u8868\u7ED3\u6784\u5C1A\u672A\u4FDD\u5B58\uFF1A${missing.map(({ column, count }) => `\u201C${column.name}\u201D\u5728 ${count} \u6761\u5DF2\u6709\u8BB0\u5F55\u4E2D\u7F3A\u503C`).join("\uFF1B")}\u3002\u8BF7\u8BBE\u7F6E\u6709\u6548\u9ED8\u8BA4\u503C\u6216\u6682\u8BBE\u4E3A\u975E\u5FC5\u586B\u3002`);
@@ -29986,8 +30083,8 @@ function balancedQueryText(text, maximum) {
   const half = Math.floor((maximum - 5) / 2);
   return text.slice(0, half) + "\n...\n" + text.slice(-(maximum - half - 5));
 }
-async function authoritativeRecallHits(hits, sources) {
-  const sourceByCollection = new Map(sources.map((source) => [source.collectionId, source]));
+async function authoritativeRecallHits(hits, sources2) {
+  const sourceByCollection = new Map(sources2.map((source) => [source.collectionId, source]));
   const sliceById = /* @__PURE__ */ new Map();
   const validated = await Promise.all(hits.map(async (hit) => {
     const source = sourceByCollection.get(hit.document.collectionId);
@@ -30139,23 +30236,11 @@ function assertPath(path) {
     }
   }
 }
-function pathsOverlap(left, right) {
-  const common = Math.min(left.length, right.length);
-  for (let index = 0; index < common; index += 1) {
-    if (left[index] !== right[index]) return false;
-  }
-  return true;
-}
 function assertOperations(operations, evidenceMessageIds) {
   for (const [index, operation] of operations.entries()) {
     assertPath(operation.path);
     if (operation.evidenceMessageIds.length === 0 || operation.evidenceMessageIds.some((id2) => !evidenceMessageIds.has(id2))) {
       throw new StatusValidationError(`Operation ${index + 1} cites evidence outside this update.`);
-    }
-    for (let previous = 0; previous < index; previous += 1) {
-      if (pathsOverlap(operation.path, operations[previous].path)) {
-        throw new StatusValidationError(`Operation ${index + 1} overlaps another status path.`);
-      }
     }
   }
 }
@@ -30218,18 +30303,23 @@ function valueType(value) {
 function primitiveEquals(left, right) {
   return left === right;
 }
-function validateRule(state, previousState, rule) {
+function validateRule(state, previousState, rule, changedOnly = false) {
   if (rule.path.length === 0 || rule.path.some((segment) => segment !== "*" && (!segment || segment.length > 200 || BLOCKED_SEGMENTS.has(segment)))) {
     throw new StatusValidationError(`Unsafe validation path: ${rule.path.join(".")}.`);
   }
   const matched = matchRule(state, rule.path);
   const values = matched.values;
-  if (rule.required && (values.length === 0 || matched.missingPaths.length > 0)) {
-    const missingPath = matched.missingPaths[0] ?? rule.path;
+  const oldMatches = matchRule(previousState, rule.path);
+  const previouslyMissing = new Set(oldMatches.missingPaths.map((path) => path.join("\0")));
+  const missingPaths = changedOnly ? matched.missingPaths.filter((path) => !previouslyMissing.has(path.join("\0"))) : matched.missingPaths;
+  if (rule.required && (missingPaths.length > 0 || !changedOnly && values.length === 0)) {
+    const missingPath = missingPaths[0] ?? rule.path;
     throw new StatusValidationError(`${rule.name} is required at ${missingPath.join(".")}.`);
   }
   const previous = new Map(matchValues(previousState, rule.path).map((item) => [item.path.join("\0"), item.value]));
   for (const item of values) {
+    const oldValue = previous.get(item.path.join("\0"));
+    if (changedOnly && oldValue !== void 0 && canonical2(item.value) === canonical2(oldValue)) continue;
     if (valueType(item.value) !== rule.type) {
       throw new StatusValidationError(`${rule.name} must be ${rule.type}.`);
     }
@@ -30243,7 +30333,6 @@ function validateRule(state, previousState, rule) {
       if (rule.maximum !== void 0 && item.value > rule.maximum) {
         throw new StatusValidationError(`${rule.name} exceeds its maximum.`);
       }
-      const oldValue = previous.get(item.path.join("\0"));
       if (rule.maxDelta !== void 0 && typeof oldValue === "number" && Math.abs(item.value - oldValue) > rule.maxDelta) {
         throw new StatusValidationError(`${rule.name} exceeds its maximum single-update change.`);
       }
@@ -30252,17 +30341,19 @@ function validateRule(state, previousState, rule) {
 }
 function pathCovered(path, rules) {
   return rules.some((rule) => {
-    if (path.length > rule.path.length) return false;
-    return path.every((segment, index) => rule.path[index] === "*" || rule.path[index] === segment);
+    if (path.length > rule.path.length && rule.type !== "object") return false;
+    return path.slice(0, rule.path.length).every((segment, index) => rule.path[index] === "*" || rule.path[index] === segment);
   });
 }
-function validateKnownPaths(value, rules, path = []) {
+function validateKnownPaths(value, rules, path = [], previous) {
   for (const [key, child] of Object.entries(value)) {
     const childPath = [...path, key];
+    const oldValue = previous?.[key];
+    if (oldValue !== void 0 && canonical2(child) === canonical2(oldValue)) continue;
     if (!pathCovered(childPath, rules)) {
       throw new StatusValidationError(`Unknown status field: ${childPath.join(".")}.`);
     }
-    if (isObject2(child)) validateKnownPaths(child, rules, childPath);
+    if (isObject2(child)) validateKnownPaths(child, rules, childPath, isObject2(oldValue) ? oldValue : void 0);
   }
 }
 function assertSafeValue(value, path = []) {
@@ -30278,10 +30369,12 @@ function assertSafeValue(value, path = []) {
     assertSafeValue(child, [...path, key]);
   }
 }
-function validateStatusState(state, previousState, validation) {
+function validateStatusState(state, previousState, validation, changedOnly = false) {
   assertSafeValue(state);
-  if (validation.unknownFields === "reject") validateKnownPaths(state, validation.rules);
-  for (const rule of validation.rules) validateRule(state, previousState, rule);
+  if (validation.unknownFields === "reject") {
+    validateKnownPaths(state, validation.rules, [], changedOnly ? previousState : void 0);
+  }
+  for (const rule of validation.rules) validateRule(state, previousState, rule, changedOnly);
 }
 function applyStatusOperations(options) {
   assertOperations(options.operations, new Set(options.evidenceMessageIds));
@@ -30290,7 +30383,19 @@ function applyStatusOperations(options) {
     if (operation.op === "set") setAtPath(next, operation.path, operation.value);
     else deleteAtPath(next, operation.path);
   }
-  validateStatusState(next, options.baseState, options.validation);
+  for (const rule of options.validation.rules) {
+    for (const { path, value } of matchValues(next, rule.path)) {
+      if (typeof value !== "string") continue;
+      const old = matchValues(options.baseState, path)[0]?.value;
+      if (value === old) continue;
+      const text = value.trim();
+      if (rule.type === "number" && /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/.test(text) && Number.isFinite(Number(text))) setAtPath(next, path, Number(text));
+      if (rule.type === "boolean" && /^(true|false)$/i.test(text)) {
+        setAtPath(next, path, text.toLowerCase() === "true");
+      }
+    }
+  }
+  validateStatusState(next, options.baseState, options.validation, true);
   return next;
 }
 function canonical2(value) {
@@ -30384,9 +30489,11 @@ function injectionEntry(options) {
 function readState2(worldbookName, entries) {
   const entry = entries.find((candidate) => catalogMetadata(candidate));
   if (!entry) return null;
+  const catalog = statusCatalogSchema.parse(catalogMetadata(entry).catalog);
+  catalog.profile.promptPreset = refreshStatusPromptPreset(catalog.profile.promptPreset);
   return {
     worldbookName,
-    catalog: statusCatalogSchema.parse(catalogMetadata(entry).catalog)
+    catalog
   };
 }
 function ownedChatId(entries) {
@@ -31375,7 +31482,86 @@ init_continuity();
 // src/extension/continuity-recall.ts
 init_continuity();
 init_settings();
+
+// src/extension/memory/table-injection.ts
+function memoryTableHeader(type) {
+  return [
+    `## \u7ED3\u6784\u5316\u8BB0\u5FC6\u8868\uFF1A${type.name}`,
+    ...type.description ? [`\u8868\u683C\u7528\u9014\uFF1A${type.description}`] : [],
+    "\u5B57\u6BB5\u4ECB\u7ECD\uFF1A",
+    "- \u6570\u636E\u540D\uFF1A\u672C\u6761\u8BB0\u5F55\u5BF9\u5E94\u7684\u4EBA\u7269\u3001\u4E8B\u7269\u6216\u4E8B\u9879\u540D\u79F0\u3002",
+    ...type.columns.map((column) => `- ${column.name}\uFF08${column.type}\uFF09\uFF1A${column.description || column.name}` + (column.enumValues?.length ? `\uFF1B\u53EF\u9009\u503C\uFF1A${column.enumValues.join("\u3001")}` : "")),
+    "\u672C\u6B21\u53EC\u56DE\u6761\u76EE\uFF1A"
+  ].join("\n");
+}
+var sources = /* @__PURE__ */ new WeakMap();
+async function groupActivatedTables({ activated: { entries } }) {
+  const helper6 = window.TavernHelper;
+  if (!helper6 || entries.size === 0) return;
+  let source = sources.get(entries);
+  if (!source) {
+    source = { books: /* @__PURE__ */ new Map(), originals: /* @__PURE__ */ new Map(), replacements: /* @__PURE__ */ new Map() };
+    sources.set(entries, source);
+  }
+  for (const [key, entry] of entries) {
+    if (entry !== source.replacements.get(key)) source.originals.set(key, entry);
+  }
+  const worlds = [...new Set([...entries.values()].map((entry) => entry.world))];
+  for (const world of worlds) {
+    if (!source.books.has(world)) source.books.set(world, await helper6.getWorldbook(world));
+  }
+  const groups = /* @__PURE__ */ new Map();
+  for (const [key] of entries) {
+    const entry = source.originals.get(key);
+    const book = source.books.get(entry.world);
+    const stored = book.find((item) => item.uid === entry.uid);
+    const metadata3 = stored?.extra?.echoes;
+    if (metadata3?.kind !== "row" || !entry.content.trim()) continue;
+    const types = book.find((item) => item.extra?.echoes?.kind === "catalog")?.extra?.echoes?.catalog?.types ?? [];
+    const type = types.find((item) => item.id === metadata3.typeId);
+    if (!type || !stored) continue;
+    const groupKey = JSON.stringify([entry.world, type.id, entry.position, entry.role, entry.depth, entry.outletName]);
+    const group = groups.get(groupKey) ?? { type, world: entry.world, rows: [] };
+    group.rows.push({ key, entry, name: decodeMemoryContent(type, stored.content).dataName });
+    groups.set(groupKey, group);
+  }
+  for (const group of groups.values()) {
+    const content = [
+      memoryTableHeader(group.type),
+      `\u6765\u6E90\u4E16\u754C\u4E66\uFF1A${group.world}`,
+      ...group.rows.map(({ entry, name }) => `### \u6761\u76EE\uFF1A${name}
+${entry.content}`)
+    ].join("\n\n");
+    for (const [index, { key, entry }] of group.rows.entries()) {
+      const replacement2 = { ...entry, content: index === 0 ? content : "" };
+      entries.set(key, replacement2);
+      source.replacements.set(key, replacement2);
+    }
+  }
+}
+function installMemoryTableInjection() {
+  SillyTavern.getContext().eventSource?.on("worldinfo_scan_done", async (event) => {
+    try {
+      await groupActivatedTables(event);
+    } catch (error51) {
+      console.error("[Echoes] \u7ED3\u6784\u5316\u8BB0\u5FC6\u5206\u8868\u6CE8\u5165\u5931\u8D25", error51);
+      toastr.warning("\u7ED3\u6784\u5316\u8BB0\u5FC6\u5206\u8868\u6CE8\u5165\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u539F\u6761\u76EE\uFF1B\u8BF7\u67E5\u770B\u63A7\u5236\u53F0\u65E5\u5FD7\u3002", "Echoes");
+    }
+  });
+}
+
+// src/extension/continuity-recall.ts
 var renderSummaryBody = (slice) => [slice.content, renderContinuity(slice.continuity)].filter(Boolean).join("\n");
+function renderAssociatedMemories(items) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const item of items) {
+    const key = item.tableKey ?? item.id;
+    const group = groups.get(key) ?? { header: item.tableHeader ?? "", contents: [] };
+    group.contents.push(item.text);
+    groups.set(key, group);
+  }
+  return [...groups.values()].map(({ header, contents }) => [header, ...contents].filter(Boolean).join("\n\n")).join("\n\n");
+}
 async function associatedMemories(state, slices, query) {
   const config2 = getSettings().continuity?.associations ?? DEFAULT_CONTINUITY.associations;
   if (!config2.enabled || !config2.maxItems) return [];
@@ -31415,7 +31601,9 @@ ${renderSummaryBody(slice)}` }];
     return [{
       id: refKey(ref),
       title: row.dataName,
-      text: `[\u5173\u8054\u8D44\u6599\uFF1A${row.dataName}]
+      tableKey: JSON.stringify([state.worldbookName, type.id]),
+      tableHeader: memoryTableHeader(type),
+      text: `### \u6761\u76EE\uFF1A${row.dataName}
 ${details}
 ${renderContinuity(row.continuity)}`.trim()
     }];
@@ -31580,9 +31768,9 @@ function visibleRecallMessageIds(chat) {
   }
   return visible;
 }
-function excludedRecallSources(current, sources, visibleIds) {
+function excludedRecallSources(current, sources2, visibleIds) {
   const excluded = /* @__PURE__ */ new Set();
-  for (const source of sources) {
+  for (const source of sources2) {
     for (const id2 of source.catalog.pendingRetrievalDeletes) excluded.add(id2);
     const sameChat = source.catalog.chatId === current.catalog.chatId && source.catalog.namespaceId === current.catalog.namespaceId && source.worldbookName === current.worldbookName;
     for (const slice of source.slices) {
@@ -32404,10 +32592,10 @@ var RecallCoordinator = class {
     if (locked && options.current.catalog.recallEnabled && (options.current.catalog.recallPool || recall.flagRules?.some((flag) => flag.retentionTurns > 0))) {
       const current = await this.summaryStore.inspect(options.current.worldbookName);
       const availableSources = await this.summaryStore.attachedSources(current);
-      const sources = [current, ...availableSources.filter((source) => source.catalog.namespaceId !== current.catalog.namespaceId && current.catalog.attachedRecallSources.some((attached) => attached.enabled && attached.namespaceId === source.catalog.namespaceId && attached.worldbookName === source.worldbookName))];
-      const available = sources.flatMap((source) => source.slices.filter((slice) => slice.batch.state !== "stale" && slice.continuity?.validity !== "superseded" && !source.catalog.pendingRetrievalDeletes.includes(slice.id)).map((slice) => ({ namespaceId: source.catalog.namespaceId, sliceId: slice.id, slice })));
+      const sources2 = [current, ...availableSources.filter((source) => source.catalog.namespaceId !== current.catalog.namespaceId && current.catalog.attachedRecallSources.some((attached) => attached.enabled && attached.namespaceId === source.catalog.namespaceId && attached.worldbookName === source.worldbookName))];
+      const available = sources2.flatMap((source) => source.slices.filter((slice) => slice.batch.state !== "stale" && slice.continuity?.validity !== "superseded" && !source.catalog.pendingRetrievalDeletes.includes(slice.id)).map((slice) => ({ namespaceId: source.catalog.namespaceId, sliceId: slice.id, slice })));
       const selected = options.semanticHits.flatMap((hit) => {
-        const source = sources.find((item) => item.catalog.retrievalCollectionId === hit.document.collectionId);
+        const source = sources2.find((item) => item.catalog.retrievalCollectionId === hit.document.collectionId);
         return source ? [{ namespaceId: source.catalog.namespaceId, sliceId: hit.document.sourceId }] : [];
       });
       const result = advanceRecallPool({
@@ -32437,13 +32625,13 @@ var RecallCoordinator = class {
       const associated = [];
       const associationConfig = getSettings().continuity?.associations ?? DEFAULT_CONTINUITY.associations;
       if (options.current.catalog.recallEnabled && associationConfig.enabled && associationConfig.maxItems) {
-        const sources = [options.current];
+        const sources2 = [options.current];
         for (const source of options.sources) {
           if (source.worldbookName === options.current.worldbookName || source.mode === "unavailable" || !options.semanticHits.some((hit) => hit.document.collectionId === source.collectionId)) continue;
           const fresh = await this.summaryStore.inspect(source.worldbookName).catch(() => null);
-          if (fresh && fresh.catalog.namespaceId === source.namespaceId && fresh.catalog.chatId === source.chatId) sources.push(fresh);
+          if (fresh && fresh.catalog.namespaceId === source.namespaceId && fresh.catalog.chatId === source.chatId) sources2.push(fresh);
         }
-        for (const source of sources) {
+        for (const source of sources2) {
           const roots = source.slices.filter((slice) => options.semanticHits.some((hit) => hit.document.collectionId === source.catalog.retrievalCollectionId && hit.document.sourceId === slice.id) || source.catalog.namespaceId === options.current.catalog.namespaceId && options.recentSlices.some((recent2) => recent2.id === slice.id) || retained.some((item) => item.namespaceId === source.catalog.namespaceId && item.sliceId === slice.id));
           const extras = await associatedMemories(source, roots, source.worldbookName === options.current.worldbookName ? options.query : "").catch((error51) => {
             console.warn("[Echoes] \u5173\u8054\u8D44\u6599\u8BFB\u53D6\u5931\u8D25", error51);
@@ -32485,7 +32673,12 @@ ${renderSummaryBody(slice)}`,
           text: `[Retained memory: ${slice.timestamp} \xB7 ${slice.title}]
 ${renderSummaryBody(slice)}`
         })),
-        ...associated.map((item) => ({ ...item, id: `associated:${item.id}`, category: "associated" }))
+        ...associated.map((item) => ({
+          ...item,
+          id: `associated:${item.id}`,
+          text: renderAssociatedMemories([item]),
+          category: "associated"
+        }))
       ];
       const overhead = renderInjectionTemplate(template, "", "");
       const recentPlan = planInjectionBudget(
@@ -32510,7 +32703,7 @@ ${renderSummaryBody(slice)}`;
 ${renderSummaryBody(slice)}`).join("\n\n");
       const selectedAssociated = associated.filter((item) => plan.selected.has(`associated:${item.id}`));
       associatedCount = selectedAssociated.length;
-      const associatedText = selectedAssociated.map((item) => item.text).join("\n\n");
+      const associatedText = renderAssociatedMemories(selectedAssociated);
       let content = !recent && !memories && !retainedText && !associatedText ? "" : [retainedText, associatedText, renderInjectionTemplate(
         getSettings().retrieval.recall.injection.template,
         recent,
@@ -33712,8 +33905,8 @@ function typeEditor(current, save, title = "\u7F16\u8F91\u8868\u7ED3\u6784") {
         },
         {
           key: "defaultValue",
-          label: "\u9ED8\u8BA4\u503C\uFF08JSON\uFF0C\u53EF\u7559\u7A7A\uFF09",
-          value: col?.defaultValue === void 0 ? "" : JSON.stringify(col.defaultValue),
+          label: "\u9ED8\u8BA4\u503C\uFF08\u53EF\u7559\u7A7A\uFF09",
+          value: col?.defaultValue === void 0 ? "" : typeof col.defaultValue === "string" && col.type !== "json" ? col.defaultValue : JSON.stringify(col.defaultValue),
           wide: true
         }
       ],
@@ -33727,8 +33920,10 @@ function typeEditor(current, save, title = "\u7F16\u8F91\u8868\u7ED3\u6784") {
         };
         if (v.enumValues.trim())
           next.enumValues = v.enumValues.split("\n").map((x) => x.trim()).filter(Boolean);
-        if (v.defaultValue.trim())
-          next.defaultValue = JSON.parse(v.defaultValue);
+        if (v.defaultValue.trim()) {
+          next.defaultValue = parseMemoryDefaultValue(next, v.defaultValue);
+          validateMemoryValues([next], { [next.id]: next.defaultValue });
+        }
         if (index === void 0) columns.push(next);
         else columns[index] = next;
         columnsDirty = true;
@@ -33821,17 +34016,12 @@ function typeEditor(current, save, title = "\u7F16\u8F91\u8868\u7ED3\u6784") {
               { key: `optional_${index}`, label: `${column.name}\uFF1A\u6682\u8BBE\u4E3A\u975E\u5FC5\u586B`, type: "checkbox", value: false, wide: true },
               {
                 key: `default_${index}`,
-                label: `${column.name}\uFF1A\u9ED8\u8BA4\u503C\uFF08JSON\uFF0C${column.type}\uFF1B\u7F3A\u503C ${count} \u6761\uFF1A${rowNames.join("\u3001")}${count > rowNames.length ? "\u7B49" : ""}\uFF09`,
+                label: `${column.name}\uFF1A\u9ED8\u8BA4\u503C\uFF08${column.type}\uFF1B\u7F3A\u503C ${count} \u6761\uFF1A${rowNames.join("\u3001")}${count > rowNames.length ? "\u7B49" : ""}\uFF09`,
                 value: "",
                 wide: true
               }
             ]));
-            const body2 = el(
-              "div",
-              "ew-page-content",
-              el("p", "ew-muted", '\u9ED8\u8BA4\u503C\u4EC5\u586B\u8865\u7F3A\u503C\u8BB0\u5F55\uFF0C\u540C\u65F6\u7528\u4E8E\u4ECA\u540E\u7684\u7F3A\u503C\u6570\u636E\u3002\u6587\u672C\u8BF7\u586B\u5199 JSON \u5B57\u7B26\u4E32\uFF0C\u5982 "\u5F85\u8865\u5145"\uFF1B\u6570\u5B57\u76F4\u63A5\u586B\u5199\uFF0C\u5E03\u5C14\u503C\u4F7F\u7528 true \u6216 false\u3002\u4E0D\u63D0\u4F9B\u9ED8\u8BA4\u503C\u65F6\uFF0C\u53EF\u6682\u8BBE\u4E3A\u975E\u5FC5\u586B\u3002'),
-              correction.node
-            );
+            const body2 = el("div", "ew-page-content", correction.node);
             const modal = dialog("\u8865\u9F50\u5DF2\u6709\u8BB0\u5F55\u7684\u65B0\u5FC5\u586B\u5B57\u6BB5", body2, () => {
               const values = correction.values();
               const next = structuredClone(columns);
@@ -33841,12 +34031,7 @@ function typeEditor(current, save, title = "\u7F16\u8F91\u8868\u7ED3\u6784") {
                   target.required = false;
                   continue;
                 }
-                let value;
-                try {
-                  value = JSON.parse(values[`default_${index}`]);
-                } catch {
-                  throw new Error(`\u201C${column.name}\u201D\u9700\u8981\u6709\u6548 JSON \u9ED8\u8BA4\u503C\uFF0C\u6216\u9009\u62E9\u6682\u8BBE\u4E3A\u975E\u5FC5\u586B\u3002`);
-                }
+                const value = parseMemoryDefaultValue(target, values[`default_${index}`]);
                 validateMemoryValues([{ ...target, defaultValue: void 0 }], { [target.id]: value });
                 target.defaultValue = value;
               }
@@ -34707,7 +34892,7 @@ function assignRecallFlags(ctx, state, slices) {
 }
 function recallEnhancements(ctx, state) {
   const host = section("\u53EC\u56DE\u589E\u5F3A\u7B56\u7565");
-  let sources = [
+  let sources2 = [
     {
       chatId: state.catalog.chatId,
       namespaceId: state.catalog.namespaceId,
@@ -34725,13 +34910,13 @@ function recallEnhancements(ctx, state) {
   };
   const moveSource = (index, offset) => {
     const target = index + offset;
-    if (target < 0 || target >= sources.length) return;
-    [sources[index], sources[target]] = [sources[target], sources[index]];
+    if (target < 0 || target >= sources2.length) return;
+    [sources2[index], sources2[target]] = [sources2[target], sources2[index]];
     dirty();
     drawSources();
   };
   const drawSources = () => {
-    sourceHost.replaceChildren(table(["\u6765\u6E90\u804A\u5929", "\u52A0\u6743\u91CD", "\u4E58\u6743\u91CD", "\u542F\u7528", "\u64CD\u4F5C"], sources.map((s, i) => [
+    sourceHost.replaceChildren(table(["\u6765\u6E90\u804A\u5929", "\u52A0\u6743\u91CD", "\u4E58\u6743\u91CD", "\u542F\u7528", "\u64CD\u4F5C"], sources2.map((s, i) => [
       s.namespaceId === state.catalog.namespaceId ? `${s.chatId}\uFF08\u5F53\u524D\uFF09` : s.chatId,
       s.addWeight.toFixed(2),
       s.weight.toFixed(2),
@@ -34749,7 +34934,7 @@ function recallEnhancements(ctx, state) {
         tool("\u4E0A\u79FB\u6765\u6E90", "arrow-up", () => moveSource(i, -1)),
         tool("\u4E0B\u79FB\u6765\u6E90", "arrow-down", () => moveSource(i, 1)),
         ...s.namespaceId === state.catalog.namespaceId ? [] : [tool("\u79FB\u9664\u6765\u6E90", "trash", () => {
-          sources.splice(i, 1);
+          sources2.splice(i, 1);
           dirty();
           drawSources();
         }, "danger")]
@@ -34759,7 +34944,7 @@ function recallEnhancements(ctx, state) {
   drawSources();
   host.append(el("h3", "", "\u6765\u6E90\u6392\u5E8F\u4E0E\u6743\u91CD"), sourceHost, actions(
     button("\u9644\u52A0\u804A\u5929", "plus", async () => {
-      const available = (await ctx.summary.store.listAvailableSources()).filter((s) => !sources.some((item) => item.namespaceId === s.catalog.namespaceId));
+      const available = (await ctx.summary.store.listAvailableSources()).filter((s) => !sources2.some((item) => item.namespaceId === s.catalog.namespaceId));
       if (!available.length) throw new Error("\u6CA1\u6709\u53EF\u9644\u52A0\u7684\u5176\u4ED6\u804A\u5929\u603B\u7ED3\u3002");
       editDialog("\u9644\u52A0\u53EC\u56DE\u6765\u6E90", [{
         key: "source",
@@ -34768,14 +34953,14 @@ function recallEnhancements(ctx, state) {
         options: available.map((s) => [s.catalog.namespaceId, s.catalog.chatId])
       }], (v) => {
         const s = available.find((item) => item.catalog.namespaceId === v.source);
-        sources.push({
+        sources2.push({
           chatId: s.catalog.chatId,
           namespaceId: s.catalog.namespaceId,
           worldbookName: s.worldbookName,
           enabled: true,
           weight: 0,
           addWeight: 0,
-          order: sources.length
+          order: sources2.length
         });
         dirty();
         drawSources();
@@ -34784,14 +34969,14 @@ function recallEnhancements(ctx, state) {
     button("\u4FDD\u5B58\u6765\u6E90", "floppy-disk", async () => {
       ctx.guard();
       const fresh = await ctx.summary.load();
-      sources = sources.map((s, order) => ({ ...s, order }));
-      const current = sources.find((s) => s.namespaceId === state.catalog.namespaceId);
+      sources2 = sources2.map((s, order) => ({ ...s, order }));
+      const current = sources2.find((s) => s.namespaceId === state.catalog.namespaceId);
       await ctx.summary.store.saveRecallConfiguration(fresh.worldbookName, {
         enabled: fresh.catalog.recallEnabled,
         weight: current.weight,
         addWeight: current.addWeight,
         order: current.order,
-        attachedSources: sources.filter((s) => s.namespaceId !== current.namespaceId)
+        attachedSources: sources2.filter((s) => s.namespaceId !== current.namespaceId)
       });
       delete sourceHost.dataset.dirty;
       notify("\u6765\u6E90\u914D\u7F6E\u5DF2\u4FDD\u5B58");
@@ -34854,7 +35039,7 @@ function recallEnhancements(ctx, state) {
   const drawPool = (snapshot) => {
     poolHost.replaceChildren(table(["\u5207\u7247", "\u6765\u6E90", "\u5269\u4F59\u56DE\u5408"], (snapshot.catalog.recallPool?.entries ?? []).map((entry) => [
       snapshot.slices.find((slice) => slice.id === entry.sliceId)?.title ?? entry.sliceId,
-      sources.find((source) => source.namespaceId === entry.namespaceId)?.chatId ?? entry.namespaceId,
+      sources2.find((source) => source.namespaceId === entry.namespaceId)?.chatId ?? entry.namespaceId,
       entry.remaining
     ])));
   };
@@ -40062,6 +40247,7 @@ function initialize() {
   if (initialized || !document.body) return;
   initialized = true;
   installConsoleLogRecorder();
+  installMemoryTableInjection();
   panel = new MemoryPanel();
   addLaunchControls();
   const events = SillyTavern.getContext().eventSource;
