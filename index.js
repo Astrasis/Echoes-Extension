@@ -16092,7 +16092,7 @@ function validateMemoryValues(columns, rawValues, options = {}) {
   }
   return values;
 }
-var MAX_EXTRACTION_CHARACTERS, DATA_NAME_KEY, taskBudgetSchema, identifierSchema, summaryBatchingSchema, extractionContextPolicySchema, injectionBudgetSchema, memoryColumnDefinitionSchema, columnCollectionSchema, memoryTypeTemplateInputSchema, memoryTypeInputSchema, persistedFields, memoryTypeTemplateSchema, memoryTypeDefinitionSchema, promptPresetItemSchema, promptPresetSchema, structuredMemoryCatalogSchema, memoryRowSourceSchema, memoryRowInputSchema, memoryRowSchema, extractionOperationSchema, extractionPayloadSchema, promptMessageSchema, chatMessageSchema, failoverPolicySchema, generationEndpointSchema, generationEndpointGroupSchema, structuredExtractionBatchSchema, extractionReviewItemSchema, extractionRequestSchema, summaryPromptBase, summaryPromptItemSchema, summaryPromptPresetSchema, summaryPreprocessRuleSchema, summaryBatchInputSchema, summaryTimestampSchema, summarySliceCandidateSchema, summaryBatchMetadataSchema, summarySliceSchema, summaryPayloadSchema, summaryCompressionConfigSchema, messageCompressionMarkerSchema, recallFlagRulesSchema, recallPoolReferenceSchema, recallPoolSchema, summaryCatalogSchema, summaryGenerationRequestSchema, summaryCoverageRequestSchema, summaryCoveragePayloadSchema, jsonValueSchema, statusStateSchema, statusPromptBase, statusPromptItemSchema, statusPromptPresetSchema, statusValidationRuleSchema, statusValidationConfigSchema, statusPatchOperationSchema, statusPayloadSchema, statusProviderPathSchema, statusProviderOperationSchema, statusProviderPayloadSchema, statusUpdateRequestSchema, jobStatusSchema, vectorStateSchema, retrievalEndpointSchema, embeddingEndpointGroupSchema, rerankEndpointSetSchema, retrievalCollectionInputSchema, retrievalCollectionSchema, retrievalDocumentInputSchema, retrievalRequestOptions, retrievalUpsertRequestSchema, retrievalDeleteRequestSchema, retrievalDocumentSyncRequestSchema, retrievalDocumentStatusRequestSchema, retrievalRebuildRequestSchema, retrievalQueryPresetBase, retrievalQueryPresetItemSchema, retrievalQueryPresetSchema, retrievalInjectionConfigSchema, statusProfileFields, statusTemplateSchema, statusProfileSchema, statusCatalogSchema, statusSnapshotSchema, retrievalSourceWeightSchema, retrievalQueryRequestSchema, retrievalQueryContinueRequestSchema, endpointTestRequestSchema, endpointModelListRequestSchema, buildInfoSchema, subsystemStateSchema, systemStatusSchema, diagnosticCheckSchema, repairRequestSchema, systemDiagnosticRequestSchema, repairResultSchema, credentialMetadataSchema, credentialCreateSchema, credentialMigrationSchema, credentialUpdateSchema, endpointCredentialRefSchema, backupWorldbookEntrySchema, backupMessageSwipeSchema, echoesBackupV1Schema, restorePlanSchema, restoreResultSchema;
+var MAX_EXTRACTION_CHARACTERS, DATA_NAME_KEY, taskBudgetSchema, identifierSchema, summaryBatchingSchema, extractionContextPolicySchema, injectionBudgetSchema, memoryColumnDefinitionSchema, columnCollectionSchema, memoryTypeTemplateInputSchema, memoryTypeInputSchema, persistedFields, memoryTypeTemplateSchema, memoryTypeDefinitionSchema, promptPresetItemSchema, promptPresetSchema, structuredMemoryCatalogSchema, memoryRowSourceSchema, memoryRowInputSchema, memoryRowSchema, extractionOperationSchema, extractionPayloadSchema, promptMessageSchema, chatMessageSchema, failoverPolicySchema, generationEndpointSchema, generationEndpointGroupSchema, structuredExtractionBatchSchema, extractionReviewItemSchema, extractionRequestSchema, summaryPromptBase, summaryPromptItemSchema, summaryPromptPresetSchema, summaryPreprocessRuleSchema, summaryBatchInputSchema, summaryTimestampSchema, summarySliceCandidateSchema, summaryBatchMetadataSchema, summarySliceSchema, summaryPayloadSchema, summaryCompressionConfigSchema, messageCompressionMarkerSchema, recallFlagRulesSchema, recallPoolReferenceSchema, recallPoolSchema, summaryCatalogSchema, summaryGenerationRequestSchema, summaryCoverageRequestSchema, summaryCoveragePayloadSchema, jsonValueSchema, statusStateSchema, statusPromptBase, statusPromptItemSchema, statusPromptPresetSchema, statusValidationRuleSchema, statusValidationConfigSchema, statusPatchOperationSchema, statusPayloadSchema, statusProviderPathSchema, statusProviderOperationSchema, statusProviderPayloadSchema, statusUpdateRequestSchema, jobStatusSchema, vectorStateSchema, retrievalEndpointSchema, embeddingEndpointGroupSchema, rerankEndpointSetSchema, retrievalCollectionInputSchema, retrievalCollectionSchema, retrievalDocumentInputSchema, retrievalRequestOptions, retrievalUpsertRequestSchema, retrievalDeleteRequestSchema, retrievalDocumentSyncRequestSchema, retrievalDocumentStatusRequestSchema, retrievalDocumentManifestRequestSchema, retrievalRebuildRequestSchema, retrievalQueryPresetBase, retrievalQueryPresetItemSchema, retrievalQueryPresetSchema, retrievalInjectionConfigSchema, statusProfileFields, statusTemplateSchema, statusProfileSchema, statusCatalogSchema, statusSnapshotSchema, retrievalSourceWeightSchema, retrievalQueryRequestSchema, retrievalQueryContinueRequestSchema, endpointTestRequestSchema, endpointModelListRequestSchema, buildInfoSchema, subsystemStateSchema, systemStatusSchema, diagnosticCheckSchema, repairRequestSchema, systemDiagnosticRequestSchema, repairResultSchema, credentialMetadataSchema, credentialCreateSchema, credentialMigrationSchema, credentialUpdateSchema, endpointCredentialRefSchema, backupWorldbookEntrySchema, backupMessageSwipeSchema, echoesBackupV1Schema, restorePlanSchema, restoreResultSchema;
 var init_schemas3 = __esm({
   "src/shared/schemas.ts"() {
     "use strict";
@@ -16864,6 +16864,11 @@ var init_schemas3 = __esm({
     retrievalDocumentStatusRequestSchema = external_exports.object({
       documentIds: external_exports.array(identifierSchema).min(1).max(1e3)
     });
+    retrievalDocumentManifestRequestSchema = external_exports.object({
+      collectionId: identifierSchema,
+      afterDocumentId: identifierSchema.optional(),
+      limit: external_exports.number().int().min(1).max(1e3).default(500)
+    });
     retrievalRebuildRequestSchema = external_exports.object({
       collectionIds: external_exports.array(identifierSchema).min(1).max(100),
       failoverPolicy: failoverPolicySchema.default("confirm_ambiguous"),
@@ -16963,6 +16968,7 @@ var init_schemas3 = __esm({
       stateHash: external_exports.string().regex(/^[a-f0-9]{64}$/),
       revision: external_exports.number().int().min(1),
       origin: external_exports.enum(["auto", "manual", "restored"]),
+      manualOverride: external_exports.boolean().optional(),
       createdAt: external_exports.string().datetime(),
       updatedAt: external_exports.string().datetime()
     }).strict();
@@ -18954,6 +18960,13 @@ var init_client = __esm({
           body: JSON.stringify({ documentIds })
         });
       },
+      retrievalDocumentManifest(collectionId, afterDocumentId, signal) {
+        return requestJson("/retrieval/documents/manifest", {
+          method: "POST",
+          body: JSON.stringify({ collectionId, afterDocumentId }),
+          ...signal ? { signal } : {}
+        });
+      },
       async rebuildRetrievalIndex(input, repair = false) {
         const result = await requestJson(
           `/retrieval/indexes/${repair ? "repair" : "rebuild"}`,
@@ -19016,7 +19029,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "3.2.4", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "3.2.5", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
@@ -20128,11 +20141,13 @@ async function activatedWorldbookContent(messages2) {
   return content.trim();
 }
 async function prepareBatchOverviewPrompt(messages2, settings) {
+  const cleanedMessages = await preprocessSummaryMessages(messages2, settings.summary.preprocessRules);
+  if (cleanedMessages.length === 0) throw new Error("\u6D88\u606F\u6E05\u6D17\u540E\u6CA1\u6709\u53EF\u751F\u6210\u6279\u6B21\u603B\u7ED3\u7684\u5185\u5BB9\u3002");
   const context = SillyTavern.getContext();
   const character = context.characters?.[context.characterId ?? -1] ?? {};
   const background = [
     characterCardContent(character, String(character.name ?? "Character")),
-    await activatedWorldbookContent(messages2)
+    await activatedWorldbookContent(cleanedMessages)
   ].filter(Boolean).join("\n\n");
   const result = [{
     role: "system",
@@ -20147,7 +20162,7 @@ async function prepareBatchOverviewPrompt(messages2, settings) {
 ${background}
 </background_info>`);
   append(`<target_messages>
-${messages2.map(
+${cleanedMessages.map(
     (message) => `[${message.id}] ${message.role === "user" ? "Game Master / World" : message.role}:
 ${message.content}`
   ).join("\n\n")}
@@ -20933,17 +20948,14 @@ var SummaryCoordinator = class {
         signal
       });
       this.discardRebuildDraft(batchId);
-      this.emitProgress(committed);
       const byId = new Map(currentChatMessages().map((message) => [message.id, message]));
-      const updated = await this.generateBatchOverview(
+      return this.finishCommittedBatch(
         committed,
         batchId,
         draft.batch.messageIds.map((id2) => byId.get(id2)),
         defaultDecision,
         signal
       );
-      await this.compression.reconcile(committed);
-      return updated;
     }, defaultDecision);
   }
   history() {
@@ -21421,9 +21433,8 @@ var SummaryCoordinator = class {
         signal
       });
       this.supplements.delete(chatId);
-      this.emitProgress(committed);
       const byId = new Map(currentChatMessages().map((message) => [message.id, message]));
-      return this.generateBatchOverview(committed, batch.id, batch.messageIds.map((id2) => byId.get(id2)), defaultDecision, signal);
+      return this.finishCommittedBatch(committed, batch.id, batch.messageIds.map((id2) => byId.get(id2)), defaultDecision, signal);
     }, defaultDecision);
   }
   async editSlice(sliceId, candidate, expectedRevision) {
@@ -21477,21 +21488,61 @@ var SummaryCoordinator = class {
     const chatId = SillyTavern.getContext().chatId;
     let state = await this.load();
     if (chatId && state.catalog.chatId === chatId) this.pausedAutomatic.delete(chatId);
+    const assertUnchanged = async () => {
+      signal.throwIfAborted();
+      if (SillyTavern.getContext().chatId !== state.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) {
+        throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u7D22\u5F15\u4FEE\u590D\u5DF2\u505C\u6B62\u3002");
+      }
+      const fresh = await this.store.inspect(state.worldbookName);
+      if (summaryMigrationFingerprint(fresh) !== summaryMigrationFingerprint(state)) {
+        throw new Error("\u603B\u7ED3\u5185\u5BB9\u6216\u7D22\u5F15\u7ED1\u5B9A\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u4FEE\u590D\u7D22\u5F15\u3002");
+      }
+      signal.throwIfAborted();
+    };
     const active = state.slices.filter((slice) => slice.batch.state !== "stale");
-    if (active.length === 0 && state.catalog.pendingRetrievalDeletes.length > 0) {
-      return this.syncSlices(state, [], state.catalog.pendingRetrievalDeletes, decide, signal);
+    const collectionId = state.catalog.retrievalCollectionId;
+    let removed = 0;
+    if (collectionId) {
+      const expectedIds = new Set(await Promise.all(active.map((slice) => summaryRetrievalDocumentId(collectionId, slice.id))));
+      let afterDocumentId;
+      do {
+        await assertUnchanged();
+        const page = await echoesApi.retrievalDocumentManifest(collectionId, afterDocumentId, signal);
+        const obsolete = page.documents.filter((document2) => document2.sourceType === "chat_summary" && !expectedIds.has(document2.documentId));
+        if (obsolete.length) {
+          await assertUnchanged();
+          const result = await this.trackedJob(state.catalog.chatId, () => echoesApi.syncRetrievalDocuments({
+            documents: [],
+            deleteDocumentIds: obsolete.map((document2) => document2.documentId),
+            failoverPolicy: getSettings().retrieval.failoverPolicy
+          }), signal);
+          removed += result.result.deleted;
+        }
+        afterDocumentId = page.nextAfterDocumentId;
+      } while (afterDocumentId);
+    }
+    await assertUnchanged();
+    if (state.catalog.pendingRetrievalDeletes.length > 0) {
+      state = await this.syncSlices(state, [], state.catalog.pendingRetrievalDeletes, decide, signal);
     }
     for (let offset = 0; offset < active.length; offset += 50) {
-      signal.throwIfAborted();
+      await assertUnchanged();
       state = await this.syncSlices(
         state,
         active.slice(offset, offset + 50),
-        offset === 0 ? state.catalog.pendingRetrievalDeletes : [],
+        [],
         decide,
         signal
       );
     }
     await this.compression.reconcile(state);
+    this.emitProgress(state);
+    console.info("[Echoes] \u603B\u7ED3\u7D22\u5F15\u4FEE\u590D\u5B8C\u6210", {
+      worldbookName: state.worldbookName,
+      collectionId: state.catalog.retrievalCollectionId,
+      slices: active.length,
+      removed
+    });
     return state;
   }
   async generate(state, batch, messages2, decide, advanceCheckpoint, writeMode, signal) {
@@ -21514,13 +21565,13 @@ var SummaryCoordinator = class {
         advanceCheckpoint,
         writeMode,
         signal,
-        (name, count) => trace.stages.push({ name, count, at: (/* @__PURE__ */ new Date()).toISOString() })
+        (name, count, error51) => trace.stages.push({ name, count, at: (/* @__PURE__ */ new Date()).toISOString(), ...error51 ? { error: error51 } : {} })
       );
       const slices = result?.slices.filter((slice) => slice.batch.id === batch.id);
       trace.state = slices?.length && slices.every((slice) => slice.batch.state === "ready") ? "succeeded" : "incomplete";
       return result;
     } catch (error51) {
-      trace.state = signal.aborted ? "cancelled" : "failed";
+      trace.state = signal.aborted || error51 instanceof Error && error51.name === "AbortError" ? "cancelled" : "failed";
       trace.error = (error51 instanceof Error ? error51.message : String(error51)).slice(0, 2e3);
       throw error51;
     }
@@ -21554,33 +21605,105 @@ var SummaryCoordinator = class {
       throw error51;
     });
     this.rebuildConflicts.delete(draftKey);
-    const slices = committed.slices.filter((slice) => slice.batch.id === batch.id);
+    return this.finishCommittedBatch(committed, batch.id, messages2, decide, signal, stage);
+  }
+  async finishCommittedBatch(committed, batchId, messages2, decide, signal, stage = () => {
+  }) {
+    const slices = committed.slices.filter((slice) => slice.batch.id === batchId);
     stage("\u4E16\u754C\u4E66\u5199\u5165\u5207\u7247", slices.length);
     this.emitProgress(committed);
-    const withOverview = await this.generateBatchOverview(committed, batch.id, messages2, decide, signal);
-    stage("\u6279\u6B21\u603B\u7ED3\u5B57\u7B26", withOverview.batchOverviews?.find((item) => item.batch.id === batch.id)?.content.length ?? 0);
-    const synced = await this.syncSlices(
-      withOverview,
-      slices,
-      committed.catalog.pendingRetrievalDeletes,
-      decide,
-      signal
-    );
+    let state = committed;
+    const failures = [];
+    const recordFailure = (name, error51) => {
+      if (signal.aborted || error51 instanceof Error && error51.name === "AbortError") throw error51;
+      const message = error51 instanceof Error ? error51.message : String(error51);
+      stage(name, 0, message);
+      failures.push(`${name}\uFF1A${message}`);
+      console.error(`[Echoes] ${name}`, error51);
+    };
+    try {
+      state = await this.syncSlices(state, slices, state.catalog.pendingRetrievalDeletes, decide, signal);
+      stage("\u5411\u91CF\u5C31\u7EEA\u5207\u7247", state.slices.filter((slice) => slice.batch.id === batchId && slice.batch.state === "ready").length);
+      this.emitProgress(state);
+    } catch (error51) {
+      recordFailure("\u7D22\u5F15\u540C\u6B65\u5931\u8D25", error51);
+      state = await this.store.inspect(committed.worldbookName);
+      this.emitProgress(state);
+    }
     signal.throwIfAborted();
-    stage("\u5411\u91CF\u5C31\u7EEA\u5207\u7247", synced.slices.filter((slice) => slice.batch.id === batch.id && slice.batch.state === "ready").length);
-    await this.compression.reconcile(synced);
-    return synced;
+    try {
+      state = await this.generateBatchOverview(state, batchId, messages2, decide, signal);
+      stage("\u6279\u6B21\u603B\u7ED3\u5B57\u7B26", state.batchOverviews?.find((item) => item.batch.id === batchId)?.content.length ?? 0);
+    } catch (error51) {
+      recordFailure("\u6279\u6B21\u603B\u7ED3\u5931\u8D25", error51);
+      state = await this.store.inspect(committed.worldbookName);
+    }
+    signal.throwIfAborted();
+    try {
+      await this.compression.reconcile(state);
+    } catch (error51) {
+      recordFailure("\u4E0A\u4E0B\u6587\u9690\u85CF\u66F4\u65B0\u5931\u8D25", error51);
+    }
+    signal.throwIfAborted();
+    this.emitProgress(state);
+    if (failures.length) {
+      throw new Error(`\u5207\u7247\u5DF2\u4FDD\u5B58\uFF0C\u68C0\u67E5\u70B9\u4FDD\u7559\uFF1B\u540E\u7EED\u81EA\u52A8\u6279\u6B21\u5DF2\u6682\u505C\u3002\u7D22\u5F15\u53EF\u7528\u201C\u4FEE\u590D\u7D22\u5F15\u201D\u91CD\u8BD5\uFF0C\u6279\u6B21\u603B\u7ED3\u53EF\u5355\u72EC\u91CD\u8BD5\uFF0C\u65E0\u9700\u91CD\u65B0\u751F\u6210\u5207\u7247\u3002
+${failures.join("\n")}`);
+    }
+    return state;
   }
   regenerateBatchOverview(batchId) {
+    return this.regenerateBatchOverviews([batchId], { onlyMissing: false });
+  }
+  batchOverviewTargets(state, batchIds, onlyMissing = true) {
+    const selected = new Set(batchIds);
+    const overviews = new Map(state.batchOverviews?.map((overview) => [overview.batch.id, overview]));
+    return [...new Map(state.slices.map((slice) => [slice.batch.id, slice.batch])).values()].filter((batch) => {
+      if (!selected.has(batch.id) || batch.source?.kind === "imported" || batch.state === "stale") return false;
+      const overview = overviews.get(batch.id);
+      return !onlyMissing || !overview?.content.trim() || overview.state !== "ready" || overview.batch.sourceHash !== batch.sourceHash;
+    }).sort(createBatchOrder(currentChatMessages()).compare);
+  }
+  regenerateBatchOverviews(batchIds, options = {}) {
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) return Promise.reject(new Error("\u8BF7\u5148\u9009\u62E9\u804A\u5929\u3002"));
     return this.startRun(chatId, async (signal) => {
-      const state = await this.load();
-      const batch = state.slices.find((slice) => slice.batch.id === batchId)?.batch;
-      if (!batch || batch.source?.kind === "imported") throw new Error("\u6B64\u6279\u6B21\u6CA1\u6709\u53EF\u7528\u7684\u539F\u804A\u5929\u6D88\u606F\u3002");
-      await this.assertCurrentSourceUnchanged(state, batch);
-      const byId = new Map(currentChatMessages().map((message) => [message.id, message]));
-      return this.generateBatchOverview(state, batchId, batch.messageIds.map((id2) => byId.get(id2)), defaultDecision, signal);
+      const cancel = () => this.controls.get(chatId)?.abort();
+      options.signal?.addEventListener("abort", cancel, { once: true });
+      let completed = 0;
+      let currentBatchNumber;
+      try {
+        if (options.signal?.aborted) cancel();
+        signal.throwIfAborted();
+        let state = await this.load();
+        const existingIds = new Set(state.slices.map((slice) => slice.batch.id));
+        if (batchIds.some((id2) => !existingIds.has(id2))) throw new Error("\u9009\u4E2D\u7684\u6279\u6B21\u5DF2\u5220\u9664\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u65B0\u9009\u62E9\u3002");
+        const batches = this.batchOverviewTargets(state, batchIds, options.onlyMissing ?? true);
+        if (!batches.length) throw new Error("\u6CA1\u6709\u9700\u8981\u751F\u6210\u7684\u6279\u6B21\u603B\u7ED3\uFF1B\u5DF2\u8DF3\u8FC7\u5B8C\u6210\u9879\u3001\u5BFC\u5165\u6279\u6B21\u548C\u539F\u6D88\u606F\u5DF2\u53D8\u5316\u7684\u6279\u6B21\u3002");
+        for (const batch of batches) {
+          signal.throwIfAborted();
+          currentBatchNumber = batch.batchNumber;
+          options.onProgress?.(completed, batches.length, batch.batchNumber);
+          await this.assertCurrentSourceUnchanged(state, batch);
+          const byId = new Map(currentChatMessages().map((message) => [message.id, message]));
+          state = await this.generateBatchOverview(
+            state,
+            batch.id,
+            batch.messageIds.map((id2) => byId.get(id2)),
+            defaultDecision,
+            signal
+          );
+          completed += 1;
+          options.onProgress?.(completed, batches.length, batch.batchNumber);
+        }
+        return state;
+      } catch (error51) {
+        if (signal.aborted || error51 instanceof Error && error51.name === "AbortError") throw error51;
+        if (currentBatchNumber === void 0) throw error51;
+        throw new Error(`\u6279\u6B21 ${currentBatchNumber} \u751F\u6210\u5931\u8D25\uFF0C\u5DF2\u505C\u6B62\u540E\u7EED\u8C03\u7528\uFF1B\u6B64\u524D\u5B8C\u6210\u7684 ${completed} \u4E2A\u6279\u6B21\u603B\u7ED3\u5DF2\u4FDD\u7559\u3002${error51 instanceof Error ? error51.message : String(error51)}`);
+      } finally {
+        options.signal?.removeEventListener("abort", cancel);
+      }
     }, defaultDecision);
   }
   async generateBatchOverview(initial, batchId, messages2, decide, signal) {
@@ -21724,32 +21847,15 @@ ${instructions?.trim() || "(none)"}`
     const settings = getSettings();
     signal?.throwIfAborted();
     const embeddingGroup = settings.retrieval.embeddingGroups.find((group) => group.id === settings.summary.embeddingGroupId);
-    if (!embeddingGroup) {
+    if (!embeddingGroup && !initialState.catalog.retrievalCollectionId) {
       let state2 = initialState;
-      if (state2.catalog.retrievalCollectionId) {
-        for (let offset = 0; offset < deletedSliceIds.length; offset += 1e3) {
-          signal?.throwIfAborted();
-          const sliceIds = deletedSliceIds.slice(offset, offset + 1e3);
-          const deleteDocumentIds2 = await Promise.all(sliceIds.map((id2) => summaryRetrievalDocumentId(state2.catalog.retrievalCollectionId, id2)));
-          await (signal ? this.trackedJob(state2.catalog.chatId, () => echoesApi.syncRetrievalDocuments({
-            documents: [],
-            deleteDocumentIds: deleteDocumentIds2,
-            failoverPolicy: settings.retrieval.failoverPolicy
-          }), signal) : waitForJob(await echoesApi.syncRetrievalDocuments({
-            documents: [],
-            deleteDocumentIds: deleteDocumentIds2,
-            failoverPolicy: settings.retrieval.failoverPolicy
-          })));
-          state2 = await this.store.clearPendingDeletes(state2.worldbookName, sliceIds);
-        }
-      }
       for (const slice of slices) {
         state2 = await this.store.markSliceSyncState(initialState, slice, "pending");
       }
       return state2;
     }
     const previousCollectionId = initialState.catalog.retrievalCollectionId;
-    const ensured = await this.ensureCollection(initialState, embeddingGroup.id, decide, signal);
+    const ensured = embeddingGroup ? await this.ensureCollection(initialState, embeddingGroup.id, decide, signal) : { state: initialState, recreated: false };
     let state = ensured.state;
     const collectionId = state.catalog.retrievalCollectionId;
     const collectionChanged = collectionId !== previousCollectionId;
@@ -21807,7 +21913,7 @@ ${instructions?.trim() || "(none)"}`
       for (const [index, slice] of targetSlices.entries()) {
         const document2 = documents[index];
         const actual = statusById.get(document2.documentId);
-        const syncState = actual && actual.contentHash === contentHashes[index] && actual.collectionId === collectionId ? actual.vectorState : "pending";
+        const syncState = actual && actual.contentHash === contentHashes[index] && (actual.bodyHash === void 0 || actual.bodyHash === document2.metadata.bodyHash) && actual.collectionId === collectionId ? actual.vectorState : "pending";
         state = await this.store.markSliceSyncState(syncBaseline, slice, syncState);
       }
     }
@@ -21816,6 +21922,11 @@ ${instructions?.trim() || "(none)"}`
     }
     if (result.decisionRequired || result.ambiguous > 0) {
       throw new DOMException("\u5411\u91CF\u540C\u6B65\u5DF2\u6682\u505C\uFF1A\u7ED3\u679C\u4E0D\u786E\u5B9A\uFF0C\u5DF2\u4FDD\u7559\u5B8C\u6210\u90E8\u5206\uFF0C\u540E\u7EED\u6279\u6B21\u672A\u63D0\u4EA4\u3002", "AbortError");
+    }
+    const incomplete = targetSlices.filter((slice) => state.slices.find((item) => item.id === slice.id)?.batch.state !== "ready");
+    if (embeddingGroup && incomplete.length) {
+      const reason = result.attempts.filter((attempt) => attempt.outcome !== "succeeded").at(-1)?.message;
+      throw new Error(`\u7D22\u5F15\u540C\u6B65\u672A\u5B8C\u6210\uFF1A${incomplete.length}/${targetSlices.length} \u4E2A\u5207\u7247\u672A\u5C31\u7EEA\u3002${reason ?? "\u8BF7\u67E5\u770B\u5411\u91CF\u4EFB\u52A1\u65E5\u5FD7\u3002"} \u5DF2\u4FDD\u5B58\u7684\u5207\u7247\u4FDD\u7559\u3002`);
     }
     return state;
   }
@@ -21933,7 +22044,7 @@ ${instructions?.trim() || "(none)"}`
       const byId = new Map(actual.documents.map((d) => [d.documentId, d]));
       for (const [index, slice] of batch.entries()) {
         const d = byId.get(documents[index].documentId);
-        if (d?.vectorState !== "ready" || d.contentHash !== await summaryRetrievalContentHash(slice)) {
+        if (d?.vectorState !== "ready" || d.contentHash !== await summaryRetrievalContentHash(slice) || d.bodyHash !== void 0 && d.bodyHash !== documents[index].metadata.bodyHash) {
           throw new Error("\u76EE\u6807\u5411\u91CF\u6821\u9A8C\u672A\u901A\u8FC7\uFF0C\u539F\u7D22\u5F15\u7ED1\u5B9A\u4FDD\u6301\u4E0D\u53D8\u3002");
         }
       }
@@ -30085,24 +30196,69 @@ function balancedQueryText(text, maximum) {
 }
 async function authoritativeRecallHits(hits, sources2) {
   const sourceByCollection = new Map(sources2.map((source) => [source.collectionId, source]));
-  const sliceById = /* @__PURE__ */ new Map();
+  const sliceByDocumentId = /* @__PURE__ */ new Map();
+  const issues = [];
   const validated = await Promise.all(hits.map(async (hit) => {
     const source = sourceByCollection.get(hit.document.collectionId);
-    const slice = source?.slices.find((candidate) => candidate.id === hit.document.sourceId && candidate.batch.state !== "stale" && candidate.continuity?.validity !== "superseded");
-    if (!source || !slice || hit.document.sourceType !== "chat_summary") return null;
-    if (hit.document.text !== summaryRetrievalText(slice) || hit.document.contentHash !== await summaryRetrievalContentHash(slice)) {
+    const slice = source?.slices.find((candidate) => candidate.id === hit.document.sourceId);
+    const reject = (code, reason, action, hashes = {}) => {
+      issues.push({
+        documentId: hit.document.documentId,
+        collectionId: hit.document.collectionId,
+        sliceId: hit.document.sourceId,
+        worldbookName: source?.worldbookName,
+        chatId: source?.chatId,
+        batchNumber: slice?.batch.batchNumber,
+        sliceNumber: slice?.sliceNumber,
+        title: slice?.title,
+        code,
+        reason,
+        action,
+        ...hashes
+      });
       return null;
+    };
+    if (!source) return reject("source_unavailable", "\u7D22\u5F15\u5BF9\u5E94\u7684\u6765\u6E90\u672A\u52A0\u8F7D", "\u68C0\u67E5\u53EC\u56DE\u6765\u6E90\u7ED1\u5B9A");
+    if (hit.document.sourceType !== "chat_summary") return reject("source_type", "\u7D22\u5F15\u4E0D\u662F\u603B\u7ED3\u5207\u7247", "\u68C0\u67E5\u6765\u6E90\u96C6\u5408\u7ED1\u5B9A");
+    if (!slice) return reject("slice_missing", "\u4E16\u754C\u4E66\u4E2D\u5DF2\u4E0D\u5B58\u5728\u8BE5\u5207\u7247\uFF0C\u7D22\u5F15\u4ECD\u6709\u6B8B\u7559", "\u5728\u6765\u6E90\u804A\u5929\u4FEE\u590D\u603B\u7ED3\u7D22\u5F15");
+    if (slice.batch.state === "stale") return reject("slice_stale", "\u539F\u6D88\u606F\u5DF2\u53D8\u5316\uFF0C\u8BE5\u5207\u7247\u5DF2\u5931\u6548", "\u91CD\u65B0\u603B\u7ED3\u8BE5\u6279\u6B21");
+    if (slice.continuity?.validity === "superseded") return reject("slice_superseded", "\u8BE5\u5207\u7247\u5DF2\u88AB\u66F4\u6B63\u53D6\u4EE3", "\u4FDD\u6301\u6392\u9664\uFF0C\u4E0D\u4F5C\u4E3A\u5F53\u524D\u4E8B\u5B9E\u6CE8\u5165");
+    const expectedHash = await summaryRetrievalContentHash(slice);
+    if (hit.document.text !== summaryRetrievalText(slice)) {
+      return reject(
+        "retrieval_text",
+        "\u7D22\u5F15\u6587\u672C\u4E0E\u5F53\u524D\u6807\u9898\u3001\u65F6\u95F4\u6233\u6216\u68C0\u7D22\u8868\u793A\u4E0D\u4E00\u81F4",
+        "\u5728\u6765\u6E90\u804A\u5929\u540C\u6B65\u8BE5\u5207\u7247\u6216\u4FEE\u590D\u603B\u7ED3\u7D22\u5F15",
+        { expectedHash, indexedHash: hit.document.contentHash }
+      );
     }
-    if (typeof hit.document.metadata.bodyHash === "string" && hit.document.metadata.bodyHash !== await sha256Hex(slice.content)) return null;
-    sliceById.set(slice.id, slice);
+    if (hit.document.contentHash !== expectedHash) {
+      return reject(
+        "content_hash",
+        "\u7D22\u5F15\u6587\u672C\u6307\u7EB9\u4E0D\u4E00\u81F4",
+        "\u5728\u6765\u6E90\u804A\u5929\u4FEE\u590D\u603B\u7ED3\u7D22\u5F15",
+        { expectedHash, indexedHash: hit.document.contentHash }
+      );
+    }
+    if (typeof hit.document.metadata.bodyHash === "string") {
+      const bodyHash = await sha256Hex(slice.content);
+      if (hit.document.metadata.bodyHash !== bodyHash) {
+        return reject(
+          "body_hash",
+          "\u5207\u7247\u6B63\u6587\u5DF2\u53D8\u5316\uFF0C\u4F46\u7D22\u5F15\u4ECD\u8BB0\u5F55\u65E7\u6B63\u6587",
+          "\u5728\u6765\u6E90\u804A\u5929\u540C\u6B65\u8BE5\u5207\u7247\u6216\u4FEE\u590D\u603B\u7ED3\u7D22\u5F15",
+          { expectedHash: bodyHash, indexedHash: hit.document.metadata.bodyHash }
+        );
+      }
+    }
+    sliceByDocumentId.set(hit.document.documentId, slice);
     return hit;
   }));
-  const validHits = validated.filter((hit) => Boolean(hit));
-  const validIds = new Set(validHits.map((hit) => hit.document.sourceId));
   return {
-    hits: validHits,
-    dropped: hits.map((hit) => hit.document.sourceId).filter((sourceId) => !validIds.has(sourceId)),
-    sliceById
+    hits: validated.filter((hit) => Boolean(hit)),
+    dropped: [...new Set(issues.map((issue2) => issue2.sliceId))],
+    issues,
+    sliceByDocumentId
   };
 }
 
@@ -31008,6 +31164,12 @@ var StatusCoordinator = class {
     }
     return this.startUpdate("manual", chatId);
   }
+  recompute() {
+    const chatId = SillyTavern.getContext().chatId;
+    if (!chatId) return Promise.reject(new Error("\u8BF7\u5148\u9009\u62E9\u804A\u5929\u3002"));
+    if (this.pending.has(chatId)) return Promise.reject(new Error("\u8BF7\u7B49\u5F85\u5F53\u524D\u72B6\u6001\u4EFB\u52A1\u5B8C\u6210\u540E\u518D\u91CD\u65B0\u8BA1\u7B97\u3002"));
+    return this.startUpdate("manual", chatId, true);
+  }
   async saveManualState(rawState, origin = "manual", expectedToken) {
     const state = await this.load();
     const token = this.manualStateToken(state);
@@ -31045,6 +31207,7 @@ var StatusCoordinator = class {
       stateHash: await statusStateHash(candidate),
       revision: (existing?.revision ?? 0) + 1,
       origin,
+      manualOverride: true,
       createdAt: existing?.createdAt ?? now3,
       updatedAt: now3
     };
@@ -31108,8 +31271,8 @@ var StatusCoordinator = class {
     if (worldbookName) await this.worldbook.clearInjection(worldbookName).catch(() => void 0);
     if (this.lastInjection === ownership) this.lastInjection = null;
   }
-  startUpdate(origin, chatId) {
-    const operation = this.updateLatest(origin, chatId).finally(() => {
+  startUpdate(origin, chatId, force = false) {
+    const operation = this.updateLatest(origin, chatId, force).finally(() => {
       if (this.pending.get(chatId) !== operation) return;
       this.pending.delete(chatId);
       const rerunOrigin = this.rerunOrigins.get(chatId);
@@ -31125,7 +31288,7 @@ var StatusCoordinator = class {
     this.pending.set(chatId, operation);
     return operation;
   }
-  async updateLatest(origin, lockedChatId) {
+  async updateLatest(origin, lockedChatId, force) {
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
     const traceContext = {
       chatId: lockedChatId,
@@ -31136,7 +31299,7 @@ var StatusCoordinator = class {
     };
     try {
       if (SillyTavern.getContext().chatId !== lockedChatId) return null;
-      return await this.performUpdateLatest(origin, startedAt, traceContext);
+      return await this.performUpdateLatest(origin, startedAt, traceContext, force);
     } catch (error51) {
       if (error51 instanceof StatusSnapshotConflictError) {
         this.rerunOrigins.delete(lockedChatId);
@@ -31163,7 +31326,7 @@ var StatusCoordinator = class {
       throw error51;
     }
   }
-  async performUpdateLatest(origin, startedAt, traceContext) {
+  async performUpdateLatest(origin, startedAt, traceContext, force) {
     const state = await this.load();
     traceContext.chatId = state.catalog.chatId;
     traceContext.namespaceId = state.catalog.namespaceId;
@@ -31195,13 +31358,18 @@ var StatusCoordinator = class {
     const previousRecord = this.snapshots.latestBefore(targetIndex, state.catalog.namespaceId);
     const existing = this.snapshots.selected(targetIndex, state.catalog.namespaceId);
     const previous = await this.verifiedSnapshot(previousRecord);
+    const baseState = previous?.state ?? state.catalog.profile.initialState;
+    const baseStateHash = await statusStateHash(baseState);
     const prepared = await prepareStatusRequest({
       catalog: state.catalog,
       baseSnapshot: previous,
       targetMessageIndex: targetIndex
     });
     traceContext.sourceMessageIds = prepared.originalMessages.map((message) => message.id);
-    if (existing?.sourceHash === prepared.sourceHash && existing.targetMessageId === targetMessageId && existing.targetSwipeId === targetSwipeId) {
+    const matchingSource = existing?.sourceHash === prepared.sourceHash && existing.targetMessageId === targetMessageId && existing.targetSwipeId === targetSwipeId;
+    const matchingBase = existing?.parentSnapshotId === previous?.snapshotId && existing?.baseStateHash === baseStateHash;
+    const manualOverride = existing && (existing.manualOverride ?? existing.origin !== "auto");
+    if (!force && matchingSource && (matchingBase || manualOverride)) {
       this.setTrace({
         chatId: state.catalog.chatId,
         namespaceId: state.catalog.namespaceId,
@@ -31213,7 +31381,7 @@ var StatusCoordinator = class {
         outcome: "unchanged",
         operationCount: 0,
         attempts: [],
-        message: "The current swipe already has a matching status snapshot."
+        message: manualOverride ? "\u4FDD\u7559\u5F53\u524D\u624B\u52A8\u7F16\u8F91\u6216\u6062\u590D\u7684\u72B6\u6001\uFF1B\u5982\u9700\u8986\u76D6\uFF0C\u8BF7\u4F7F\u7528\u201C\u91CD\u65B0\u8BA1\u7B97\u5F53\u524D\u72B6\u6001\u201D\u3002" : "\u5F53\u524D\u697C\u5C42\u3001\u6765\u6E90\u6D88\u606F\u548C\u72B6\u6001\u57FA\u7EBF\u5747\u672A\u53D8\u5316\uFF0C\u5DF2\u590D\u7528\u73B0\u6709\u5FEB\u7167\u3002"
       });
       return existing;
     }
@@ -31225,8 +31393,6 @@ var StatusCoordinator = class {
     const workflow = settings.generationWorkflows.status;
     const group = settings.generationGroups.find((candidate) => candidate.id === workflow.groupId);
     if (!group) throw new Error("\u8BF7\u5148\u914D\u7F6E\u72B6\u6001\u66F4\u65B0\u4F7F\u7528\u7684\u751F\u6210\u7AEF\u70B9\u7EC4\u3002");
-    const baseState = previous?.state ?? state.catalog.profile.initialState;
-    const baseStateHash = await statusStateHash(baseState);
     let resumeAfterEndpointId;
     let result;
     while (true) {
@@ -31340,6 +31506,7 @@ var StatusCoordinator = class {
       stateHash: recomputedHash,
       revision: (existing?.revision ?? 0) + 1,
       origin,
+      manualOverride: false,
       createdAt: existing?.createdAt ?? now3,
       updatedAt: now3
     };
@@ -31436,13 +31603,13 @@ function planInjectionBudget(items, overhead, config2) {
   const base = estimateInjectionTokens(overhead);
   const requestedTokens = base + items.reduce((sum, item) => sum + tokens(item), 0);
   const selected = /* @__PURE__ */ new Set();
-  const order = ["status", "retained", "recent", "semantic", "associated"];
+  const order = ["status", "batch_overview", "retained", "recent", "semantic", "associated"];
   let used = base;
   let blocked = limit > 0 && policy === "abort" && requestedTokens > limit;
   if (!blocked) for (const category of order) {
     for (const item of items.filter((item2) => item2.category === category)) {
       const next = used + tokens(item);
-      const protectedItem = category === "status" || policy === "preserve_protected" && (category === "retained" || category === "recent");
+      const protectedItem = category === "status" || category === "batch_overview" || policy === "preserve_protected" && (category === "retained" || category === "recent");
       if (!limit || protectedItem || next <= limit) {
         selected.add(item.id);
         used = next;
@@ -31521,14 +31688,13 @@ async function groupActivatedTables({ activated: { entries } }) {
     const type = types.find((item) => item.id === metadata3.typeId);
     if (!type || !stored) continue;
     const groupKey = JSON.stringify([entry.world, type.id, entry.position, entry.role, entry.depth, entry.outletName]);
-    const group = groups.get(groupKey) ?? { type, world: entry.world, rows: [] };
+    const group = groups.get(groupKey) ?? { type, rows: [] };
     group.rows.push({ key, entry, name: decodeMemoryContent(type, stored.content).dataName });
     groups.set(groupKey, group);
   }
   for (const group of groups.values()) {
     const content = [
       memoryTableHeader(group.type),
-      `\u6765\u6E90\u4E16\u754C\u4E66\uFF1A${group.world}`,
       ...group.rows.map(({ entry, name }) => `### \u6761\u76EE\uFF1A${name}
 ${entry.content}`)
     ].join("\n\n");
@@ -32075,13 +32241,19 @@ var RecallCoordinator = class {
     await checkSources();
     const authoritative = await authoritativeRecallHits(
       result.hits,
-      resolved.active.map((source) => ({ collectionId: source.collectionId, slices: source.state.slices }))
+      resolved.active.map((source) => ({
+        collectionId: source.collectionId,
+        slices: source.state.slices,
+        worldbookName: source.state.worldbookName,
+        chatId: source.state.catalog.chatId
+      }))
     );
     await checkSources();
     guard();
+    if (authoritative.issues.length) console.warn("[Echoes] \u8865\u5145\u53EC\u56DE\u6E90\u6821\u9A8C\u6392\u9664", authoritative.issues);
     return {
       calls: result.calls,
-      messages: [...result.messages, ...authoritative.dropped.length ? [`\u6E90\u6821\u9A8C\u6392\u9664 ${authoritative.dropped.length} \u6761\u3002`] : []],
+      messages: [...result.messages, ...authoritative.issues.map((issue2) => `${issue2.chatId ?? issue2.collectionId} / ${issue2.title ?? issue2.sliceId}\uFF1A${issue2.reason}\uFF1B${issue2.action}\u3002`)],
       slices: authoritative.hits.map((hit) => {
         const source = resolved.active.find((source2) => source2.collectionId === hit.document.collectionId);
         return {
@@ -32187,7 +32359,7 @@ var RecallCoordinator = class {
         branches: DISABLED_BRANCHES,
         rawReturned: 0,
         semanticHits: [],
-        semanticSliceById: /* @__PURE__ */ new Map(),
+        semanticSliceByDocumentId: /* @__PURE__ */ new Map(),
         recentSlices: current.catalog.recallEnabled ? recentSlices : [],
         message: current.catalog.recallEnabled ? "Recall query is empty." : "Recall is disabled."
       });
@@ -32217,7 +32389,7 @@ var RecallCoordinator = class {
         },
         rawReturned: 0,
         semanticHits: [],
-        semanticSliceById: /* @__PURE__ */ new Map(),
+        semanticSliceByDocumentId: /* @__PURE__ */ new Map(),
         recentSlices,
         message
       });
@@ -32242,7 +32414,7 @@ var RecallCoordinator = class {
         branches: DISABLED_BRANCHES,
         rawReturned: 0,
         semanticHits: [],
-        semanticSliceById: /* @__PURE__ */ new Map(),
+        semanticSliceByDocumentId: /* @__PURE__ */ new Map(),
         recentSlices,
         message: "No attached summary source has an available retrieval collection."
       });
@@ -32266,7 +32438,7 @@ var RecallCoordinator = class {
         branches: DISABLED_BRANCHES,
         rawReturned: 0,
         semanticHits: [],
-        semanticSliceById: /* @__PURE__ */ new Map(),
+        semanticSliceByDocumentId: /* @__PURE__ */ new Map(),
         recentSlices,
         message: "No enabled semantic retrieval branch can query the selected sources."
       });
@@ -32283,7 +32455,7 @@ var RecallCoordinator = class {
         branches: DISABLED_BRANCHES,
         rawReturned: 0,
         semanticHits: [],
-        semanticSliceById: /* @__PURE__ */ new Map(),
+        semanticSliceByDocumentId: /* @__PURE__ */ new Map(),
         recentSlices,
         message: "Recall reranking is enabled but no rerank endpoint set is selected."
       });
@@ -32362,7 +32534,7 @@ var RecallCoordinator = class {
         },
         rawReturned: 0,
         semanticHits: [],
-        semanticSliceById: /* @__PURE__ */ new Map(),
+        semanticSliceByDocumentId: /* @__PURE__ */ new Map(),
         recentSlices,
         message
       });
@@ -32391,7 +32563,7 @@ var RecallCoordinator = class {
         },
         rawReturned: 0,
         semanticHits: [],
-        semanticSliceById: /* @__PURE__ */ new Map(),
+        semanticSliceByDocumentId: /* @__PURE__ */ new Map(),
         recentSlices,
         message: "Retrieval timed out."
       });
@@ -32419,7 +32591,7 @@ var RecallCoordinator = class {
           diagnostics: result.diagnostics,
           rawReturned: result.hits.length,
           semanticHits: [],
-          semanticSliceById: /* @__PURE__ */ new Map(),
+          semanticSliceByDocumentId: /* @__PURE__ */ new Map(),
           recentSlices,
           message: "Generation aborted after an ambiguous retrieval result."
         });
@@ -32471,7 +32643,7 @@ var RecallCoordinator = class {
         diagnostics: result.diagnostics,
         rawReturned: result.hits.length,
         semanticHits: [],
-        semanticSliceById: /* @__PURE__ */ new Map(),
+        semanticSliceByDocumentId: /* @__PURE__ */ new Map(),
         recentSlices,
         message: "All retrieval branches failed."
       });
@@ -32481,7 +32653,9 @@ var RecallCoordinator = class {
       result.hits,
       resolved.active.map((source) => ({
         collectionId: source.collectionId,
-        slices: source.state.slices
+        slices: source.state.slices,
+        worldbookName: source.state.worldbookName,
+        chatId: source.state.catalog.chatId
       }))
     );
     const supplementMessages = [];
@@ -32496,16 +32670,24 @@ var RecallCoordinator = class {
         track: (id2) => id2 ? trackJob(id2) : clearTrackedJob()
       });
       supplementMessages.push(`\u8865\u5145\u8BF7\u6C42 ${supplemental.calls} \u6B21\uFF0C\u5019\u9009 ${supplemental.hits.length} \u6761\u3002`, ...supplemental.messages);
-      const extra = await authoritativeRecallHits(supplemental.hits, resolved.active.map((source) => ({ collectionId: source.collectionId, slices: source.state.slices })));
+      const extra = await authoritativeRecallHits(supplemental.hits, resolved.active.map((source) => ({
+        collectionId: source.collectionId,
+        slices: source.state.slices,
+        worldbookName: source.state.worldbookName,
+        chatId: source.state.catalog.chatId
+      })));
       authoritative = {
         hits: [...authoritative.hits, ...extra.hits],
         dropped: [...authoritative.dropped, ...extra.dropped],
-        sliceById: new Map([...authoritative.sliceById, ...extra.sliceById])
+        issues: [...authoritative.issues, ...extra.issues],
+        sliceByDocumentId: new Map([...authoritative.sliceByDocumentId, ...extra.sliceByDocumentId])
       };
     }
     const hits = authoritative.hits.slice(0, recall.finalTopK);
-    if (authoritative.dropped.length > 0) {
-      toastr.warning("\u90E8\u5206\u53EC\u56DE\u7ED3\u679C\u4E0E\u6E90\u4E16\u754C\u4E66\u4E0D\u4E00\u81F4\uFF0C\u5DF2\u8DF3\u8FC7\uFF1B\u8BF7\u4FEE\u590D\u5BF9\u5E94\u603B\u7ED3\u7D22\u5F15\u3002", "Echoes");
+    if (authoritative.issues.length > 0) {
+      console.warn("[Echoes] \u53EC\u56DE\u6E90\u6821\u9A8C\u6392\u9664", authoritative.issues);
+      const reasons = [...new Set(authoritative.issues.map((issue2) => issue2.reason))].join("\uFF1B");
+      toastr.warning(`\u5DF2\u8DF3\u8FC7 ${authoritative.issues.length} \u6761\u53EC\u56DE\u7D22\u5F15\uFF1A${reasons}\u3002\u5177\u4F53\u6765\u6E90\u4E0E\u5904\u7406\u5EFA\u8BAE\u89C1\u53EC\u56DE\u8BCA\u65AD\u548C\u63A7\u5236\u53F0\u65E5\u5FD7\u3002`, "Echoes");
     }
     return finalize2({
       current,
@@ -32518,13 +32700,14 @@ var RecallCoordinator = class {
       branches: result.branches,
       rawReturned: result.hits.length,
       semanticHits: hits,
-      semanticSliceById: authoritative.sliceById,
+      semanticSliceByDocumentId: authoritative.sliceByDocumentId,
       recentSlices,
       droppedSourceIds: authoritative.dropped,
+      sourceIssues: authoritative.issues,
       diagnostics: result.diagnostics,
       ...supplementMessages.length ? { message: supplementMessages.join("\n") } : {},
       decisions: [
-        ...authoritative.dropped.map((sliceId) => ({ sliceId, reason: "\u6E90\u5207\u7247\u4E0D\u5B58\u5728\u3001\u5DF2\u5931\u6548\u6216\u7D22\u5F15\u5185\u5BB9\u4E0D\u4E00\u81F4" })),
+        ...authoritative.issues.map((issue2) => ({ sliceId: issue2.sliceId, reason: `${issue2.reason}\uFF1B${issue2.action}` })),
         ...authoritative.hits.slice(recall.finalTopK).map((hit) => ({ sliceId: hit.document.sourceId, reason: "\u8D85\u8FC7\u6700\u7EC8\u7ED3\u679C\u6570" })),
         ...[...excludeSourceIds].slice(0, 500).map((sliceId) => ({ sliceId, reason: "\u8FD1\u671F\u5DF2\u5305\u542B\u3001\u5F85\u5220\u9664\u6216\u5DF2\u5931\u6548" }))
       ]
@@ -32643,11 +32826,19 @@ ${item.text}` })));
         }
       }
       guard();
-      const statusText = options.inject ? (await window.TavernHelper.getWorldbook(options.current.worldbookName)).filter((entry) => entry.enabled && entry.extra?.echoes?.kind === "status_injection").map((entry) => entry.content).join("\n\n") : await statusCoordinator.previewInjection();
+      const worldbookEntries = await window.TavernHelper.getWorldbook(options.current.worldbookName);
+      const statusText = options.inject ? worldbookEntries.filter((entry) => entry.enabled && entry.extra?.echoes?.kind === "status_injection").map((entry) => entry.content).join("\n\n") : await statusCoordinator.previewInjection();
+      const batchOverviews = worldbookEntries.filter((entry) => entry.enabled && entry.extra?.echoes?.kind === "summary_batch_overview" && entry.content.trim());
       const template = recall.injection.template;
       const repeatCount = (placeholder) => Math.max(1, template.split(placeholder).length - 1);
       const items = [
         ...statusText ? [{ id: "__status", title: "\u5F53\u524D\u72B6\u6001", category: "status", text: statusText }] : [],
+        ...batchOverviews.map((entry) => ({
+          id: `batch_overview:${entry.uid}`,
+          title: entry.name,
+          category: "batch_overview",
+          text: entry.content
+        })),
         ...options.recentSlices.map((slice) => ({
           id: `recent:${slice.id}`,
           title: slice.title,
@@ -32656,7 +32847,7 @@ ${item.text}` })));
           repetitions: repeatCount("{{recent_summaries}}")
         })),
         ...options.semanticHits.map((hit, index) => {
-          const slice = options.semanticSliceById.get(hit.document.sourceId);
+          const slice = options.semanticSliceByDocumentId.get(hit.document.documentId);
           return {
             id: `semantic:${hit.document.documentId}`,
             title: slice.title,
@@ -32695,7 +32886,7 @@ ${renderSummaryBody(slice)}`
       selectedRetained = retained.filter(({ slice, namespaceId }) => plan.selected.has(`retained:${namespaceId}:${slice.id}`));
       const recent = renderRecentSummaries(selectedRecent);
       const memories = selectedHits.map((hit, index) => {
-        const slice = options.semanticSliceById.get(hit.document.sourceId);
+        const slice = options.semanticSliceByDocumentId.get(hit.document.documentId);
         return `[Memory ${index + 1}: ${slice.timestamp} \xB7 ${slice.title}]
 ${renderSummaryBody(slice)}`;
       }).join("\n\n");
@@ -32709,10 +32900,10 @@ ${renderSummaryBody(slice)}`).join("\n\n");
         recent,
         memories
       )].filter(Boolean).join("\n\n");
-      const actualEstimate = estimateInjectionTokens(content + (statusText ? "\n\n" + statusText : ""));
+      const actualEstimate = estimateInjectionTokens([content, statusText, ...batchOverviews.map((entry) => entry.content)].filter(Boolean).join("\n\n"));
       if (recall.budget?.maxTokens && recall.budget.overflow !== "preserve_protected" && actualEstimate > recall.budget.maxTokens) {
         injectionBudget.blocked = true;
-        injectionBudget.omitted = items.map(({ id: id2, title, category }) => ({ id: id2, title, category, reason: "\u6A21\u677F\u4E0E\u72B6\u6001\u5F00\u9500\u8D85\u51FA\u9884\u7B97" }));
+        injectionBudget.omitted = uniqueItems.map(({ id: id2, title, category }) => ({ id: id2, title, category, reason: "\u5E38\u9A7B\u5185\u5BB9\u4E0E\u6A21\u677F\u5F00\u9500\u8D85\u51FA\u9884\u7B97\uFF0C\u672C\u8F6E\u751F\u6210\u4E2D\u6B62" }));
       }
       if (injectionBudget.blocked) {
         content = "";
@@ -32733,6 +32924,9 @@ ${renderSummaryBody(slice)}`).join("\n\n");
       } else {
         injectionBudget.injectedTokens = actualEstimate;
         injectionBudget.overflow = Boolean(injectionBudget.limit && actualEstimate > injectionBudget.limit);
+        if (options.inject && injectionBudget.overflow) {
+          toastr.warning("\u8BB0\u5FC6\u6CE8\u5165\u8D85\u51FA\u9884\u7B97\uFF1B\u6309\u5F53\u524D\u7B56\u7565\u4FDD\u7559\u72B6\u6001\u3001\u6279\u6B21\u603B\u7ED3\u3001\u8FD1\u671F\u4E0E\u6EDE\u7559\u5185\u5BB9\uFF0C\u666E\u901A\u53EC\u56DE\u5DF2\u6309\u9884\u7B97\u7B5B\u9009\u3002", "Echoes");
+        }
       }
       await options.assertFresh?.();
       guard();
@@ -32762,6 +32956,7 @@ ${renderSummaryBody(slice)}`).join("\n\n");
       diagnostics: options.diagnostics,
       queryBlocks: options.queryBlocks,
       decisions: options.decisions,
+      sourceIssues: options.sourceIssues,
       injectionText,
       stages: [
         { name: "\u67E5\u8BE2\u7F16\u6392", count: options.queryBlocks?.length ?? 0 },
@@ -32773,7 +32968,7 @@ ${renderSummaryBody(slice)}`).join("\n\n");
         { name: "\u8FD1\u671F\u603B\u7ED3", count: options.recentSlices.length },
         { name: "\u989D\u5916\u6EDE\u7559", count: retained.length },
         { name: "\u5173\u8054\u8D44\u6599", count: associatedCount },
-        { name: "\u9884\u7B97\u6392\u9664\u5207\u7247", count: injectionBudget?.omitted.filter((item) => item.category !== "status").length ?? 0 },
+        { name: "\u9884\u7B97\u6392\u9664\u5207\u7247", count: injectionBudget?.omitted.filter((item) => item.category !== "status" && item.category !== "batch_overview").length ?? 0 },
         {
           name: options.inject ? "\u5B9E\u9645\u6CE8\u5165" : "\u9884\u89C8\u6CE8\u5165\uFF08\u672A\u5199\u5165\uFF09",
           count: options.inject ? injected : selectedHits.length + selectedRecent.length + selectedRetained.length + associatedCount
@@ -35087,6 +35282,7 @@ function recallEnhancements(ctx, state) {
 }
 
 // src/extension/workbench/recall-diagnostics.ts
+init_crypto_compat();
 init_client();
 
 // src/extension/workbench/logs.ts
@@ -35178,7 +35374,7 @@ function recallTraceView(trace) {
   if (trace.message) root.append(el("p", "ew-muted", trace.message));
   if (trace.injectionBudget) {
     const budget = trace.injectionBudget;
-    const labels = { status: "\u72B6\u6001", recent: "\u8FD1\u671F\u603B\u7ED3", semantic: "\u666E\u901A\u53EC\u56DE", retained: "\u6EDE\u7559\u5207\u7247", associated: "\u5173\u8054\u8D44\u6599" };
+    const labels = { status: "\u72B6\u6001", batch_overview: "\u5E38\u9A7B\u6279\u6B21\u603B\u7ED3", recent: "\u8FD1\u671F\u603B\u7ED3", semantic: "\u666E\u901A\u53EC\u56DE", retained: "\u6EDE\u7559\u5207\u7247", associated: "\u5173\u8054\u8D44\u6599" };
     root.append(section(
       "\u6CE8\u5165\u9884\u7B97\uFF08\u672C\u5730\u4F30\u7B97 Token\uFF09",
       actions(
@@ -35248,6 +35444,22 @@ function recallTraceView(trace) {
     root.append(section("\u5019\u9009\u7B5B\u9009", host));
   }
   if (trace.diagnostics?.omittedCandidates) root.append(badge(`\u5176\u4F59 ${trace.diagnostics.omittedCandidates} \u6761\u672A\u5C55\u5F00\u8BB0\u5F55`));
+  if (trace.sourceIssues?.length) {
+    root.append(section(
+      "\u53EC\u56DE\u6E90\u6821\u9A8C",
+      table(
+        ["\u6765\u6E90\u804A\u5929", "\u6279\u6B21 / \u5207\u7247", "\u6807\u9898", "\u4E0D\u4E00\u81F4\u539F\u56E0", "\u5904\u7406\u5EFA\u8BAE"],
+        trace.sourceIssues.map((issue2) => [
+          issue2.chatId ?? issue2.collectionId,
+          issue2.batchNumber !== void 0 ? `${issue2.batchNumber}.${issue2.sliceNumber}` : issue2.sliceId,
+          issue2.title ?? "-",
+          issue2.reason,
+          issue2.action
+        ])
+      ),
+      detail("\u6765\u6E90\u4E16\u754C\u4E66\u3001\u7D22\u5F15\u6807\u8BC6\u4E0E\u6307\u7EB9", trace.sourceIssues)
+    ));
+  }
   if (trace.decisions?.length) root.append(detail("\u524D\u7AEF\u6392\u9664\u539F\u56E0", trace.decisions));
   return root;
 }
@@ -35299,12 +35511,14 @@ async function memoryPipelineView(ctx) {
   }], false);
   root.append(section("\u5199\u5165\u4E0E\u7D22\u5F15", inspect.node, button("\u68C0\u67E5\u9009\u4E2D\u5207\u7247", "magnifying-glass", async () => {
     ctx.guard();
-    const slice = state.slices.find((item) => item.id === inspect.values().slice);
+    const fresh = await ctx.summary.store.inspect(worldbook);
+    const slice = fresh.slices.find((item) => item.id === inspect.values().slice);
     if (!slice) throw new Error("\u6CA1\u6709\u53EF\u68C0\u67E5\u7684\u5207\u7247\u3002");
-    const collection = state.catalog.retrievalCollectionId;
+    const collection = fresh.catalog.retrievalCollectionId;
     const index = collection ? (await echoesApi.retrievalDocumentStatus([await summaryRetrievalDocumentId(collection, slice.id)])).documents[0] : void 0;
     ctx.guard();
     const hash2 = await summaryRetrievalContentHash(slice);
+    const bodyHash = await sha256Hex(slice.content);
     const body = el(
       "div",
       "ew-page-content",
@@ -35314,9 +35528,16 @@ async function memoryPipelineView(ctx) {
         ["\u4E16\u754C\u4E66\u5199\u5165", slice.id],
         ["\u68C0\u7D22\u8868\u793A", slice.retrievalText ? "\u72EC\u7ACB\u8868\u793A" : "\u539F\u6587\u7D22\u5F15"],
         ["\u7D22\u5F15", index ? index.vectorState : "\u672A\u5EFA\u7ACB"],
-        ["\u7D22\u5F15\u5185\u5BB9\u6821\u9A8C", index ? index.contentHash === hash2 ? "\u4E00\u81F4" : "\u4E0D\u4E00\u81F4" : "\u65E0"]
+        ["\u7D22\u5F15\u6587\u672C\u6821\u9A8C", index ? index.contentHash === hash2 ? "\u4E00\u81F4" : "\u4E0D\u4E00\u81F4" : "\u65E0"],
+        ["\u7D22\u5F15\u6B63\u6587\u6821\u9A8C", index?.bodyHash ? index.bodyHash === bodyHash ? "\u4E00\u81F4" : "\u4E0D\u4E00\u81F4" : "\u672A\u8BB0\u5F55\u6B63\u6587\u6307\u7EB9"]
       ]),
-      detail("\u6279\u6B21\u5143\u6570\u636E", slice.batch)
+      detail("\u6279\u6B21\u5143\u6570\u636E", slice.batch),
+      detail("\u7D22\u5F15\u6307\u7EB9", {
+        expectedContentHash: hash2,
+        indexedContentHash: index?.contentHash,
+        expectedBodyHash: bodyHash,
+        indexedBodyHash: index?.bodyHash
+      })
     );
     dialog("\u5207\u7247\u94FE\u8DEF", body);
   })));
@@ -35363,7 +35584,7 @@ function editRetrievalRepresentation(ctx, state, slice) {
   const form = fields([
     { key: "body", label: "\u5B8C\u6574\u6B63\u6587\uFF08\u53EA\u8BFB\uFF09", type: "textarea", rows: 6, readonly: true, value: slice.content },
     { key: "text", label: "\u72EC\u7ACB\u68C0\u7D22\u8868\u793A\uFF08\u7A7A\u767D\u4F7F\u7528\u539F\u6587\uFF09", type: "textarea", rows: 12, value: slice.retrievalText ?? "" },
-    { key: "sync", label: "\u4FDD\u5B58\u540E\u540C\u6B65\u7D22\u5F15\uFF08\u53EF\u80FD\u4EA7\u751F\u5411\u91CF\u5316\u8D39\u7528\uFF09", type: "checkbox", value: false }
+    { key: "sync", label: "\u4FDD\u5B58\u540E\u540C\u6B65\u7D22\u5F15\uFF08\u53EF\u80FD\u4EA7\u751F\u5411\u91CF\u5316\u8D39\u7528\uFF09", type: "checkbox", value: true }
   ]);
   const replace = (text) => {
     form.controls.get("text").value = text;
@@ -35973,6 +36194,84 @@ async function summaryView(ctx) {
   if (ctx.signal.aborted) return page;
   const visibilityByBatch = new Map(compression2?.map((batch) => [batch.batchId, batch]));
   const host = el("div");
+  const openBulkOverviews = (slices) => {
+    const batchIds = [...new Set(slices.map((slice) => slice.batch.id))];
+    const f = fields([{
+      key: "mode",
+      label: "\u751F\u6210\u65B9\u5F0F",
+      type: "select",
+      value: "missing",
+      options: [["missing", "\u8865\u5168\u7F3A\u5931\u3001\u5F85\u751F\u6210\u6216\u5931\u8D25\u9879"], ["all", "\u91CD\u65B0\u751F\u6210\u6240\u9009\u6279\u6B21\u603B\u7ED3"]]
+    }], false);
+    const count = el("p", "ew-muted");
+    const progress = el("p", "ew-muted");
+    progress.setAttribute("role", "status");
+    const errors = el("p", "ew-inline-error");
+    errors.setAttribute("role", "alert");
+    let running = false;
+    let control;
+    const targets = () => coordinator.batchOverviewTargets(state, batchIds, f.values().mode === "missing");
+    const updateCount = () => {
+      const eligible = targets().length;
+      count.textContent = `\u6240\u9009 ${batchIds.length} \u4E2A\u6279\u6B21 \xB7 \u5F85\u751F\u6210 ${eligible} \u4E2A \xB7 \u8DF3\u8FC7 ${batchIds.length - eligible} \u4E2A`;
+      start.disabled = running || eligible === 0;
+    };
+    const stop = button("\u505C\u6B62\u751F\u6210", "stop", () => {
+      control?.abort();
+      stop.disabled = true;
+    }, "danger");
+    stop.disabled = true;
+    const start = button("\u5F00\u59CB\u751F\u6210", "play", async () => {
+      ctx.guard();
+      const selected = targets();
+      if (!selected.length) return;
+      const onlyMissing = f.values().mode === "missing";
+      if (!confirm(`\u5C06\u4E3A ${selected.length} \u4E2A\u6279\u6B21\u9010\u6279\u8C03\u7528\u603B\u7ED3\u526F API\uFF0C\u53EF\u80FD\u4EA7\u751F\u8D39\u7528\u3002` + (onlyMissing ? "" : "\u5DF2\u6709\u6279\u6B21\u603B\u7ED3\u6B63\u6587\u5C06\u5728\u751F\u6210\u6210\u529F\u540E\u88AB\u66FF\u6362\u3002") + "\u5E38\u89C4\u5207\u7247\u548C\u5E38\u9A7B\u5F00\u5173\u4E0D\u53D8\uFF0C\u5931\u8D25\u65F6\u505C\u6B62\u540E\u7EED\u8C03\u7528\u3002\u7EE7\u7EED\uFF1F")) return;
+      const cancellation = new AbortController();
+      control = cancellation;
+      running = true;
+      f.controls.get("mode").disabled = true;
+      stop.disabled = false;
+      errors.textContent = "";
+      const unsubscribe = coordinator.subscribeProgress((latest) => {
+        if (latest.worldbookName !== state.worldbookName || latest.catalog.namespaceId !== state.catalog.namespaceId) return;
+        state.batchOverviews = latest.batchOverviews ?? [];
+        if (!ctx.signal.aborted) draw();
+      });
+      try {
+        await ctx.run(`\u6279\u91CF\u751F\u6210\u6279\u6B21\u603B\u7ED3 \xB7 ${selected.length} \u4E2A\u6279\u6B21`, () => coordinator.regenerateBatchOverviews(selected.map((batch) => batch.id), {
+          onlyMissing,
+          signal: cancellation.signal,
+          onProgress: (completed, total, batchNumber) => {
+            progress.textContent = completed === total ? `\u5DF2\u5B8C\u6210 ${completed} / ${total} \u4E2A\u6279\u6B21\u603B\u7ED3` : `\u5DF2\u5B8C\u6210 ${completed} / ${total} \u4E2A \xB7 \u5F53\u524D\u6279\u6B21 ${batchNumber}`;
+          }
+        }), async () => {
+          cancellation.abort();
+        });
+      } catch (error51) {
+        errors.textContent = cancellation.signal.aborted || error51 instanceof Error && error51.name === "AbortError" ? "\u5DF2\u505C\u6B62\u751F\u6210\uFF0C\u5DF2\u5B8C\u6210\u7684\u6279\u6B21\u603B\u7ED3\u4FDD\u7559\u3002" : error51 instanceof Error ? error51.message : String(error51);
+        throw error51;
+      } finally {
+        unsubscribe();
+        running = false;
+        control = void 0;
+        f.controls.get("mode").disabled = false;
+        stop.disabled = true;
+        updateCount();
+      }
+    }, "primary");
+    f.controls.get("mode").addEventListener("change", updateCount);
+    updateCount();
+    dialog("\u6279\u91CF\u751F\u6210\u6279\u6B21\u603B\u7ED3", el(
+      "div",
+      "ew-page-content",
+      f.node,
+      count,
+      progress,
+      errors,
+      actions(start, stop)
+    ));
+  };
   const openOverview = (batch) => {
     let overview = state.batchOverviews?.find((item) => item.batch.id === batch.id);
     const body = el("div", "ew-page-content");
@@ -36065,8 +36364,19 @@ async function summaryView(ctx) {
     ].sort(createBatchOrder(currentChatMessages()).compare);
     const batchIds = batches.map((b) => b.id);
     if (action === "representation") {
-      if (!confirm(`\u4ECE\u6B63\u6587\u4E0E\u6807\u7B7E\u91CD\u5EFA ${slices.length} \u4E2A\u5207\u7247\u7684\u68C0\u7D22\u8868\u793A\uFF1F\u5C06\u8986\u76D6\u5DF2\u6709\u81EA\u5B9A\u4E49\u8868\u793A\uFF0C\u4E0D\u4FEE\u6539\u6B63\u6587\uFF0C\u4E5F\u4E0D\u8C03\u7528\u6A21\u578B\u3002`)) return;
-      await coordinator.saveRetrievalTexts(state, new Map(slices.map((slice) => [slice.id, buildSummaryRetrievalText(slice)])));
+      if (!confirm(`\u4ECE\u6B63\u6587\u4E0E\u6807\u7B7E\u91CD\u5EFA\u5E76\u540C\u6B65 ${slices.length} \u4E2A\u5207\u7247\u7684\u68C0\u7D22\u8868\u793A\uFF1F\u5C06\u8986\u76D6\u5DF2\u6709\u81EA\u5B9A\u4E49\u8868\u793A\uFF0C\u4E0D\u4FEE\u6539\u6B63\u6587\u3001\u4E0D\u91CD\u65B0\u603B\u7ED3\uFF1B\u540C\u6B65\u53EF\u80FD\u4EA7\u751F\u5411\u91CF\u5316\u8D39\u7528\u3002`)) return;
+      let cancelled = false;
+      await ctx.run("\u91CD\u5EFA\u68C0\u7D22\u8868\u793A\u5E76\u540C\u6B65\u7D22\u5F15", async () => {
+        const saved = await coordinator.saveRetrievalTexts(state, new Map(slices.map((slice) => [slice.id, buildSummaryRetrievalText(slice)])));
+        if (cancelled) throw new DOMException("\u5DF2\u505C\u6B62\uFF0C\u4FDD\u5B58\u7684\u68C0\u7D22\u8868\u793A\u4FDD\u7559\uFF0C\u672A\u63D0\u4EA4\u5411\u91CF\u540C\u6B65\u3002", "AbortError");
+        ctx.guard();
+        const ids2 = new Set(slices.map((slice) => slice.id));
+        const activeIds = saved.slices.filter((slice) => ids2.has(slice.id) && slice.batch.state !== "stale").map((slice) => slice.id);
+        if (activeIds.length) await coordinator.synchronizeSlices(activeIds);
+      }, async () => {
+        cancelled = true;
+        await coordinator.stop();
+      });
     } else if (action === "sync") {
       if (!confirm(`\u540C\u6B65 ${slices.length} \u4E2A\u9009\u4E2D\u5207\u7247\u7684\u7D22\u5F15\uFF0C\u53EF\u80FD\u4EA7\u751F\u5411\u91CF\u5316\u8D39\u7528\u3002\u7EE7\u7EED\uFF1F`)) return;
       await ctx.run("\u540C\u6B65\u9009\u4E2D\u5207\u7247\u7D22\u5F15", () => coordinator.synchronizeSlices(slices.map((slice) => slice.id)), () => coordinator.stop());
@@ -36123,6 +36433,7 @@ async function summaryView(ctx) {
     selection.hidden = !selected.length;
     const commands = [
       ["\u91CD\u65B0\u603B\u7ED3\u6279\u6B21", "rotate", () => operate("rebuild", selected)],
+      ["\u751F\u6210\u6279\u6B21\u603B\u7ED3", "file-lines", () => openBulkOverviews(selected)],
       ["\u8BBE\u7F6E\u6807\u5FD7", "flag", () => assignRecallFlags(ctx, state, selected)],
       ["\u91CD\u5EFA\u68C0\u7D22\u8868\u793A", "file-lines", () => operate("representation", selected)],
       ["\u540C\u6B65\u9009\u4E2D\u7D22\u5F15", "arrows-rotate", () => operate("sync", selected)],
@@ -36335,6 +36646,7 @@ async function summaryView(ctx) {
           "screwdriver-wrench",
           () => ctx.run("\u4FEE\u590D\u603B\u7ED3\u7D22\u5F15", () => coordinator.repairIndex(), () => coordinator.stop()).then(() => ctx.refresh())
         ),
+        button("\u6279\u91CF\u751F\u6210\u6279\u6B21\u603B\u7ED3", "file-lines", () => openBulkOverviews(state.slices)),
         button(
           "\u751F\u6210\u603B\u7ED3",
           "plus",
@@ -36620,8 +36932,8 @@ async function recallView(ctx, state) {
       type: "select",
       value: r.budget?.overflow ?? "preserve_protected",
       options: [
-        ["preserve_protected", "\u4FDD\u7559\u72B6\u6001\u3001\u8FD1\u671F\u4E0E\u6EDE\u7559\uFF1B\u666E\u901A\u53EC\u56DE\u6309\u9884\u7B97\u7B5B\u9009"],
-        ["strict", "\u4E25\u683C\u9884\u7B97\uFF1A\u72B6\u6001\u4FDD\u7559\uFF0C\u6EDE\u7559\u4F18\u5148\u4E8E\u8FD1\u671F\u548C\u666E\u901A\u53EC\u56DE"],
+        ["preserve_protected", "\u4FDD\u7559\u72B6\u6001\u3001\u6279\u6B21\u603B\u7ED3\u3001\u8FD1\u671F\u4E0E\u6EDE\u7559\uFF1B\u666E\u901A\u53EC\u56DE\u6309\u9884\u7B97\u7B5B\u9009"],
+        ["strict", "\u4E25\u683C\u9884\u7B97\uFF1A\u72B6\u6001\u4E0E\u6279\u6B21\u603B\u7ED3\u4FDD\u7559\uFF1B\u5E38\u9A7B\u5185\u5BB9\u8D85\u9884\u7B97\u5219\u4E2D\u6B62"],
         ["abort", "\u4EFB\u4F55\u8D85\u9884\u7B97\u90FD\u4E2D\u6B62\u751F\u6210"]
       ]
     }
@@ -36918,6 +37230,27 @@ async function statusView(ctx) {
     const editToken = statusCoordinator.manualStateToken(state);
     const value = current?.snapshot.state ?? profile.initialState;
     const host = el("div");
+    const synchronize = async (force = false) => {
+      ctx.guard();
+      if (force && !confirm("\u6309\u5F53\u524D\u63D0\u793A\u8BCD\u548C\u4E0A\u4E00\u72B6\u6001\u91CD\u65B0\u8BA1\u7B97\u5F53\u524D\u697C\u5C42\uFF0C\u5C06\u8986\u76D6\u5F53\u524D\u624B\u52A8\u4FEE\u6539\u6216\u6062\u590D\u7684\u72B6\u6001\uFF0C\u5E76\u8C03\u7528\u72B6\u6001\u526F API\u3002\u7EE7\u7EED\uFF1F")) return;
+      const snapshot = await ctx.run(
+        force ? "\u91CD\u65B0\u8BA1\u7B97\u5F53\u524D\u72B6\u6001" : "\u72B6\u6001\u8BB0\u5FC6\u540C\u6B65",
+        () => force ? statusCoordinator.recompute() : statusCoordinator.synchronize()
+      );
+      const trace2 = statusCoordinator.trace;
+      if (trace2?.outcome === "skipped" || trace2?.outcome === "failed") {
+        notify(trace2.message ?? "\u72B6\u6001\u540C\u6B65\u672A\u6267\u884C\u3002", true);
+      } else if (trace2?.outcome === "unchanged") {
+        notify(trace2.message ?? "\u5F53\u524D\u697C\u5C42\u5DF2\u6709\u5339\u914D\u7684\u72B6\u6001\u5FEB\u7167\uFF0C\u65E0\u9700\u66F4\u65B0\u3002");
+      } else if (trace2?.outcome === "decision_required" || trace2?.outcome === "discarded") {
+        notify(trace2.message ?? "\u72B6\u6001\u7ED3\u679C\u672A\u5199\u5165\u3002", true);
+      } else if (!snapshot) {
+        notify(trace2?.message ?? "\u672C\u6B21\u6CA1\u6709\u751F\u6210\u65B0\u7684\u72B6\u6001\u5FEB\u7167\u3002", true);
+      } else {
+        notify(`\u72B6\u6001\u5DF2\u540C\u6B65\uFF1A\u5FEB\u7167\u6765\u6E90\u6D88\u606F ${snapshot.targetMessageId}\u3002`);
+      }
+      await ctx.refresh();
+    };
     const form = fields([
       {
         key: "yaml",
@@ -37005,25 +37338,10 @@ async function statusView(ctx) {
         button(
           "\u624B\u52A8\u540C\u6B65",
           "arrows-rotate",
-          async () => {
-            ctx.guard();
-            const snapshot = await ctx.run("\u72B6\u6001\u8BB0\u5FC6\u540C\u6B65", () => statusCoordinator.synchronize());
-            const trace2 = statusCoordinator.trace;
-            if (trace2?.outcome === "skipped" || trace2?.outcome === "failed") {
-              notify(trace2.message ?? "\u72B6\u6001\u540C\u6B65\u672A\u6267\u884C\u3002", true);
-            } else if (trace2?.outcome === "unchanged") {
-              notify(trace2.message ?? "\u5F53\u524D\u697C\u5C42\u5DF2\u6709\u5339\u914D\u7684\u72B6\u6001\u5FEB\u7167\uFF0C\u65E0\u9700\u66F4\u65B0\u3002");
-            } else if (trace2?.outcome === "decision_required" || trace2?.outcome === "discarded") {
-              notify(trace2.message ?? "\u72B6\u6001\u7ED3\u679C\u672A\u5199\u5165\u3002", true);
-            } else if (!snapshot) {
-              notify(trace2?.message ?? "\u672C\u6B21\u6CA1\u6709\u751F\u6210\u65B0\u7684\u72B6\u6001\u5FEB\u7167\u3002", true);
-            } else {
-              notify(`\u72B6\u6001\u5DF2\u540C\u6B65\uFF1A\u5FEB\u7167\u6765\u6E90\u6D88\u606F ${snapshot.targetMessageId}\u3002`);
-            }
-            await ctx.refresh();
-          },
+          () => synchronize(),
           "primary"
         ),
+        button("\u91CD\u65B0\u8BA1\u7B97\u5F53\u524D\u72B6\u6001", "rotate", () => synchronize(true)),
         button("\u6062\u590D\u521D\u59CB\u503C", "rotate-left", async () => {
           if (confirm("\u5C06\u5F53\u524D\u72B6\u6001\u6062\u590D\u4E3A\u6A21\u677F\u521D\u59CB\u503C\uFF1F")) {
             ctx.guard();
