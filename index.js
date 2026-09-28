@@ -19029,7 +19029,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "3.2.5", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "3.2.6", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
@@ -22188,16 +22188,22 @@ var EXTRACTION_ROW_REFERENCE_GUIDE = `Record references for this request:
 currentRows supplies short rowId references such as R1 and R2. For update or delete, copy the rowId and typeId together from the same currentRows record. These references apply only to this request; the application resolves them to stored IDs.
 For a new record, use add without a rowId and include its complete intended content. Combine changes to a newly proposed record into that add, rather than inventing an ID for a later update. Combine changes to an existing record into one operation.
 Return the operations JSON object only, with Chinese natural-language values.`;
-var EXTRACTION_CLEANING_GUIDE = `This is a user-requested memory cleaning pass over a selected historical message range, not the next incremental batch.
-Look for useful information previously missed. Compare concrete facts with currentRows and propose additions or updates that fill omissions. A previously processed message may still contain unrecorded information.
-Retain valid existing knowledge. Preserve the chronology of historical facts; an earlier condition is not evidence that a later known condition should be reverted. Propose deletions only when explicitly supported. The application will present the proposals for review and preserve the normal extraction checkpoint.`;
+var EXTRACTION_CLEANING_GUIDE = `This is a user-requested memory cleaning pass, not the next incremental batch. The following maintenance rules replace the incremental-only evidence and deletion restrictions for this pass.
+currentRows contains the COMPLETE existing records from every active table, including all stored field values. Read the original fields before proposing replacements. Both these stored records and the selected historical messages are valid sources for this cleaning task; the user's additional instructions can explicitly confirm that differently named records describe the same entity.
+Follow the requested scope: fill omissions, correct records, or consolidate duplicate records. Previously recorded information does not need a new story event to justify reorganizing it. Do not return an empty operations array merely because the selected messages contain no new facts.
+When several records are confirmed to describe the same entity, retain one existing row, preferably the one specified by the user. Integrate their complementary, still-valid information into that row with update, then propose delete for the redundant rows. Use the existing update and delete actions, not a new action or an additional duplicate row.
+Each updated field is a complete replacement: combine its original information with all relevant details from the redundant rows. Preserve useful distinctions, chronology, attribution, uncertainty, keywords and established aliases. Moving information does not make that information invalid. Delete a redundant record only after its still-valid information is represented in the retained record's proposed final content.
+The proposed update and deletions are reviewed and committed together. A name or alias belonging to a redundant row may be transferred to the retained row when that redundant row is also deleted in the same submitted batch.
+Compare identities, not spelling alone. Respect each table's purpose; related records are not necessarily duplicates. Preserve unresolved identity differences and conflicting claims rather than inventing a resolution.
+An earlier condition in the selected history is not evidence that a later known condition should be reverted. Leave unrelated valid records unchanged. Return {"operations":[]} only when the requested cleaning genuinely requires no supported changes.
+The application presents the proposals for review and preserves the normal extraction checkpoint.`;
 function extractionProviderMessages(request) {
   return [
     ...request.promptMessages,
     ...request.extractAttributes ? [{ role: "system", content: CONTINUITY_EXTRACTION_GUIDE }] : [],
     { role: "system", content: "Use optional aliases only for explicitly established alternate names of the same entity. Never equate similarly named entities automatically. In add or update.changes, aliases replaces the alias list; preserve valid earlier aliases." },
     { role: "system", content: EXTRACTION_ROW_REFERENCE_GUIDE },
-    ...request.contextPolicy?.enabled ? [{ role: "system", content: `The entityDirectory lists existing names in this chat's active tables for identity and duplicate checks. currentRows contains selected full records only. A missing detail record is not deleted or unknown. Update/delete only records supplied in currentRows. Reuse existing identities, including declared aliases, rather than creating duplicates. Preserve uncertainty and unchanged fields. The application validates references and revisions against the full stored snapshot.` }] : [],
+    ...request.contextPolicy?.enabled && request.batch.mode !== "cleaning" ? [{ role: "system", content: `The entityDirectory lists existing names in this chat's active tables for identity and duplicate checks. currentRows contains selected full records only. A missing detail record is not deleted or unknown. Update/delete only records supplied in currentRows. Reuse existing identities, including declared aliases, rather than creating duplicates. Preserve uncertainty and unchanged fields. The application validates references and revisions against the full stored snapshot.` }] : [],
     ...request.batch.mode === "cleaning" ? [{ role: "system", content: EXTRACTION_CLEANING_GUIDE }] : [],
     { role: "user", content: JSON.stringify(extractionRuntimeInput(request)) },
     ...request.additionalInstructions?.trim() ? [{ role: "system", content: request.additionalInstructions.trim() }] : []
@@ -22213,9 +22219,17 @@ function extractionRowReferences(rows) {
   }
   return references2;
 }
+function extractionContextRows(request) {
+  return selectExtractionRows(
+    request.rows,
+    request.types,
+    request.messages.map((message) => message.content).join("\n"),
+    request.batch.mode === "cleaning" ? void 0 : request.contextPolicy
+  );
+}
 function extractionRuntimeInput(request) {
   const referenceById = new Map([...extractionRowReferences(request.rows)].map(([ref, id2]) => [id2, ref]));
-  const selected = selectExtractionRows(request.rows, request.types, request.messages.map((message) => message.content).join("\n"), request.contextPolicy);
+  const selected = extractionContextRows(request);
   return {
     ...request.contextPolicy?.enabled ? {
       entityDirectory: request.rows.map((row) => ({
@@ -28846,13 +28860,15 @@ function applyOperationsToEntries(entries, catalog, operations, sourceBase) {
     entryByRowId.set(row.id, entry);
   }
   const initialRows = [...rows];
+  const deletedRowIds = new Set(sourceBase.extractionMode === "cleaning" ? operations.flatMap((operation) => operation.action === "delete" && rows.some((row) => row.id === operation.rowId && row.typeId === operation.typeId) ? [operation.rowId] : []) : []);
   for (const operation of operations) {
     const type = typeById.get(operation.typeId);
     if (!type) throw new Error(`Operation references an inactive type: ${operation.typeId}`);
     const now3 = (/* @__PURE__ */ new Date()).toISOString();
     const source = structuredClone(sourceBase);
+    const identityRows = deletedRowIds.size ? rows.filter((row) => !deletedRowIds.has(row.id)) : rows;
     if (operation.action === "add") {
-      if (!uniqueDataName(rows, type.id, operation.dataName)) {
+      if (!uniqueDataName(identityRows, type.id, operation.dataName)) {
         throw new Error(`Duplicate data name in ${type.name}: ${operation.dataName}`);
       }
       const row = {
@@ -28870,7 +28886,7 @@ function applyOperationsToEntries(entries, catalog, operations, sourceBase) {
         createdAt: now3,
         updatedAt: now3
       };
-      validateAliases(rows, row);
+      validateAliases(identityRows, row);
       row.enabled = type.enabled && currentFact(row.continuity);
       rows.push(row);
       entries.push(rowEntry(type, row));
@@ -28892,7 +28908,7 @@ function applyOperationsToEntries(entries, catalog, operations, sourceBase) {
       continue;
     }
     const dataName = operation.changes.dataName ?? current.dataName;
-    if (!uniqueDataName(rows, type.id, dataName, current.id)) {
+    if (!uniqueDataName(identityRows, type.id, dataName, current.id)) {
       throw new Error(`Duplicate data name in ${type.name}: ${dataName}`);
     }
     const updated = {
@@ -28911,7 +28927,7 @@ function applyOperationsToEntries(entries, catalog, operations, sourceBase) {
       revision: current.revision + 1,
       updatedAt: now3
     };
-    validateAliases(rows, updated);
+    validateAliases(identityRows, updated);
     updated.enabled = type.enabled && currentFact(updated.continuity);
     rows[rowIndex] = updated;
     applyRowToEntry(entry, type, updated);
@@ -29559,7 +29575,7 @@ function prepareSelectedExtraction(state, settings, selection, resumeAfterEndpoi
   const runtimePreview = JSON.stringify({
     batch: selection.batch,
     rowReferenceGuide: EXTRACTION_ROW_REFERENCE_GUIDE,
-    ...extractionRuntimeInput({ types, rows, messages: selection.messages, contextPolicy: settings.extractionContext })
+    ...extractionRuntimeInput({ types, rows, batch: selection.batch, messages: selection.messages, contextPolicy: settings.extractionContext })
   }, null, 2);
   return {
     request: {
@@ -29955,17 +29971,18 @@ var ExtractionCoordinator = class {
       const reviewItems = normalizeReviewItems(result);
       result.reviewItems = reviewItems;
       if (prepared.batch.mode === "cleaning" || reviewItems.some((item) => item.state === "rejected")) {
+        const cleaningHasRejections = prepared.batch.mode === "cleaning" && reviewItems.some((item) => item.state === "rejected");
         const review = {
           chatId: prepared.request.chatId,
           worldbookName: state.worldbookName,
           prepared: structuredClone(prepared),
           result: structuredClone(result),
           jobId: job.id,
-          selectedIndexes: reviewItems.filter((item) => item.state === "valid").map((item) => item.index),
+          selectedIndexes: cleaningHasRejections ? [] : reviewItems.filter((item) => item.state === "valid").map((item) => item.index),
           createdAt: (/* @__PURE__ */ new Date()).toISOString()
         };
         this.reviews.set(prepared.request.chatId, review);
-        const reviewMessage = prepared.batch.mode === "cleaning" ? "\u8BB0\u5FC6\u6E05\u6D17\u7ED3\u679C\u7B49\u5F85\u5BA1\u6838\uFF1B\u63D0\u4EA4\u540E\u4E0D\u4F1A\u79FB\u52A8\u6B63\u5E38\u63D0\u53D6\u68C0\u67E5\u70B9\u3002" : "\u6279\u6B21\u5305\u542B\u65E0\u6548\u64CD\u4F5C\uFF0C\u7B49\u5F85\u4EBA\u5DE5\u5BA1\u6838\u3002";
+        const reviewMessage = prepared.batch.mode === "cleaning" ? reviewItems.length === 0 ? "\u6A21\u578B\u672A\u63D0\u51FA\u4EFB\u4F55\u6E05\u6D17\u64CD\u4F5C\uFF0C\u73B0\u6709\u8BB0\u5FC6\u4FDD\u6301\u4E0D\u53D8\u3002" : cleaningHasRejections ? "\u6E05\u6D17\u5305\u542B\u65E0\u6548\u64CD\u4F5C\uFF0C\u672A\u81EA\u52A8\u52FE\u9009\u4EFB\u4F55\u64CD\u4F5C\uFF1B\u8BF7\u6838\u5BF9\u6574\u5408\u5185\u5BB9\u548C\u5BF9\u5E94\u5220\u9664\u9879\u3002" : "\u8BB0\u5FC6\u6E05\u6D17\u7ED3\u679C\u7B49\u5F85\u5BA1\u6838\uFF1B\u63D0\u4EA4\u540E\u4E0D\u4F1A\u79FB\u52A8\u6B63\u5E38\u63D0\u53D6\u68C0\u67E5\u70B9\u3002" : "\u6279\u6B21\u5305\u542B\u65E0\u6548\u64CD\u4F5C\uFF0C\u7B49\u5F85\u4EBA\u5DE5\u5BA1\u6838\u3002";
         this.pauses.set(prepared.request.chatId, reviewMessage);
         this.traces.set(prepared.request.chatId, {
           chatId: prepared.request.chatId,
@@ -34859,6 +34876,26 @@ async function memoryView(ctx) {
       await ctx.refresh();
     });
   };
+  const editRowYaml = (type, row) => {
+    const modal = editDialog("\u7F16\u8F91\u6761\u76EE YAML \xB7 " + row.dataName, [{
+      key: "yaml",
+      label: "\u6761\u76EE YAML",
+      type: "textarea",
+      rows: 22,
+      required: true,
+      value: encodeMemoryContent(type, row.dataName, row.values)
+    }], async (values) => {
+      ctx.guard();
+      const content = decodeMemoryContent(type, values.yaml);
+      await store.saveRow(type.id, {
+        ...content,
+        status: row.status,
+        keywords: row.keywords
+      }, row.id, row.revision);
+      await ctx.refresh();
+    });
+    modal.querySelector("textarea")?.classList.add("ew-editor");
+  };
   const draw = () => {
     const type = state.catalog.types.find((t) => t.id === ui.typeId);
     if (!type) {
@@ -34910,6 +34947,7 @@ async function memoryView(ctx) {
           stateBadge(row.status),
           actions(
             tool("\u7F16\u8F91 " + row.dataName, "pen", () => editRow(type, row)),
+            tool("\u7F16\u8F91\u6761\u76EE YAML", "code", () => editRowYaml(type, row)),
             tool("\u65F6\u95F4\u4E0E\u8BA4\u77E5\u5C5E\u6027", "clock", () => editContinuity(row.dataName + " \xB7 \u65F6\u95F4\u4E0E\u8BA4\u77E5", row.continuity, async (continuity) => {
               ctx.guard();
               await store.saveRow(type.id, { ...row, continuity }, row.id, row.revision);
