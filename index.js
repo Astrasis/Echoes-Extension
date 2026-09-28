@@ -15621,27 +15621,7 @@ function renderContinuity(value) {
     ...(value.knowledge ?? []).map((item) => `\u3010\u89D2\u8272\u8BA4\u77E5\uFF1A${item.character} / ${states[item.state]}${item.learnedTime ? ` / \u5F97\u77E5\u4E8E ${item.learnedTime}` : ""}\u3011${item.claim}`)
   ].filter(Boolean).join("\n");
 }
-function traverseMemoryLinks(roots, links, available, maxDepth, maximum) {
-  if (maximum <= 0 || maxDepth <= 0) return [];
-  const seen = new Set(roots.map(refKey));
-  let frontier = roots;
-  const result = [];
-  for (let depth = 0; depth < maxDepth && result.length < maximum; depth++) {
-    const next = [];
-    for (const root of frontier) for (const link of links) {
-      if (!link.enabled) continue;
-      const target = refKey(link.from) === refKey(root) ? link.to : refKey(link.to) === refKey(root) ? link.from : null;
-      if (!target || seen.has(refKey(target)) || !available.has(refKey(target))) continue;
-      seen.add(refKey(target));
-      result.push(target);
-      next.push(target);
-      if (result.length >= maximum) return result;
-    }
-    frontier = next;
-  }
-  return result;
-}
-var time3, continuitySchema, aliasSchema, continuitySettingsSchema, DEFAULT_CONTINUITY, states, CONTINUITY_EXTRACTION_GUIDE, memoryReferenceSchema, memoryLinkSchema, refKey;
+var time3, continuitySchema, aliasSchema, continuitySettingsSchema, DEFAULT_CONTINUITY, states, CONTINUITY_EXTRACTION_GUIDE;
 var init_continuity = __esm({
   "src/shared/continuity.ts"() {
     "use strict";
@@ -15677,11 +15657,6 @@ var init_continuity = __esm({
     aliasSchema = external_exports.array(external_exports.string().trim().min(1).max(240)).max(100);
     continuitySettingsSchema = external_exports.object({
       extractAttributes: external_exports.boolean().default(false),
-      associations: external_exports.object({
-        enabled: external_exports.boolean().default(false),
-        maxDepth: external_exports.number().int().min(1).max(3).default(1),
-        maxItems: external_exports.number().int().min(0).max(50).default(5)
-      }).default({ enabled: false, maxDepth: 1, maxItems: 5 }),
       triggers: external_exports.object({
         enabled: external_exports.boolean().default(false),
         maxQueries: external_exports.number().int().min(1).max(4).default(2),
@@ -15712,15 +15687,6 @@ Fictional format example, not source facts:
 {"continuity":{"eventTime":"2087-04","changeKind":"knowledge_change","knowledge":[{"character":"\u6D1B\u79BE","state":"suspected","claim":"\u7F57\u76D8\u7684\u5C01\u6761\u53EF\u80FD\u88AB\u66F4\u6362"}]}}
 
 Knowledge states refer to specific claims, not the entire scene. Preserve uncertainty; a later discovery is not earlier knowledge. Omission does not change existing attributes or default character-known rules. Distinguish an actual change from a correction to a previously erroneous record. Use superseded only if the entire record is invalidated. No conflict-priority rules or evidenceMessageIds.`;
-    memoryReferenceSchema = external_exports.object({ kind: external_exports.enum(["row", "summary"]), id: external_exports.string().min(1).max(240) }).strict();
-    memoryLinkSchema = external_exports.object({
-      id: external_exports.string().min(1).max(240),
-      from: memoryReferenceSchema,
-      to: memoryReferenceSchema,
-      relation: external_exports.string().trim().min(1).max(120),
-      enabled: external_exports.boolean()
-    }).strict();
-    refKey = (ref) => `${ref.kind}:${ref.id}`;
   }
 });
 
@@ -19029,7 +18995,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "3.2.6", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "3.2.7", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
@@ -19261,16 +19227,6 @@ function prunePool(catalog, removed) {
     entries: catalog.recallPool.entries.filter(keep),
     replay: catalog.recallPool.replay.filter(keep)
   } };
-}
-function disableRemovedLinks(entries, removed) {
-  return entries.map((entry) => {
-    const item = entry.extra?.echoes;
-    if (item?.kind !== "memory_links") return entry;
-    return { ...entry, extra: { ...entry.extra, echoes: {
-      ...item,
-      links: item.links.map((link) => [link.from, link.to].some((ref) => ref.kind === "summary" && removed.has(ref.id)) ? { ...link, enabled: false } : link)
-    } } };
-  });
 }
 function helper() {
   if (!window.TavernHelper) throw new Error("Echoes requires TavernHelper for summary storage.");
@@ -19558,7 +19514,7 @@ var SummaryWorldbookStore = class {
         const overviewIndex = nextEntries.findIndex((entry) => readBatchOverview(entry)?.batch.id === options.batch.id);
         if (overviewIndex < 0) nextEntries.push(batchOverviewEntry(overview));
         else nextEntries[overviewIndex] = { ...nextEntries[overviewIndex], ...batchOverviewEntry(overview) };
-        return disableRemovedLinks(nextEntries, new Set(removedIds));
+        return nextEntries;
       });
       return this.inspect(options.worldbookName);
     });
@@ -19893,10 +19849,10 @@ var SummaryWorldbookStore = class {
       const removedIds = new Set(removed.map((slice) => slice.id));
       const retained = state.slices.filter((slice) => slice.batch.source?.kind !== "imported" && !removedIds.has(slice.id));
       const previous = retained.filter((slice) => slice.batch.purpose !== "supplement").at(-1)?.batch;
-      await helper().updateWorldbookWith(worldbookName, (entries) => disableRemovedLinks(pruneBatchOverviews(entries.filter((entry) => {
+      await helper().updateWorldbookWith(worldbookName, (entries) => pruneBatchOverviews(entries.filter((entry) => {
         const item = metadata(entry);
         return item?.kind !== "summary_slice" || !removedIds.has(item.summaryId);
-      })), removedIds));
+      })));
       const nextCatalog = {
         ...prunePool(state.catalog, removedIds),
         nextBatchNumber: batchNumber,
@@ -30061,50 +30017,7 @@ var extractionCoordinator = new ExtractionCoordinator();
 init_continuity();
 init_settings();
 
-// src/extension/worldbook/memory-links.ts
-init_crypto_compat();
-init_continuity();
-async function readMemoryLinks(worldbookName) {
-  const entries = await window.TavernHelper.getWorldbook(worldbookName);
-  const metadata3 = entries.find((entry) => entry.extra?.echoes?.kind === "memory_links")?.extra?.echoes;
-  const links = memoryLinkSchema.array().max(1e4).parse(metadata3?.links ?? []);
-  return { worldbookName, chatId: SillyTavern.getContext().chatId ?? "", fingerprint: await sha256Hex(JSON.stringify(links)), links };
-}
-async function saveMemoryLinks(expected, links) {
-  const parsed = memoryLinkSchema.array().max(1e4).parse(links);
-  await worldbookWriteCoordinator.run(expected.worldbookName, async () => {
-    await window.TavernHelper.updateWorldbookWith(expected.worldbookName, async (entries) => {
-      if (SillyTavern.getContext().chatId !== expected.chatId || window.TavernHelper.getChatWorldbookName("current") !== expected.worldbookName) throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u5173\u8054\u672A\u4FDD\u5B58\u3002");
-      const old = entries.find((entry) => entry.extra?.echoes?.kind === "memory_links");
-      if (await sha256Hex(JSON.stringify(old?.extra?.echoes?.links ?? [])) !== expected.fingerprint) throw new Error("\u5173\u8054\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5\u3002");
-      const available = new Set(entries.flatMap((entry) => {
-        const item = entry.extra?.echoes;
-        return item?.kind === "row" ? [`row:${item.rowId}`] : item?.kind === "summary_slice" ? [`summary:${item.summaryId}`] : [];
-      }));
-      if (new Set(parsed.map((link) => link.id)).size !== parsed.length) throw new Error("\u5173\u8054 ID \u91CD\u590D\u3002");
-      for (const link of parsed) {
-        if (!available.has(refKey(link.from)) || !available.has(refKey(link.to))) {
-          const previous = expected.links.find((item) => item.id === link.id);
-          if (!previous || link.enabled || JSON.stringify(previous.from) !== JSON.stringify(link.from) || JSON.stringify(previous.to) !== JSON.stringify(link.to)) throw new Error("\u5173\u8054\u76EE\u6807\u5DF2\u5220\u9664\uFF0C\u8BF7\u79FB\u9664\u6216\u7981\u7528\u8BE5\u5173\u8054\u3002");
-        }
-        if (refKey(link.from) === refKey(link.to)) throw new Error("\u4E0D\u80FD\u5EFA\u7ACB\u81EA\u8EAB\u5173\u8054\u3002");
-      }
-      const value = {
-        name: "Echoes Memory Links",
-        enabled: false,
-        content: "Echoes memory links. Not injected.",
-        strategy: { type: "constant", keys: [] },
-        extra: { echoes: { kind: "memory_links", version: 1, links: parsed } }
-      };
-      if (old) Object.assign(old, value);
-      else entries.push(value);
-      return entries;
-    }, { render: "debounced" });
-  });
-}
-function newMemoryLink(from, to, relation) {
-  return { id: randomUuid(), from, to, relation, enabled: true };
-}
+// src/extension/summary/summary-original-source.ts
 async function summaryOriginalSource(slice, owner) {
   const check3 = () => {
     if (SillyTavern.getContext().chatId !== owner.chatId || window.TavernHelper.getChatWorldbookName("current") !== owner.worldbookName)
@@ -31620,7 +31533,7 @@ function planInjectionBudget(items, overhead, config2) {
   const base = estimateInjectionTokens(overhead);
   const requestedTokens = base + items.reduce((sum, item) => sum + tokens(item), 0);
   const selected = /* @__PURE__ */ new Set();
-  const order = ["status", "batch_overview", "retained", "recent", "semantic", "associated"];
+  const order = ["status", "batch_overview", "retained", "recent", "semantic"];
   let used = base;
   let blocked = limit > 0 && policy === "abort" && requestedTokens > limit;
   if (!blocked) for (const category of order) {
@@ -31665,133 +31578,7 @@ init_continuity();
 
 // src/extension/continuity-recall.ts
 init_continuity();
-init_settings();
-
-// src/extension/memory/table-injection.ts
-function memoryTableHeader(type) {
-  return [
-    `## \u7ED3\u6784\u5316\u8BB0\u5FC6\u8868\uFF1A${type.name}`,
-    ...type.description ? [`\u8868\u683C\u7528\u9014\uFF1A${type.description}`] : [],
-    "\u5B57\u6BB5\u4ECB\u7ECD\uFF1A",
-    "- \u6570\u636E\u540D\uFF1A\u672C\u6761\u8BB0\u5F55\u5BF9\u5E94\u7684\u4EBA\u7269\u3001\u4E8B\u7269\u6216\u4E8B\u9879\u540D\u79F0\u3002",
-    ...type.columns.map((column) => `- ${column.name}\uFF08${column.type}\uFF09\uFF1A${column.description || column.name}` + (column.enumValues?.length ? `\uFF1B\u53EF\u9009\u503C\uFF1A${column.enumValues.join("\u3001")}` : "")),
-    "\u672C\u6B21\u53EC\u56DE\u6761\u76EE\uFF1A"
-  ].join("\n");
-}
-var sources = /* @__PURE__ */ new WeakMap();
-async function groupActivatedTables({ activated: { entries } }) {
-  const helper6 = window.TavernHelper;
-  if (!helper6 || entries.size === 0) return;
-  let source = sources.get(entries);
-  if (!source) {
-    source = { books: /* @__PURE__ */ new Map(), originals: /* @__PURE__ */ new Map(), replacements: /* @__PURE__ */ new Map() };
-    sources.set(entries, source);
-  }
-  for (const [key, entry] of entries) {
-    if (entry !== source.replacements.get(key)) source.originals.set(key, entry);
-  }
-  const worlds = [...new Set([...entries.values()].map((entry) => entry.world))];
-  for (const world of worlds) {
-    if (!source.books.has(world)) source.books.set(world, await helper6.getWorldbook(world));
-  }
-  const groups = /* @__PURE__ */ new Map();
-  for (const [key] of entries) {
-    const entry = source.originals.get(key);
-    const book = source.books.get(entry.world);
-    const stored = book.find((item) => item.uid === entry.uid);
-    const metadata3 = stored?.extra?.echoes;
-    if (metadata3?.kind !== "row" || !entry.content.trim()) continue;
-    const types = book.find((item) => item.extra?.echoes?.kind === "catalog")?.extra?.echoes?.catalog?.types ?? [];
-    const type = types.find((item) => item.id === metadata3.typeId);
-    if (!type || !stored) continue;
-    const groupKey = JSON.stringify([entry.world, type.id, entry.position, entry.role, entry.depth, entry.outletName]);
-    const group = groups.get(groupKey) ?? { type, rows: [] };
-    group.rows.push({ key, entry, name: decodeMemoryContent(type, stored.content).dataName });
-    groups.set(groupKey, group);
-  }
-  for (const group of groups.values()) {
-    const content = [
-      memoryTableHeader(group.type),
-      ...group.rows.map(({ entry, name }) => `### \u6761\u76EE\uFF1A${name}
-${entry.content}`)
-    ].join("\n\n");
-    for (const [index, { key, entry }] of group.rows.entries()) {
-      const replacement2 = { ...entry, content: index === 0 ? content : "" };
-      entries.set(key, replacement2);
-      source.replacements.set(key, replacement2);
-    }
-  }
-}
-function installMemoryTableInjection() {
-  SillyTavern.getContext().eventSource?.on("worldinfo_scan_done", async (event) => {
-    try {
-      await groupActivatedTables(event);
-    } catch (error51) {
-      console.error("[Echoes] \u7ED3\u6784\u5316\u8BB0\u5FC6\u5206\u8868\u6CE8\u5165\u5931\u8D25", error51);
-      toastr.warning("\u7ED3\u6784\u5316\u8BB0\u5FC6\u5206\u8868\u6CE8\u5165\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u539F\u6761\u76EE\uFF1B\u8BF7\u67E5\u770B\u63A7\u5236\u53F0\u65E5\u5FD7\u3002", "Echoes");
-    }
-  });
-}
-
-// src/extension/continuity-recall.ts
 var renderSummaryBody = (slice) => [slice.content, renderContinuity(slice.continuity)].filter(Boolean).join("\n");
-function renderAssociatedMemories(items) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const item of items) {
-    const key = item.tableKey ?? item.id;
-    const group = groups.get(key) ?? { header: item.tableHeader ?? "", contents: [] };
-    group.contents.push(item.text);
-    groups.set(key, group);
-  }
-  return [...groups.values()].map(({ header, contents }) => [header, ...contents].filter(Boolean).join("\n\n")).join("\n\n");
-}
-async function associatedMemories(state, slices, query) {
-  const config2 = getSettings().continuity?.associations ?? DEFAULT_CONTINUITY.associations;
-  if (!config2.enabled || !config2.maxItems) return [];
-  const store2 = new WorldbookMemoryStore();
-  const memory = await store2.inspect(state.worldbookName);
-  const links = await readMemoryLinks(state.worldbookName);
-  const rows = memory.rows.filter((row) => row.enabled && currentFact(row.continuity));
-  const summaries = state.slices.filter((slice) => slice.batch.state !== "stale" && slice.continuity?.validity !== "superseded" && !state.catalog.pendingRetrievalDeletes.includes(slice.id));
-  const roots = slices.map((slice) => ({ kind: "summary", id: slice.id }));
-  const names = /* @__PURE__ */ new Map();
-  for (const row of rows) for (const name of [row.dataName, ...declaredAliases(row, memory.catalog.types)]) {
-    const key = name.trim().toLowerCase();
-    const ids = names.get(key) ?? /* @__PURE__ */ new Set();
-    ids.add(row.id);
-    names.set(key, ids);
-  }
-  const matching = rows.filter((row) => [row.dataName, ...declaredAliases(row, memory.catalog.types)].some((name) => name.length > 1 && names.get(name.trim().toLowerCase())?.size === 1 && query.toLowerCase().includes(name.toLowerCase())));
-  const available = /* @__PURE__ */ new Set([...rows.map((row) => `row:${row.id}`), ...summaries.map((slice) => `summary:${slice.id}`)]);
-  const visited = new Set(roots.map(refKey));
-  const references2 = [
-    ...traverseMemoryLinks(roots, links.links, available, config2.maxDepth, config2.maxItems),
-    ...traverseMemoryLinks([...roots, ...matching.map((row) => ({ kind: "row", id: row.id }))], links.links, available, config2.maxDepth, config2.maxItems)
-  ].filter((ref) => {
-    if (visited.has(refKey(ref))) return false;
-    visited.add(refKey(ref));
-    return true;
-  }).slice(0, config2.maxItems);
-  return references2.flatMap((ref) => {
-    if (ref.kind === "summary") {
-      const slice = summaries.find((item) => item.id === ref.id);
-      return [{ id: refKey(ref), title: slice.title, text: `[\u5173\u8054\u7ECF\u5386\uFF1A${slice.timestamp} / ${slice.title}]
-${renderSummaryBody(slice)}` }];
-    }
-    const row = rows.find((item) => item.id === ref.id);
-    const type = memory.catalog.types.find((item) => item.id === row.typeId);
-    const details = type.columns.filter((column) => row.values[column.id] !== void 0).map((column) => `${column.name}\uFF1A${typeof row.values[column.id] === "string" ? row.values[column.id] : JSON.stringify(row.values[column.id])}`).join("\n");
-    return [{
-      id: refKey(ref),
-      title: row.dataName,
-      tableKey: JSON.stringify([state.worldbookName, type.id]),
-      tableHeader: memoryTableHeader(type),
-      text: `### \u6761\u76EE\uFF1A${row.dataName}
-${details}
-${renderContinuity(row.continuity)}`.trim()
-    }];
-  });
-}
 function statusTriggerQueries(state, nearDays) {
   if (!state) return [];
   const scene = state["\u65F6\u7A7A\u72B6\u6001"];
@@ -32820,29 +32607,7 @@ var RecallCoordinator = class {
     let selectedHits = options.semanticHits;
     let selectedRetained = retained;
     let injectionBudget;
-    let associatedCount = 0;
     if (locked) {
-      const associated = [];
-      const associationConfig = getSettings().continuity?.associations ?? DEFAULT_CONTINUITY.associations;
-      if (options.current.catalog.recallEnabled && associationConfig.enabled && associationConfig.maxItems) {
-        const sources2 = [options.current];
-        for (const source of options.sources) {
-          if (source.worldbookName === options.current.worldbookName || source.mode === "unavailable" || !options.semanticHits.some((hit) => hit.document.collectionId === source.collectionId)) continue;
-          const fresh = await this.summaryStore.inspect(source.worldbookName).catch(() => null);
-          if (fresh && fresh.catalog.namespaceId === source.namespaceId && fresh.catalog.chatId === source.chatId) sources2.push(fresh);
-        }
-        for (const source of sources2) {
-          const roots = source.slices.filter((slice) => options.semanticHits.some((hit) => hit.document.collectionId === source.catalog.retrievalCollectionId && hit.document.sourceId === slice.id) || source.catalog.namespaceId === options.current.catalog.namespaceId && options.recentSlices.some((recent2) => recent2.id === slice.id) || retained.some((item) => item.namespaceId === source.catalog.namespaceId && item.sliceId === slice.id));
-          const extras = await associatedMemories(source, roots, source.worldbookName === options.current.worldbookName ? options.query : "").catch((error51) => {
-            console.warn("[Echoes] \u5173\u8054\u8D44\u6599\u8BFB\u53D6\u5931\u8D25", error51);
-            return [];
-          });
-          associated.push(...extras.slice(0, associationConfig.maxItems - associated.length).map((item) => ({ ...item, id: `${source.catalog.namespaceId}:${item.id}`, text: `[\u6765\u6E90\uFF1A${source.catalog.chatId}]
-${item.text}` })));
-          if (associated.length >= associationConfig.maxItems) break;
-        }
-      }
-      guard();
       const worldbookEntries = await window.TavernHelper.getWorldbook(options.current.worldbookName);
       const statusText = options.inject ? worldbookEntries.filter((entry) => entry.enabled && entry.extra?.echoes?.kind === "status_injection").map((entry) => entry.content).join("\n\n") : await statusCoordinator.previewInjection();
       const batchOverviews = worldbookEntries.filter((entry) => entry.enabled && entry.extra?.echoes?.kind === "summary_batch_overview" && entry.content.trim());
@@ -32880,17 +32645,11 @@ ${renderSummaryBody(slice)}`,
           category: "retained",
           text: `[Retained memory: ${slice.timestamp} \xB7 ${slice.title}]
 ${renderSummaryBody(slice)}`
-        })),
-        ...associated.map((item) => ({
-          ...item,
-          id: `associated:${item.id}`,
-          text: renderAssociatedMemories([item]),
-          category: "associated"
         }))
       ];
       const overhead = renderInjectionTemplate(template, "", "");
       const recentPlan = planInjectionBudget(
-        items.filter((item) => item.category !== "semantic" && item.category !== "associated"),
+        items.filter((item) => item.category !== "semantic"),
         overhead,
         recall.budget?.overflow === "abort" ? { ...recall.budget, maxTokens: 0 } : recall.budget
       );
@@ -32909,10 +32668,7 @@ ${renderSummaryBody(slice)}`;
       }).join("\n\n");
       const retainedText = selectedRetained.map(({ slice }) => `[Retained memory: ${slice.timestamp} \xB7 ${slice.title}]
 ${renderSummaryBody(slice)}`).join("\n\n");
-      const selectedAssociated = associated.filter((item) => plan.selected.has(`associated:${item.id}`));
-      associatedCount = selectedAssociated.length;
-      const associatedText = renderAssociatedMemories(selectedAssociated);
-      let content = !recent && !memories && !retainedText && !associatedText ? "" : [retainedText, associatedText, renderInjectionTemplate(
+      let content = !recent && !memories && !retainedText ? "" : [retainedText, renderInjectionTemplate(
         getSettings().retrieval.recall.injection.template,
         recent,
         memories
@@ -32927,7 +32683,6 @@ ${renderSummaryBody(slice)}`).join("\n\n");
         selectedRecent = [];
         selectedHits = [];
         selectedRetained = [];
-        associatedCount = 0;
         injectionBudget.injectedTokens = 0;
         injectionBudget.overflow = false;
         for (const category of injectionBudget.categories) category.injectedTokens = 0;
@@ -32961,7 +32716,7 @@ ${renderSummaryBody(slice)}`).join("\n\n");
             guard();
           }
         });
-        injected = selectedRecent.length + selectedHits.length + selectedRetained.length + associatedCount;
+        injected = selectedRecent.length + selectedHits.length + selectedRetained.length;
       }
     }
     if (options.inject && locked && !injectionBudget?.blocked && options.current.catalog.recallEnabled && retentionPool) {
@@ -32984,11 +32739,10 @@ ${renderSummaryBody(slice)}`).join("\n\n");
         { name: "\u6E90\u6821\u9A8C\u540E\u7684\u6700\u7EC8\u7ED3\u679C", count: options.semanticHits.length },
         { name: "\u8FD1\u671F\u603B\u7ED3", count: options.recentSlices.length },
         { name: "\u989D\u5916\u6EDE\u7559", count: retained.length },
-        { name: "\u5173\u8054\u8D44\u6599", count: associatedCount },
         { name: "\u9884\u7B97\u6392\u9664\u5207\u7247", count: injectionBudget?.omitted.filter((item) => item.category !== "status" && item.category !== "batch_overview").length ?? 0 },
         {
           name: options.inject ? "\u5B9E\u9645\u6CE8\u5165" : "\u9884\u89C8\u6CE8\u5165\uFF08\u672A\u5199\u5165\uFF09",
-          count: options.inject ? injected : selectedHits.length + selectedRecent.length + selectedRetained.length + associatedCount
+          count: options.inject ? injected : selectedHits.length + selectedRecent.length + selectedRetained.length
         }
       ],
       chatId: options.current.catalog.chatId,
@@ -33584,9 +33338,6 @@ function continuityExtractionSettings(ctx) {
 function continuityRecallSettings(ctx) {
   const config2 = getSettings().continuity ?? DEFAULT_CONTINUITY;
   const form = fields([
-    { key: "links", label: "\u8865\u5145\u663E\u5F0F\u5173\u8054\u8D44\u6599", type: "checkbox", value: config2.associations.enabled },
-    { key: "depth", label: "\u6700\u5927\u5173\u8054\u6DF1\u5EA6", type: "number", min: 1, max: 3, required: true, value: config2.associations.maxDepth },
-    { key: "items", label: "\u5173\u8054\u8D44\u6599\u603B\u4E0A\u9650", type: "number", min: 0, max: 50, required: true, value: config2.associations.maxItems },
     { key: "triggers", label: "\u72B6\u6001\u9A71\u52A8\u67E5\u8BE2", type: "checkbox", value: config2.triggers.enabled },
     { key: "queries", label: "\u72B6\u6001\u67E5\u8BE2\u4E0A\u9650", type: "number", min: 1, max: 4, required: true, value: config2.triggers.maxQueries },
     { key: "days", label: "\u7EA6\u5B9A\u4E34\u8FD1\u5929\u6570", type: "number", min: 0, max: 30, required: true, value: config2.triggers.nearDays },
@@ -33604,7 +33355,6 @@ function continuityRecallSettings(ctx) {
     const settings = getSettings();
     settings.continuity = {
       ...settings.continuity ?? structuredClone(DEFAULT_CONTINUITY),
-      associations: { enabled: v.links, maxDepth: v.depth, maxItems: v.items },
       triggers: { enabled: v.triggers, maxQueries: v.queries, nearDays: v.days },
       supplement: { auto: v.auto, maxRequests: v.requests, maxWaitMs: v.wait, maxItems: v.extra, minimumHits: v.hits, allowPaid: v.paid }
     };
@@ -33637,75 +33387,8 @@ function continuityRecallSettings(ctx) {
     );
   })), results));
 }
-async function memoryLinksView(ctx, state) {
-  let snapshot = await readMemoryLinks(state.worldbookName);
-  const summary = await new SummaryWorldbookStore().inspect(state.worldbookName).catch(() => null);
-  const nodes = [
-    ...state.rows.map((row) => ({ ref: { kind: "row", id: row.id }, label: `${state.catalog.types.find((t) => t.id === row.typeId)?.name} / ${row.dataName} / ${row.id}` })),
-    ...(summary?.slices ?? []).map((slice) => ({ ref: { kind: "summary", id: slice.id }, label: `\u603B\u7ED3 ${slice.batch.batchNumber}.${slice.sliceNumber} / ${slice.timestamp} / ${slice.title}` }))
-  ];
-  const labels = new Map(nodes.map((node) => [refKey(node.ref), node.label]));
-  const ui = local(ctx, "links-filter", () => ({ query: "", page: 0 }));
-  const host = el("div");
-  const persist = async (links) => {
-    ctx.guard();
-    await saveMemoryLinks(snapshot, links);
-    snapshot = await readMemoryLinks(state.worldbookName);
-    draw();
-  };
-  const edit = (old) => editDialog(old ? "\u7F16\u8F91\u5173\u8054" : "\u65B0\u589E\u5173\u8054", [
-    { key: "from", label: "\u6765\u6E90\u8BB0\u5FC6", type: "select", required: true, value: old ? refKey(old.from) : void 0, options: nodes.map((node) => [refKey(node.ref), node.label]) },
-    { key: "to", label: "\u76EE\u6807\u8BB0\u5FC6", type: "select", required: true, value: old ? refKey(old.to) : void 0, options: nodes.map((node) => [refKey(node.ref), node.label]) },
-    { key: "relation", label: "\u5173\u8054\u8BF4\u660E", required: true, value: old?.relation ?? "" },
-    { key: "enabled", label: "\u542F\u7528\u5173\u8054", type: "checkbox", value: old?.enabled ?? true }
-  ], async (v) => {
-    const from = nodes.find((node) => refKey(node.ref) === v.from)?.ref;
-    const to = nodes.find((node) => refKey(node.ref) === v.to)?.ref;
-    if (!from || !to) throw new Error("\u8BF7\u9009\u62E9\u6709\u6548\u7684\u5173\u8054\u76EE\u6807\u3002");
-    const link = { ...newMemoryLink(from, to, v.relation), ...old ? { id: old.id } : {}, enabled: v.enabled };
-    await persist(old ? snapshot.links.map((item) => item.id === old.id ? link : item) : [...snapshot.links, link]);
-  });
-  const draw = () => {
-    const all = snapshot.links.filter((link) => `${labels.get(refKey(link.from))} ${labels.get(refKey(link.to))} ${link.relation}`.toLowerCase().includes(ui.query.toLowerCase()));
-    const pages = Math.max(1, Math.ceil(all.length / 50));
-    ui.page = Math.min(ui.page, pages - 1);
-    const prev = tool("\u4E0A\u4E00\u9875\u5173\u8054", "chevron-left", () => {
-      ui.page--;
-      draw();
-    });
-    const next = tool("\u4E0B\u4E00\u9875\u5173\u8054", "chevron-right", () => {
-      ui.page++;
-      draw();
-    });
-    prev.disabled = ui.page === 0;
-    next.disabled = ui.page >= pages - 1;
-    host.replaceChildren(all.length ? table(["\u6765\u6E90", "\u76EE\u6807", "\u5173\u8054", "\u542F\u7528", "\u64CD\u4F5C"], all.slice(ui.page * 50, ui.page * 50 + 50).map((link) => [
-      labels.get(refKey(link.from)) ?? `\u5DF2\u5220\u9664\uFF1A${refKey(link.from)}`,
-      labels.get(refKey(link.to)) ?? `\u5DF2\u5220\u9664\uFF1A${refKey(link.to)}`,
-      link.relation,
-      check2("\u542F\u7528 " + link.relation, link.enabled, (enabled) => persist(snapshot.links.map((item) => item.id === link.id ? { ...item, enabled } : item))),
-      actions(tool("\u7F16\u8F91\u5173\u8054", "pen", () => edit(link)), tool("\u5220\u9664\u5173\u8054", "trash", async () => {
-        if (confirm("\u5220\u9664\u6B64\u5173\u8054\uFF1F\u8BB0\u5FC6\u6B63\u6587\u4FDD\u6301\u4E0D\u53D8\u3002")) await persist(snapshot.links.filter((item) => item.id !== link.id));
-      }, "danger"))
-    ])) : empty("\u6682\u65E0\u5173\u8054"), actions(prev, badge(`${ui.page + 1} / ${pages}`), next));
-  };
-  draw();
-  return el(
-    "div",
-    "ew-page-content",
-    actions(button("\u65B0\u589E\u5173\u8054", "plus", () => edit(), "primary")),
-    searchBox(ui.query, (value) => {
-      ui.query = value;
-      ui.page = 0;
-      draw();
-    }, "\u641C\u7D22\u5173\u8054", ctx.signal),
-    host
-  );
-}
 async function memoryHistoryView(ctx, state) {
   const records2 = await readMemoryHistory(state.worldbookName);
-  const links = await readMemoryLinks(state.worldbookName);
-  const summary = await new SummaryWorldbookStore().inspect(state.worldbookName).catch(() => null);
   const ui = local(ctx, "history-filter", () => ({ query: "", page: 0 }));
   const host = el("div");
   const draw = () => {
@@ -33727,14 +33410,12 @@ async function memoryHistoryView(ctx, state) {
       record3.after?.name ?? record3.before?.name ?? record3.rowId,
       historyLabels[record3.kind] ?? record3.kind,
       tool("\u67E5\u770B\u524D\u540E\u5BF9\u7167", "code-compare", () => {
-        const affected = links.links.flatMap((link) => refKey(link.from) === `row:${record3.rowId}` && link.to.kind === "summary" ? [link.to.id] : refKey(link.to) === `row:${record3.rowId}` && link.from.kind === "summary" ? [link.from.id] : []);
         dialog("\u5386\u53F2\u53D8\u5316\u5BF9\u7167", el(
           "div",
           "ew-page-content",
           section("\u4FEE\u6539\u524D", el("pre", "ew-code", record3.before?.content ?? "\u65E0")),
           section("\u4FEE\u6539\u540E", el("pre", "ew-code", record3.after?.content ?? "\u5DF2\u5220\u9664")),
-          detail("\u5143\u6570\u636E\u5BF9\u7167", { before: record3.before?.metadata, after: record3.after?.metadata }),
-          detail("\u53EF\u80FD\u53D7\u5F71\u54CD\u7684\u663E\u5F0F\u5173\u8054\u5207\u7247\uFF08\u672A\u81EA\u52A8\u4FEE\u6539\uFF09", summary?.slices.filter((slice) => affected.includes(slice.id)).map((slice) => ({ id: slice.id, title: slice.title, timestamp: slice.timestamp })) ?? [])
+          detail("\u5143\u6570\u636E\u5BF9\u7167", { before: record3.before?.metadata, after: record3.after?.metadata })
         ));
       })
     ])) : empty("\u6682\u65E0\u5386\u53F2\u53D8\u5316"), actions(prev, badge(`${ui.page + 1} / ${pages}`), next));
@@ -34267,7 +33948,6 @@ var store = new WorldbookMemoryStore();
 async function memoryView(ctx) {
   const state = await store.load();
   if (ctx.signal.aborted) return el("div");
-  if (ctx.route === "memory/links") return memoryLinksView(ctx, state);
   if (ctx.route === "memory/history") return memoryHistoryView(ctx, state);
   const page = el("div", "ew-page-content");
   const saveType = (type) => typeEditor(type, async (v) => {
@@ -34551,7 +34231,7 @@ async function memoryView(ctx) {
       { key: "enabled", label: "\u6309\u9700\u63D0\u4F9B\u5199\u8868\u8BE6\u60C5", type: "checkbox", value: policy.enabled },
       { key: "maxRows", label: "\u6700\u591A\u5B8C\u6574\u6761\u76EE\u6570", type: "number", min: 1, max: 1e3, value: policy.maxRows, required: true },
       { key: "maxCharacters", label: "\u5B8C\u6574\u6761\u76EE\u5B57\u7B26\u9884\u7B97", type: "number", min: 2e3, max: 5e5, value: policy.maxCharacters, required: true },
-      { key: "relatedRows", label: "\u6700\u591A\u76F4\u63A5\u5173\u8054\u6761\u76EE\u6570", type: "number", min: 0, max: 100, value: policy.relatedRows, required: true }
+      { key: "relatedRows", label: "\u6700\u591A\u5B57\u6BB5\u5F15\u7528\u6761\u76EE\u6570", type: "number", min: 0, max: 100, value: policy.relatedRows, required: true }
     ]);
     page.append(section("\u5199\u8868\u4E0A\u4E0B\u6587", saveForm(contextForm, (values) => {
       const s = getSettings();
@@ -34782,7 +34462,7 @@ async function memoryView(ctx) {
             ctx.guard();
             const targets = selectedRows();
             if (!targets.length) return;
-            if (!confirm(`\u5220\u9664\u9009\u4E2D\u7684 ${targets.length} \u6761\u7ED3\u6784\u5316\u8BB0\u5FC6\uFF1F\u6761\u76EE\u4F1A\u4ECE\u4E16\u754C\u4E66\u79FB\u9664\uFF0C\u4ECD\u53EF\u5728\u201C\u5386\u53F2\u53D8\u5316\u201D\u4E2D\u67E5\u770B\u4FEE\u6539\u8BB0\u5F55\uFF1B\u6307\u5411\u8FD9\u4E9B\u6761\u76EE\u7684\u8BB0\u5FC6\u5173\u8054\u4F1A\u663E\u793A\u4E3A\u5DF2\u5220\u9664\u3002`)) return;
+            if (!confirm(`\u5220\u9664\u9009\u4E2D\u7684 ${targets.length} \u6761\u7ED3\u6784\u5316\u8BB0\u5FC6\uFF1F\u6761\u76EE\u4F1A\u4ECE\u4E16\u754C\u4E66\u79FB\u9664\uFF0C\u4ECD\u53EF\u5728\u201C\u5386\u53F2\u53D8\u5316\u201D\u4E2D\u67E5\u770B\u4FEE\u6539\u8BB0\u5F55\u3002`)) return;
             await ctx.run("\u6279\u91CF\u5220\u9664\u7ED3\u6784\u5316\u8BB0\u5FC6", () => store.deleteRows(targets.map((row) => row.id)));
             ui.selected.clear();
             await ctx.refresh();
@@ -35412,7 +35092,7 @@ function recallTraceView(trace) {
   if (trace.message) root.append(el("p", "ew-muted", trace.message));
   if (trace.injectionBudget) {
     const budget = trace.injectionBudget;
-    const labels = { status: "\u72B6\u6001", batch_overview: "\u5E38\u9A7B\u6279\u6B21\u603B\u7ED3", recent: "\u8FD1\u671F\u603B\u7ED3", semantic: "\u666E\u901A\u53EC\u56DE", retained: "\u6EDE\u7559\u5207\u7247", associated: "\u5173\u8054\u8D44\u6599" };
+    const labels = { status: "\u72B6\u6001", batch_overview: "\u5E38\u9A7B\u6279\u6B21\u603B\u7ED3", recent: "\u8FD1\u671F\u603B\u7ED3", semantic: "\u666E\u901A\u53EC\u56DE", retained: "\u6EDE\u7559\u5207\u7247" };
     root.append(section(
       "\u6CE8\u5165\u9884\u7B97\uFF08\u672C\u5730\u4F30\u7B97 Token\uFF09",
       actions(
@@ -38369,7 +38049,7 @@ init_continuity();
 init_recall_invalidation();
 var MAX_BACKUP_BYTES = 100 * 1024 * 1024;
 var TEMPORARY_KINDS = /* @__PURE__ */ new Set(["retrieval_injection", "status_injection"]);
-var PERSISTENT_KINDS = /* @__PURE__ */ new Set(["catalog", "row", "summary_catalog", "summary_slice", "summary_batch_overview", "status_catalog", "memory_links", "memory_history"]);
+var PERSISTENT_KINDS = /* @__PURE__ */ new Set(["catalog", "row", "summary_catalog", "summary_slice", "summary_batch_overview", "status_catalog", "memory_history"]);
 function helper5() {
   if (!window.TavernHelper?.setChatMessages) {
     throw new Error("Echoes backup restore requires TavernHelper message write APIs.");
@@ -38532,7 +38212,6 @@ function validatePortableEntry(entry) {
     });
   } else if (kind === "summary_batch_overview") batchOverviewSchema.parse(echoes.overview);
   else if (kind === "status_catalog") statusCatalogSchema.parse(echoes.catalog);
-  else if (kind === "memory_links") memoryLinkSchema.array().max(1e4).parse(echoes.links);
   else if (kind === "memory_history") memoryHistorySchema.parse(echoes.record);
 }
 function portableEntry(entry) {
@@ -38784,19 +38463,6 @@ async function rewriteEntry(entry, mode, backup, targetChatId, replacements, tar
       echoes.catalog.enabled = false;
       echoes.catalog.autoUpdate = false;
     }
-  }
-  if (kind === "memory_links") {
-    echoes.links = memoryLinkSchema.array().parse(echoes.links).map((link) => ({
-      ...link,
-      id: uniqueId5("link"),
-      from: { ...link.from, id: String(replacement(link.from.id, replacements)) },
-      to: { ...link.to, id: String(replacement(link.to.id, replacements)) },
-      enabled: link.enabled && [link.from, link.to].every((ref) => backup.worldbookEntries.some((entry2) => {
-        const meta3 = entry2.extra.echoes;
-        return ref.kind === "row" ? meta3.kind === "row" && meta3.rowId === ref.id : meta3.kind === "summary_slice" && meta3.summaryId === ref.id;
-      }))
-    }));
-    rewritten.enabled = false;
   }
   if (kind === "memory_history") {
     echoes.record.id = uniqueId5("history");
@@ -40081,7 +39747,6 @@ var navigation = [
       ["memory/tasks", "\u63D0\u53D6\u4EFB\u52A1"],
       ["memory/cleaning", "\u8BB0\u5FC6\u6E05\u6D17"],
       ["memory/review", "\u64CD\u4F5C\u5BA1\u6838"],
-      ["memory/links", "\u8BB0\u5FC6\u5173\u8054"],
       ["memory/history", "\u5386\u53F2\u53D8\u5316"]
     ]
   },
@@ -40556,6 +40221,72 @@ var MemoryPanel = class {
     this.updateTasks();
   }
 };
+
+// src/extension/memory/table-injection.ts
+function memoryTableHeader(type) {
+  return [
+    `## \u7ED3\u6784\u5316\u8BB0\u5FC6\u8868\uFF1A${type.name}`,
+    ...type.description ? [`\u8868\u683C\u7528\u9014\uFF1A${type.description}`] : [],
+    "\u5B57\u6BB5\u4ECB\u7ECD\uFF1A",
+    "- \u6570\u636E\u540D\uFF1A\u672C\u6761\u8BB0\u5F55\u5BF9\u5E94\u7684\u4EBA\u7269\u3001\u4E8B\u7269\u6216\u4E8B\u9879\u540D\u79F0\u3002",
+    ...type.columns.map((column) => `- ${column.name}\uFF08${column.type}\uFF09\uFF1A${column.description || column.name}` + (column.enumValues?.length ? `\uFF1B\u53EF\u9009\u503C\uFF1A${column.enumValues.join("\u3001")}` : "")),
+    "\u672C\u6B21\u53EC\u56DE\u6761\u76EE\uFF1A"
+  ].join("\n");
+}
+var sources = /* @__PURE__ */ new WeakMap();
+async function groupActivatedTables({ activated: { entries } }) {
+  const helper6 = window.TavernHelper;
+  if (!helper6 || entries.size === 0) return;
+  let source = sources.get(entries);
+  if (!source) {
+    source = { books: /* @__PURE__ */ new Map(), originals: /* @__PURE__ */ new Map(), replacements: /* @__PURE__ */ new Map() };
+    sources.set(entries, source);
+  }
+  for (const [key, entry] of entries) {
+    if (entry !== source.replacements.get(key)) source.originals.set(key, entry);
+  }
+  const worlds = [...new Set([...entries.values()].map((entry) => entry.world))];
+  for (const world of worlds) {
+    if (!source.books.has(world)) source.books.set(world, await helper6.getWorldbook(world));
+  }
+  const groups = /* @__PURE__ */ new Map();
+  for (const [key] of entries) {
+    const entry = source.originals.get(key);
+    const book = source.books.get(entry.world);
+    const stored = book.find((item) => item.uid === entry.uid);
+    const metadata3 = stored?.extra?.echoes;
+    if (metadata3?.kind !== "row" || !entry.content.trim()) continue;
+    const types = book.find((item) => item.extra?.echoes?.kind === "catalog")?.extra?.echoes?.catalog?.types ?? [];
+    const type = types.find((item) => item.id === metadata3.typeId);
+    if (!type || !stored) continue;
+    const groupKey = JSON.stringify([entry.world, type.id, entry.position, entry.role, entry.depth, entry.outletName]);
+    const group = groups.get(groupKey) ?? { type, rows: [] };
+    group.rows.push({ key, entry, name: decodeMemoryContent(type, stored.content).dataName });
+    groups.set(groupKey, group);
+  }
+  for (const group of groups.values()) {
+    const content = [
+      memoryTableHeader(group.type),
+      ...group.rows.map(({ entry, name }) => `### \u6761\u76EE\uFF1A${name}
+${entry.content}`)
+    ].join("\n\n");
+    for (const [index, { key, entry }] of group.rows.entries()) {
+      const replacement2 = { ...entry, content: index === 0 ? content : "" };
+      entries.set(key, replacement2);
+      source.replacements.set(key, replacement2);
+    }
+  }
+}
+function installMemoryTableInjection() {
+  SillyTavern.getContext().eventSource?.on("worldinfo_scan_done", async (event) => {
+    try {
+      await groupActivatedTables(event);
+    } catch (error51) {
+      console.error("[Echoes] \u7ED3\u6784\u5316\u8BB0\u5FC6\u5206\u8868\u6CE8\u5165\u5931\u8D25", error51);
+      toastr.warning("\u7ED3\u6784\u5316\u8BB0\u5FC6\u5206\u8868\u6CE8\u5165\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u539F\u6761\u76EE\uFF1B\u8BF7\u67E5\u770B\u63A7\u5236\u53F0\u65E5\u5FD7\u3002", "Echoes");
+    }
+  });
+}
 
 // src/extension/index.ts
 var panel = null;
