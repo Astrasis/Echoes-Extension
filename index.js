@@ -20389,10 +20389,15 @@ function marker(message) {
 }
 function compressionPatch(message, compression2, hidden) {
   const extra = withMarker(message, compression2);
+  const raw = SillyTavern.getContext().chat[message.message_id];
+  const swipes = Array.isArray(raw?.swipes) && raw.swipes.length ? raw.swipes.map(String) : [String(raw?.mes ?? message.message ?? "")];
+  const swipesInfo = swipes.map((_, index) => structuredClone(raw?.swipe_info?.[index] ?? {}));
   const carrier = message.data && typeof message.data === "object" && !Array.isArray(message.data) ? { data: message.data } : { message: String(message.message ?? "") };
   return {
     message_id: message.message_id,
     ...hidden === void 0 ? {} : { is_hidden: hidden },
+    swipes,
+    swipes_info: swipesInfo,
     extra,
     ...carrier
   };
@@ -36397,7 +36402,7 @@ async function summaryView(ctx) {
         )),
         button("\u786E\u8BA4\u66FF\u6362\u8BE5\u6279\u6B21", "floppy-disk", async () => {
           ctx.guard();
-          if (!confirm("\u7528\u8FD9\u4E9B\u5019\u9009\u66FF\u6362\u8BE5\u6279\u6B21\u7684\u5F53\u524D\u6B63\u6587\uFF1F\u4E0D\u4F1A\u91CD\u65B0\u751F\u6210\u5207\u7247\uFF0C\u4F46\u4F1A\u5355\u72EC\u8C03\u7528\u603B\u7ED3\u526F API \u751F\u6210\u6279\u6B21\u603B\u7ED3\uFF1B\u672A\u786E\u8BA4\u5BF9\u5E94\u7684\u5173\u8054\u4E0D\u4F1A\u81EA\u52A8\u8FC1\u79FB\u3002")) return;
+          if (!confirm("\u7528\u8FD9\u4E9B\u5019\u9009\u66FF\u6362\u8BE5\u6279\u6B21\u7684\u5F53\u524D\u6B63\u6587\uFF1F\u4E0D\u4F1A\u91CD\u65B0\u751F\u6210\u5207\u7247\uFF0C\u4F46\u4F1A\u5355\u72EC\u8C03\u7528\u603B\u7ED3\u526F API \u751F\u6210\u6279\u6B21\u603B\u7ED3\u3002")) return;
           await ctx.run("\u4FDD\u5B58\u91CD\u5EFA\u5019\u9009\u4E0E\u6279\u6B21\u603B\u7ED3", () => coordinator.commitRebuildDraft(draft.batch.id, expected), () => coordinator.stop());
           await ctx.refresh();
         }),
@@ -38129,31 +38134,23 @@ function restoreEchoesStatusValues(current, original) {
     };
   }
 }
-function restoreEchoesSwipeData(current, original) {
-  for (const value of current) {
-    if (value?.variables && typeof value.variables === "object") delete value.variables.echoes_status;
-  }
-  for (const [indexText, value] of Object.entries(original)) {
-    if (!value?.variables || !Object.hasOwn(value.variables, "echoes_status")) continue;
-    const index = Number(indexText);
-    current[index] = {
-      ...current[index] ?? {},
-      variables: {
-        ...current[index]?.variables ?? {},
-        echoes_status: structuredClone(value.variables.echoes_status)
-      }
-    };
-  }
+function messagePatch(descriptor, variables, extra, hidden) {
+  const swipes = swipeTexts(descriptor.message);
+  const swipesInfo = swipes.map((_, index) => structuredClone(descriptor.message.swipe_info?.[index] ?? {}));
+  swipesInfo[descriptor.selectedSwipe] = extra;
+  return {
+    message_id: descriptor.index,
+    is_hidden: hidden,
+    swipe_id: descriptor.selectedSwipe,
+    swipes,
+    swipes_data: swipes.map((_, index) => structuredClone(variables[index] ?? {})),
+    swipes_info: swipesInfo
+  };
 }
 function rollbackMessagePatch(current, original, expectedHidden) {
   const variables = structuredClone(current.message.variables ?? []);
   const originalVariables = structuredClone(original.variables ?? []);
   restoreEchoesStatusValues(variables, originalVariables);
-  const swipesData = structuredClone(current.message.swipes_data ?? []);
-  restoreEchoesSwipeData(
-    swipesData,
-    structuredClone(original.swipes_data ?? [])
-  );
   const extra = structuredClone(current.message.extra ?? {});
   if (extra.echoes?.compression) delete extra.echoes.compression;
   const originalCompression = original.extra?.echoes?.compression;
@@ -38163,14 +38160,13 @@ function rollbackMessagePatch(current, original, expectedHidden) {
       compression: structuredClone(originalCompression)
     };
   }
-  const currentHidden = Boolean(current.message.is_hidden);
-  return {
-    message_id: current.index,
+  const currentHidden = Boolean(current.message.is_system ?? current.message.is_hidden);
+  return messagePatch(
+    current,
     variables,
-    swipes_data: swipesData,
     extra,
-    is_hidden: currentHidden === expectedHidden ? Boolean(original.is_hidden) : currentHidden
-  };
+    currentHidden === expectedHidden ? Boolean(original.is_system ?? original.is_hidden) : currentHidden
+  );
 }
 function echoesKind(entry) {
   const kind = entry.extra?.echoes?.kind;
@@ -38661,10 +38657,6 @@ var EchoesBackupManager = class {
             if (!value) throw new Error("A restored status snapshot was not prepared for the mapped message.");
             variables[stored.swipeId] = { ...variables[stored.swipeId] ?? {}, echoes_status: value };
           }
-          const swipesData = structuredClone(target.swipes_data ?? []);
-          for (const data of swipesData) {
-            if (data.variables && typeof data.variables === "object") delete data.variables.echoes_status;
-          }
           const extra = structuredClone(target.extra ?? {});
           const wasEchoesHidden = Boolean(extra.echoes?.compression?.hiddenByEchoes);
           if (extra.echoes?.compression) delete extra.echoes.compression;
@@ -38675,15 +38667,9 @@ var EchoesBackupManager = class {
               compression: rewriteCompressionReferences(source.compression, replacements)
             };
           }
-          const hidden = validCompression && source?.compression?.hiddenByEchoes ? true : wasEchoesHidden ? false : Boolean(target.is_hidden);
+          const hidden = validCompression && source?.compression?.hiddenByEchoes ? true : wasEchoesHidden ? false : Boolean(target.is_system ?? target.is_hidden);
           expectedHidden.set(descriptor.stableId, hidden);
-          return {
-            message_id: index,
-            variables,
-            swipes_data: swipesData,
-            extra,
-            is_hidden: hidden
-          };
+          return messagePatch(descriptor, variables, extra, hidden);
         });
         messagesWritten = true;
         await api.setChatMessages(patches, { refresh: "affected" });
@@ -38728,7 +38714,7 @@ var EchoesBackupManager = class {
               return rollbackMessagePatch(
                 descriptor,
                 original,
-                expectedHidden.get(descriptor.stableId) ?? Boolean(descriptor.message.is_hidden)
+                expectedHidden.get(descriptor.stableId) ?? Boolean(descriptor.message.is_system ?? descriptor.message.is_hidden)
               );
             });
             await api.setChatMessages(rollbackPatches, { refresh: "all" });
