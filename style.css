@@ -1064,3 +1064,150 @@ dialog.echoes-recall-decision {
       border-color 0.12s;
   }
 }
+#echoes-workbench .ew-table.ew-people-table,
+#echoes-workbench .ew-table.ew-person-fields {
+  min-width: 0;
+}
+#echoes-workbench .ew-person-fields td:first-child {
+  width: 28%;
+}
+#echoes-workbench .ew-person-fields td:last-child {
+  width: auto;
+  white-space: pre-wrap;
+}
+#echoes-workbench .ew-cleaning-compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+#echoes-workbench .ew-cleaning-compare > div {
+  min-width: 0;
+}
+#echoes-workbench .ew-cleaning-compare del {
+  background: #932c3b44;
+  text-decoration: none;
+}
+#echoes-workbench .ew-cleaning-compare ins {
+  background: #16845544;
+  text-decoration: none;
+}
+#echoes-workbench .ew-discussion-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+  align-items: start;
+  gap: 24px;
+}
+#echoes-workbench .ew-discussion-layout > .ew-section {
+  min-width: 0;
+}
+#echoes-workbench .ew-discussion-layout select {
+  flex: 1;
+  min-width: 120px;
+  max-width: 100%;
+}
+#echoes-workbench .ew-discussion-result {
+  min-width: 0;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--ew-line);
+}
+#echoes-workbench .ew-discussion-result:first-child {
+  padding-top: 0;
+}
+#echoes-workbench .ew-discussion-result-header {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+#echoes-workbench .ew-discussion-message {
+  color: var(--ew-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 10px 0;
+}
+#echoes-workbench .ew-discussion-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+  user-select: text;
+}
+#echoes-workbench .ew-copy-buffer {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+}
+@media (max-width: 1000px) {
+  #echoes-workbench .ew-discussion-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 700px) {
+  #echoes-workbench .ew-cleaning-compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+#echoes-status-floating {
+  position: fixed;
+  right: 20px;
+  bottom: 140px;
+  z-index: 1000;
+  width: 152px;
+  max-width: calc(100vw - 16px);
+  touch-action: none;
+  user-select: none;
+}
+#echoes-status-floating[hidden] {
+  display: none;
+}
+#echoes-status-floating button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 46px;
+  padding: 10px;
+  margin: 0;
+  border: 1px solid var(--SmartThemeBorderColor, #747a80);
+  border-radius: 8px;
+  background: var(--SmartThemeBlurTintColor, #222426);
+  color: var(--SmartThemeBodyColor, #edefee);
+  box-shadow: 0 3px 12px #0004;
+  font: 13px/1.4 "Segoe UI", "Microsoft YaHei", sans-serif;
+  letter-spacing: 0;
+  cursor: grab;
+  text-shadow: none;
+}
+#echoes-status-floating i {
+  flex: 0 0 18px;
+  width: 18px;
+  text-align: center;
+}
+#echoes-status-floating button:focus-visible {
+  outline: 2px solid #6bd5c5;
+  outline-offset: 3px;
+}
+#echoes-status-floating[data-state="running"] button {
+  border-color: #6bd5c5;
+  opacity: 1;
+}
+#echoes-status-floating[data-state="pending"] i {
+  color: #ebc57c;
+}
+#echoes-status-floating[data-state="failed"] i {
+  color: #f19596;
+}
+@media (max-width: 700px) {
+  #echoes-status-floating {
+    top: 80px;
+    bottom: auto;
+    right: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #echoes-status-floating .fa-spin {
+    animation: none;
+  }
+}
