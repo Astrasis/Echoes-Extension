@@ -1153,8 +1153,8 @@ dialog.echoes-recall-decision {
   right: 20px;
   bottom: 140px;
   z-index: 1000;
-  width: 152px;
-  max-width: calc(100vw - 16px);
+  width: 48px;
+  height: 48px;
   touch-action: none;
   user-select: none;
 }
@@ -1162,28 +1162,41 @@ dialog.echoes-recall-decision {
   display: none;
 }
 #echoes-status-floating button {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
   width: 100%;
-  min-height: 46px;
-  padding: 10px;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
   margin: 0;
   border: 1px solid var(--SmartThemeBorderColor, #747a80);
-  border-radius: 8px;
+  border-radius: 50%;
   background: var(--SmartThemeBlurTintColor, #222426);
   color: var(--SmartThemeBodyColor, #edefee);
   box-shadow: 0 3px 12px #0004;
-  font: 13px/1.4 "Segoe UI", "Microsoft YaHei", sans-serif;
+  font: 20px/1 "Segoe UI", "Microsoft YaHei", sans-serif;
   letter-spacing: 0;
   cursor: grab;
   text-shadow: none;
 }
 #echoes-status-floating i {
-  flex: 0 0 18px;
-  width: 18px;
+  flex: 0 0 20px;
+  width: 20px;
   text-align: center;
+}
+#echoes-status-floating .echoes-status-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 #echoes-status-floating button:focus-visible {
   outline: 2px solid #6bd5c5;

@@ -29880,7 +29880,7 @@ var init_people = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "3.3.0", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "3.3.1", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/workbench/app.ts
 init_client();
@@ -43883,9 +43883,10 @@ function installStatusFloatingButton(onUpdated) {
   const glyph = document.createElement("i");
   glyph.setAttribute("aria-hidden", "true");
   const label = document.createElement("span");
+  label.className = "echoes-status-announcement";
   label.setAttribute("aria-live", "polite");
-  button2.append(glyph, label);
-  root.append(button2);
+  button2.append(glyph);
+  root.append(button2, label);
   document.body.append(root);
   let state = null;
   let revision = 0;
@@ -43921,7 +43922,7 @@ function installStatusFloatingButton(onUpdated) {
     button2.setAttribute("aria-busy", String(activity.running));
     button2.title = activity.running ? activity.message || "\u6B63\u5728\u66F4\u65B0\u72B6\u6001" : failed ? `${trace?.message ?? "\u72B6\u6001\u66F4\u65B0\u5931\u8D25"}
 \u70B9\u51FB\u91CD\u8BD5\u72B6\u6001\u540C\u6B65` : "\u70B9\u51FB\u624B\u52A8\u540C\u6B65\u72B6\u6001\uFF1B\u53EF\u62D6\u52A8\u8C03\u6574\u4F4D\u7F6E";
-    button2.setAttribute("aria-label", button2.title);
+    button2.setAttribute("aria-label", `${label.textContent}\u3002${button2.title}`);
     place();
   };
   const refresh = async () => {
