@@ -653,6 +653,7 @@
   text-align: center;
 }
 .ec-empty > i { font-size: 22px; color: var(--ec-faint); }
+.ec-empty > p { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.75; }
 
 .ec-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
 .ec-stat {

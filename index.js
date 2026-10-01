@@ -29556,6 +29556,18 @@ async function readMemoryHistory(worldbookName) {
   return entries.filter((entry) => entry.extra?.echoes?.kind === "memory_history").map((entry) => memoryHistorySchema.parse(entry.extra.echoes.record)).sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
 }
 
+// src/extension/worldbook/legacy-structured-cleanup.ts
+async function deleteLegacyStructured(worldbookName) {
+  const counts = { rows: 0, history: 0 };
+  const entries = await window.TavernHelper.updateWorldbookWith(worldbookName, (current) => current.filter((entry) => {
+    const kind = entry.extra?.echoes?.kind;
+    if (kind === "row") counts.rows += 1;
+    if (kind === "memory_history") counts.history += 1;
+    return kind !== "catalog" && kind !== "row" && kind !== "memory_history";
+  }), { render: "debounced" });
+  return { entries, counts };
+}
+
 // src/extension/worldbook/worldbook-memory.ts
 var CATALOG_ENTRY_NAME = "[Echoes] \u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6\u914D\u7F6E";
 var CATALOG_CONTENT = "Echoes structured-memory metadata. This disabled entry is managed by the plugin.";
@@ -30249,10 +30261,15 @@ var WorldbookMemoryStore = class {
     const existingCatalogEntry = entries.find(
       (entry) => echoesMetadata(entry)?.kind === "catalog"
     );
+    let deleted;
     if (existingCatalogEntry) {
       const metadata3 = echoesMetadata(existingCatalogEntry);
-      const parsed = structuredMemoryCatalogSchema.safeParse(metadata3.catalog);
-      if (parsed.success && parsed.data.chatId !== target.chatId) {
+      if (metadata3.catalog.formatVersion !== 2) {
+        this.assertCurrentChat(target.chatId);
+        const cleanup = await deleteLegacyStructured(worldbookName);
+        entries = cleanup.entries;
+        deleted = cleanup.counts;
+      } else if (structuredMemoryCatalogSchema.parse(metadata3.catalog).chatId !== target.chatId) {
         const names = new Set(helper6.getWorldbookNames());
         let candidate = `Echoes-${baseName}`;
         let suffix = 2;
@@ -30275,6 +30292,9 @@ var WorldbookMemoryStore = class {
         { render: "debounced" }
       );
       entries = created.worldbook;
+    }
+    if (deleted) {
+      toast(`\u5DF2\u5220\u9664\u6B64\u804A\u5929 4.0 \u4E4B\u524D\u7684\u7ED3\u6784\u5316\u8BB0\u5FC6\uFF08\u76EE\u5F55\u3001${deleted.rows} \u6761\u6761\u76EE\u3001${deleted.history} \u6761\u5386\u53F2\u8BB0\u5F55\uFF09\uFF0C\u5DF2\u6309\u65B0\u65B9\u6848\u91CD\u65B0\u5EFA\u8868\u3002`, "success");
     }
     return { worldbookName, entries };
   }
@@ -34888,6 +34908,29 @@ function setupChecklist(credentials, navigate) {
     )))
   );
 }
+async function structuredMemoryCard(ctx) {
+  const body = await new WorldbookMemoryStore().load().then((memory) => stack2(
+    stats([
+      ["\u8868", String(memory.catalog.types.length)],
+      ["\u6761\u76EE", String(memory.rows.length)],
+      ["\u68C0\u67E5\u70B9", floorText(memory.catalog.lastProcessedMessageId)]
+    ]),
+    switchControl("\u81EA\u52A8\u63D0\u53D6", memory.catalog.automation.enabled, async (value) => {
+      ctx.guard();
+      await extractionCoordinator.setAutomationEnabled(value);
+    }),
+    h(
+      "div",
+      "ec-row",
+      button("\u5904\u7406\u4E0B\u4E00\u6279", async () => {
+        await ctx.run("\u7ED3\u6784\u5316\u8BB0\u5FC6\u63D0\u53D6", () => extractionCoordinator.runManual(), () => extractionCoordinator.stopCurrent());
+        await ctx.refresh();
+      }, { icon: "play", small: true, disabled: extractionCoordinator.isRunning() }),
+      extractionCoordinator.isRunning() ? badge("\u8FD0\u884C\u4E2D", "accent") : null
+    )
+  ), (error51) => callout("danger", errorText(error51)));
+  return card("\u7ED3\u6784\u5316\u8BB0\u5FC6", { actions: [button("\u6253\u5F00", () => ctx.navigate("structured/entries"), { variant: "ghost", small: true })] }, body);
+}
 async function overviewPage(ctx) {
   const credentials = await echoesApi.listCredentials().then((items) => items.length, () => null);
   const root = stack2(await connectionCard());
@@ -34897,8 +34940,8 @@ async function overviewPage(ctx) {
     root.append(card("\u5F53\u524D\u804A\u5929", {}, muted("\u5728 SillyTavern \u4E2D\u6253\u5F00\u4E00\u4E2A\u804A\u5929\u540E\uFF0C\u8FD9\u91CC\u4F1A\u663E\u793A\u5404\u8BB0\u5FC6\u6A21\u5757\u7684\u72B6\u6001\u3002")));
     return root;
   }
-  const [memory, summary, status] = await Promise.all([
-    new WorldbookMemoryStore().load(),
+  const [memoryCard, summary, status] = await Promise.all([
+    structuredMemoryCard(ctx),
     ctx.summary.load(),
     statusCoordinator.load()
   ]);
@@ -34921,28 +34964,7 @@ async function overviewPage(ctx) {
   root.append(h(
     "div",
     "ec-grid",
-    card(
-      "\u7ED3\u6784\u5316\u8BB0\u5FC6",
-      { actions: [button("\u6253\u5F00", () => ctx.navigate("structured/entries"), { variant: "ghost", small: true })] },
-      stats([
-        ["\u8868", String(memory.catalog.types.length)],
-        ["\u6761\u76EE", String(memory.rows.length)],
-        ["\u68C0\u67E5\u70B9", floorText(memory.catalog.lastProcessedMessageId)]
-      ]),
-      switchControl("\u81EA\u52A8\u63D0\u53D6", memory.catalog.automation.enabled, async (value) => {
-        ctx.guard();
-        await extractionCoordinator.setAutomationEnabled(value);
-      }),
-      h(
-        "div",
-        "ec-row",
-        button("\u5904\u7406\u4E0B\u4E00\u6279", async () => {
-          await ctx.run("\u7ED3\u6784\u5316\u8BB0\u5FC6\u63D0\u53D6", () => extractionCoordinator.runManual(), () => extractionCoordinator.stopCurrent());
-          await ctx.refresh();
-        }, { icon: "play", small: true, disabled: extractionCoordinator.isRunning() }),
-        extractionCoordinator.isRunning() ? badge("\u8FD0\u884C\u4E2D", "accent") : null
-      )
-    ),
+    memoryCard,
     card(
       "\u603B\u7ED3\u8BB0\u5FC6",
       { actions: [button("\u6253\u5F00", () => ctx.navigate("summary/records"), { variant: "ghost", small: true })] },
@@ -40482,8 +40504,12 @@ function validatePortableEntry(entry) {
   const echoes = entry.extra.echoes;
   const kind = typeof echoes?.kind === "string" ? echoes.kind : "";
   if (!PERSISTENT_KINDS.has(kind)) throw new Error(`Unsupported Echoes worldbook entry kind: ${kind || "missing"}.`);
-  if (kind === "catalog") structuredMemoryCatalogSchema.parse(echoes.catalog);
-  else if (kind === "row") {
+  if (kind === "catalog") {
+    if (echoes.catalog.formatVersion !== 2) {
+      throw new Error("\u6B64\u5907\u4EFD\u7684\u7ED3\u6784\u5316\u8BB0\u5FC6\u76EE\u5F55\u662F 4.0 \u4E4B\u524D\u7684\u683C\u5F0F\uFF0C\u4E0E\u5F53\u524D\u7248\u672C\u4E0D\u517C\u5BB9\uFF0C\u65E0\u6CD5\u5BFC\u5165\u6216\u6062\u590D\u3002");
+    }
+    structuredMemoryCatalogSchema.parse(echoes.catalog);
+  } else if (kind === "row") {
     identifierSchema.parse(echoes.rowId);
     identifierSchema.parse(echoes.typeId);
     memoryRowSourceSchema.parse(echoes.source);
