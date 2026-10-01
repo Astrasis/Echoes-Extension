@@ -430,6 +430,12 @@
   transform: translateY(-1px) rotate(-45deg);
 }
 .ec-theme .ec-check:disabled { opacity: 0.4; cursor: not-allowed; }
+/* SillyTavern styles every checkbox: a ::before tick plus outline, inset shadow, brightness and offset.
+   Echoes draws its own switch knob and tick, so the host decoration is turned off here. */
+.ec-theme .ec-switch::before,
+.ec-theme .ec-check::before { content: none; }
+.ec-theme .ec-switch,
+.ec-theme .ec-check { outline: none; box-shadow: none; filter: none; transform: none; }
 
 .ec-badge {
   display: inline-flex;
