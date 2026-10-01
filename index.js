@@ -17015,7 +17015,7 @@ var init_schemas3 = __esm({
       ...statusProfileFields
     }).strict();
     statusCatalogSchema = external_exports.object({
-      // 4.0.0 only: one-time prompt reset for pre-4.0 settings. Remove in 4.0.1.
+      // Written by 4.0.0 and no longer used; kept so this strict schema still accepts those catalogs.
       promptSet: external_exports.literal(4).optional(),
       formatVersion: external_exports.literal(1),
       chatId: external_exports.string().trim().min(1).max(240),
@@ -17860,10 +17860,7 @@ function uniqueId(prefix) {
   return `${prefix}_${randomUuid().replaceAll("-", "")}`;
 }
 function normalizeTemplates(raw2) {
-  const templates = Array.isArray(raw2) ? raw2.flatMap((item) => {
-    const parsed = memoryTypeTemplateSchema.safeParse(item);
-    return parsed.success ? [parsed.data] : [];
-  }) : OPTIONAL_MEMORY_TEMPLATES;
+  const templates = Array.isArray(raw2) ? raw2.map((item) => memoryTypeTemplateSchema.parse(item)) : OPTIONAL_MEMORY_TEMPLATES;
   return [
     ...structuredClone(BUILT_IN_MEMORY_TEMPLATES),
     ...structuredClone(templates.filter((template2) => !BUILT_IN_MEMORY_TEMPLATE_IDS.has(template2.id))).map((template2) => ({ ...template2, builtIn: false }))
@@ -17882,18 +17879,6 @@ function normalizeSummaryPromptPreset(raw2) {
   }
   return structuredClone(raw2);
 }
-function resetPre4PromptSettings(settings) {
-  if (settings.promptSet !== void 0) return settings;
-  settings.summary.promptPreset = structuredClone(DEFAULT_SUMMARY_PROMPT_PRESET);
-  settings.summary.batchOverviewPrompt = DEFAULT_BATCH_OVERVIEW_PROMPT;
-  settings.retrieval.recall.injection.template = DEFAULT_SETTINGS.retrieval.recall.injection.template;
-  for (const template2 of settings.statusTemplates) {
-    template2.promptPreset = structuredClone(DEFAULT_STATUS_TEMPLATE.promptPreset);
-    template2.injection.template = DEFAULT_STATUS_TEMPLATE.injection.template;
-  }
-  settings.promptSet = 4;
-  return settings;
-}
 function normalizeSettings(current) {
   const configuredGroups = Array.isArray(current.generationGroups) ? structuredClone(current.generationGroups) : [];
   const migratedGroups = configuredGroups.length > 0 ? configuredGroups : migrateLegacySecondaryApi(current.secondaryApi);
@@ -17901,8 +17886,6 @@ function normalizeSettings(current) {
   const settings = {
     ...structuredClone(DEFAULT_SETTINGS),
     ...current,
-    // 4.0.0 only: one-time prompt reset for pre-4.0 settings. Remove in 4.0.1.
-    promptSet: current.promptSet,
     formatVersion: 2,
     extractionMessageCount: Math.max(
       2,
@@ -17961,10 +17944,10 @@ function normalizeSettings(current) {
     statusTemplates: normalizeStatusTemplates(current.statusTemplates)
   };
   delete settings.secondaryApi;
-  return resetPre4PromptSettings(settings);
+  return settings;
 }
 function validateEchoesSettings(settings) {
-  const parsed = echoesSettingsV2Schema.parse({
+  return echoesSettingsV2Schema.parse({
     ...structuredClone(settings),
     formatVersion: 2,
     typeTemplates: normalizeTemplates(settings.typeTemplates),
@@ -17974,7 +17957,6 @@ function validateEchoesSettings(settings) {
       promptPreset: normalizeSummaryPromptPreset(settings.summary.promptPreset)
     }
   });
-  return resetPre4PromptSettings(parsed);
 }
 function parseImportedSettings(raw2) {
   if (!raw2 || typeof raw2 !== "object" || Array.isArray(raw2)) {
@@ -18285,8 +18267,6 @@ var init_settings = __esm({
       ]
     };
     DEFAULT_SETTINGS = {
-      // 4.0.0 only: one-time prompt reset for pre-4.0 settings. Remove in 4.0.1.
-      promptSet: 4,
       discussion: discussionSettingsSchema.parse({}),
       statusFloatingButton: true,
       creativePreferences: EMPTY_CREATIVE_PREFERENCES,
@@ -18372,7 +18352,7 @@ var init_settings = __esm({
       failoverPolicy: failoverPolicySchema
     }).strict();
     echoesSettingsV2Schema = external_exports.object({
-      // 4.0.0 only: one-time prompt reset for pre-4.0 settings. Remove in 4.0.1.
+      // Written by 4.0.0 and no longer used; kept so this strict schema still accepts those settings.
       promptSet: external_exports.literal(4).optional(),
       discussion: discussionSettingsSchema.default(() => structuredClone(DEFAULT_SETTINGS.discussion)),
       statusFloatingButton: external_exports.boolean().default(true),
@@ -18772,7 +18752,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.0.0", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.0.1", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -29558,18 +29538,6 @@ async function readMemoryHistory(worldbookName) {
   return entries.filter((entry) => entry.extra?.echoes?.kind === "memory_history").map((entry) => memoryHistorySchema.parse(entry.extra.echoes.record)).sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
 }
 
-// src/extension/worldbook/legacy-structured-cleanup.ts
-async function deleteLegacyStructured(worldbookName) {
-  const counts = { rows: 0, history: 0 };
-  const entries = await window.TavernHelper.updateWorldbookWith(worldbookName, (current) => current.filter((entry) => {
-    const kind = entry.extra?.echoes?.kind;
-    if (kind === "row") counts.rows += 1;
-    if (kind === "memory_history") counts.history += 1;
-    return kind !== "catalog" && kind !== "row" && kind !== "memory_history";
-  }), { render: "debounced" });
-  return { entries, counts };
-}
-
 // src/extension/worldbook/worldbook-memory.ts
 var CATALOG_ENTRY_NAME = "[Echoes] \u7ED3\u6784\u5316\u957F\u671F\u8BB0\u5FC6\u914D\u7F6E";
 var CATALOG_CONTENT = "Echoes structured-memory metadata. This disabled entry is managed by the plugin.";
@@ -30263,15 +30231,9 @@ var WorldbookMemoryStore = class {
     const existingCatalogEntry = entries.find(
       (entry) => echoesMetadata(entry)?.kind === "catalog"
     );
-    let deleted;
     if (existingCatalogEntry) {
       const metadata3 = echoesMetadata(existingCatalogEntry);
-      if (metadata3.catalog.formatVersion !== 2) {
-        this.assertCurrentChat(target.chatId);
-        const cleanup = await deleteLegacyStructured(worldbookName);
-        entries = cleanup.entries;
-        deleted = cleanup.counts;
-      } else if (structuredMemoryCatalogSchema.parse(metadata3.catalog).chatId !== target.chatId) {
+      if (structuredMemoryCatalogSchema.parse(metadata3.catalog).chatId !== target.chatId) {
         const names = new Set(helper6.getWorldbookNames());
         let candidate = `Echoes-${baseName}`;
         let suffix = 2;
@@ -30294,9 +30256,6 @@ var WorldbookMemoryStore = class {
         { render: "debounced" }
       );
       entries = created.worldbook;
-    }
-    if (deleted) {
-      toast(`\u5DF2\u5220\u9664\u6B64\u804A\u5929 4.0 \u4E4B\u524D\u7684\u7ED3\u6784\u5316\u8BB0\u5FC6\uFF08\u76EE\u5F55\u3001${deleted.rows} \u6761\u6761\u76EE\u3001${deleted.history} \u6761\u5386\u53F2\u8BB0\u5F55\uFF09\uFF0C\u5DF2\u6309\u65B0\u65B9\u6848\u91CD\u65B0\u5EFA\u8868\u3002`, "success");
     }
     return { worldbookName, entries };
   }
@@ -31461,8 +31420,6 @@ function injectionMetadata(entry) {
 function createCatalog2(chatId) {
   return {
     formatVersion: 1,
-    // 4.0.0 only: one-time prompt reset for pre-4.0 settings. Remove in 4.0.1.
-    promptSet: 4,
     chatId,
     namespaceId: uniqueId4("status_namespace"),
     enabled: false,
@@ -31513,11 +31470,6 @@ function readState2(worldbookName, entries) {
   const entry = entries.find((candidate) => catalogMetadata(candidate));
   if (!entry) return null;
   const catalog = statusCatalogSchema.parse(catalogMetadata(entry).catalog);
-  if (catalog.promptSet === void 0) {
-    catalog.profile.promptPreset = structuredClone(DEFAULT_STATUS_TEMPLATE.promptPreset);
-    catalog.profile.injection.template = DEFAULT_STATUS_TEMPLATE.injection.template;
-    catalog.promptSet = 4;
-  }
   return {
     worldbookName,
     catalog
@@ -40507,9 +40459,6 @@ function validatePortableEntry(entry) {
   const kind = typeof echoes?.kind === "string" ? echoes.kind : "";
   if (!PERSISTENT_KINDS.has(kind)) throw new Error(`Unsupported Echoes worldbook entry kind: ${kind || "missing"}.`);
   if (kind === "catalog") {
-    if (echoes.catalog.formatVersion !== 2) {
-      throw new Error("\u6B64\u5907\u4EFD\u7684\u7ED3\u6784\u5316\u8BB0\u5FC6\u76EE\u5F55\u662F 4.0 \u4E4B\u524D\u7684\u683C\u5F0F\uFF0C\u4E0E\u5F53\u524D\u7248\u672C\u4E0D\u517C\u5BB9\uFF0C\u65E0\u6CD5\u5BFC\u5165\u6216\u6062\u590D\u3002");
-    }
     structuredMemoryCatalogSchema.parse(echoes.catalog);
   } else if (kind === "row") {
     identifierSchema.parse(echoes.rowId);
