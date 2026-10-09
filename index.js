@@ -18755,7 +18755,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.0.1", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.0.2", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -20499,7 +20499,7 @@ var CompressionCoordinator = class {
         const item = marker(message);
         const currentOwned = item?.namespaceId === snapshot.state.catalog.namespaceId;
         const targetBatchId = snapshot.plan.batchByMessageId.get(id);
-        const shouldHide = index <= targetEnd && Boolean(targetBatchId) && snapshot.safeBatchIds.has(targetBatchId) && !(currentOwned && item.pinnedVisible);
+        const shouldHide = index <= targetEnd && Boolean(targetBatchId) && snapshot.safeBatchIds.has(targetBatchId) && !item?.pinnedVisible;
         const shouldRestoreForCutoff = index > targetEnd && index <= safeEnd;
         if (shouldHide && (!currentOwned || !message.is_hidden)) {
           const compression2 = nextMarker(
@@ -20553,11 +20553,12 @@ var CompressionCoordinator = class {
   recompressBatch(state, batchIds) {
     return this.serialize(async () => {
       const snapshot = await this.snapshot(state);
+      const selectedBatchByMessageId = new Map(uniqueBatches2(state.slices).filter((batch) => batchIds.includes(batch.id)).flatMap((batch) => batch.messageIds.map((id) => [id, batch.id])));
       const updates = [];
       for (const message of snapshot.raw) {
         const item = marker(message);
-        const batchId = item?.batchId ?? snapshot.plan.batchByMessageId.get(snapshot.messageIdByFloor.get(message.message_id) ?? "");
-        if (!batchId || !batchIds.includes(batchId) || !item?.pinnedVisible) continue;
+        const batchId = selectedBatchByMessageId.get(snapshot.messageIdByFloor.get(message.message_id) ?? "");
+        if (!batchId || !item?.pinnedVisible) continue;
         const compression2 = nextMarker(
           message,
           state.catalog.namespaceId,
@@ -37711,23 +37712,15 @@ async function summaryHidingPage(ctx) {
       button("\u91CD\u65B0\u5E94\u7528\u9690\u85CF", async () => {
         ctx.guard();
         const current = await ctx.summary.load();
-        const visibility = await ctx.summary.compression.inspectVisibility(current);
         ctx.guard();
-        const pinned = visibility.filter((batch) => batch.pinned > 0);
-        const unpin = pinned.length > 0 && await choose({
-          title: "\u89E3\u9664\u56FA\u5B9A\u53EF\u89C1\uFF1F",
-          cancelValue: false,
-          message: `${pinned.length} \u4E2A\u6279\u6B21\u4E2D\u6709\u56FA\u5B9A\u53EF\u89C1\u7684\u539F\u6D88\u606F\uFF0C\u901A\u5E38\u6765\u81EA\u6062\u590D\u64CD\u4F5C\u3002\u89E3\u9664\u540E\u4F1A\u6309\u7B56\u7565\u91CD\u65B0\u9690\u85CF\u3002`,
-          choices: [{ value: false, label: "\u4FDD\u7559\u56FA\u5B9A\u53EF\u89C1" }, { value: true, label: "\u89E3\u9664\u5E76\u91CD\u65B0\u9690\u85CF", variant: "primary", focus: true }]
-        });
-        const result = await ctx.run("\u91CD\u65B0\u5E94\u7528\u9690\u85CF", () => unpin ? ctx.summary.compression.recompressBatch(current, pinned.map((batch) => batch.batchId)) : ctx.summary.compression.reconcile(current));
+        const result = await ctx.run("\u91CD\u65B0\u5E94\u7528\u9690\u85CF", () => ctx.summary.compression.reconcile(current));
         toast(result.blockedReason ?? `\u5DF2\u5E94\u7528\uFF1A\u9690\u85CF ${result.hidden} \u6761\uFF0C\u56FA\u5B9A\u53EF\u89C1 ${result.pinned} \u6761\u3002`, result.blockedReason ? "warning" : "success");
         await ctx.refresh();
       }, { icon: "arrows-rotate", small: true })
     ) }),
     card(
       "\u6062\u590D\u539F\u6D88\u606F",
-      { description: "\u6062\u590D\u540E\u7684\u6D88\u606F\u4F1A\u56FA\u5B9A\u53EF\u89C1\uFF0C\u76F4\u5230\u91CD\u65B0\u5E94\u7528\u9690\u85CF\u5E76\u9009\u62E9\u89E3\u9664\u3002" },
+      { description: "\u6062\u590D\u540E\u7684\u6D88\u606F\u4F1A\u56FA\u5B9A\u53EF\u89C1\uFF0C\u76F4\u5230\u5728\u5BF9\u5E94\u6279\u6B21\u6267\u884C\u201C\u91CD\u65B0\u9690\u85CF\u201D\u3002" },
       range.node,
       h(
         "div",
