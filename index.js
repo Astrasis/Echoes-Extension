@@ -18481,7 +18481,7 @@ async function requestJson(path, init) {
       throw new Error(payload?.error ?? `Echoes backend returned HTTP ${response.status}.`);
     }
     if (response.status === 204) return void 0;
-    return response.json();
+    return await response.json();
   } catch (error51) {
     if (controller.signal.aborted && !upstreamSignal?.aborted) {
       throw new Error(`Echoes backend request timed out after ${REQUEST_TIMEOUT_MS / 1e3} seconds.`);
@@ -18560,8 +18560,8 @@ var init_client = __esm({
       health() {
         return requestJson("/health");
       },
-      systemStatus() {
-        return requestJson("/system/status");
+      systemStatus(signal) {
+        return requestJson("/system/status", { signal: signal ?? null });
       },
       async listJobs(filter = {}) {
         const query = new URLSearchParams();
@@ -18585,8 +18585,8 @@ var init_client = __esm({
         });
         return result.job;
       },
-      async listCredentials() {
-        const result = await requestJson("/credentials");
+      async listCredentials(signal) {
+        const result = await requestJson("/credentials", { signal: signal ?? null });
         return result.credentials;
       },
       async createCredential(input) {
@@ -18755,7 +18755,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.0.2", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.0.3", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -18930,6 +18930,16 @@ async function readLocalRecord(key2) {
     const tx = db.transaction("records", "readonly");
     const request = tx.objectStore("records").get(`${scope2}:${key2}`);
     tx.oncomplete = () => resolve(request.result);
+    tx.onabort = () => reject(tx.error ?? new Error("\u8BFB\u53D6\u672C\u5730\u4EFB\u52A1\u8BB0\u5F55\u5931\u8D25\u3002"));
+  });
+}
+async function hasLocalRecord(key2) {
+  const scope2 = owner();
+  const db = await open();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("records", "readonly");
+    const request = tx.objectStore("records").count(`${scope2}:${key2}`);
+    tx.oncomplete = () => resolve(request.result > 0);
     tx.onabort = () => reject(tx.error ?? new Error("\u8BFB\u53D6\u672C\u5730\u4EFB\u52A1\u8BB0\u5F55\u5931\u8D25\u3002"));
   });
 }
@@ -19280,12 +19290,14 @@ function structuredCatalogChatId(entries) {
   return null;
 }
 var SummaryWorldbookStore = class {
-  async load() {
+  async load(signal) {
+    signal?.throwIfAborted();
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) throw new Error("Open a SillyTavern chat before using summaries.");
     const api = helper();
     const boundWorldbookName = api.getChatWorldbookName("current");
     return worldbookWriteCoordinator.run(boundWorldbookName ?? `chat:${chatId}`, async () => {
+      signal?.throwIfAborted();
       if (SillyTavern.getContext().chatId !== chatId) {
         throw new Error("The active chat changed before the summary operation started.");
       }
@@ -19293,11 +19305,13 @@ var SummaryWorldbookStore = class {
       let worldbookName = boundWorldbookName;
       if (!worldbookName) {
         worldbookName = await api.getOrCreateChatWorldbook("current", `Echoes-${baseName}`);
+        signal?.throwIfAborted();
         if (SillyTavern.getContext().chatId !== chatId) {
           throw new Error("The active chat changed while the summary worldbook was being created.");
         }
       }
       let entries = await api.getWorldbook(worldbookName);
+      signal?.throwIfAborted();
       let state = readState(worldbookName, entries);
       if (state && state.catalog.chatId !== chatId || !state && structuredCatalogChatId(entries) && structuredCatalogChatId(entries) !== chatId) {
         const names = new Set(api.getWorldbookNames());
@@ -19305,10 +19319,12 @@ var SummaryWorldbookStore = class {
         let suffix = 2;
         while (names.has(candidate)) candidate = `Echoes-${baseName}-${suffix++}`;
         await api.createWorldbook(candidate);
+        signal?.throwIfAborted();
         if (SillyTavern.getContext().chatId !== chatId) {
           throw new Error("The active chat changed before the summary worldbook could be rebound.");
         }
         await api.rebindChatWorldbook("current", candidate);
+        signal?.throwIfAborted();
         if (SillyTavern.getContext().chatId !== chatId) {
           throw new Error("The active chat changed while the summary worldbook was being rebound.");
         }
@@ -19318,7 +19334,9 @@ var SummaryWorldbookStore = class {
       }
       if (!state) {
         await api.createWorldbookEntries(worldbookName, [catalogEntry(createCatalog(chatId))]);
+        signal?.throwIfAborted();
         entries = await api.getWorldbook(worldbookName);
+        signal?.throwIfAborted();
         state = readState(worldbookName, entries);
       }
       if (!state) throw new Error("Failed to initialize the Echoes summary catalog.");
@@ -20466,8 +20484,12 @@ var CompressionCoordinator = class {
   }
   store;
   writing = false;
+  changeRevision = 0;
   get isWriting() {
     return this.writing;
+  }
+  get revision() {
+    return this.changeRevision;
   }
   inspect(state) {
     return this.serialize(async () => this.statusFromSnapshot(await this.snapshot(state)));
@@ -20780,6 +20802,7 @@ var CompressionCoordinator = class {
     if (updates.length === 0) return;
     this.assertCurrent(state);
     this.writing = true;
+    this.changeRevision += 1;
     try {
       await requiredHelper().setChatMessages(updates, { refresh: "affected" });
     } finally {
@@ -20909,6 +20932,9 @@ function draftScope(state) {
 }
 function readSummaryDraft(state) {
   return readLocalRecord(key(draftScope(state)));
+}
+function hasSummaryDraft(state) {
+  return hasLocalRecord(key(draftScope(state)));
 }
 async function saveSummaryDraft(draft) {
   draft.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -21484,6 +21510,10 @@ var SummaryCoordinator = class {
   finishCurrent = /* @__PURE__ */ new Set();
   rebuildConflicts = /* @__PURE__ */ new Map();
   coverageReviews = /* @__PURE__ */ new Map();
+  changeRevision = 0;
+  get revision() {
+    return this.changeRevision + this.compression.revision;
+  }
   coverageReview(state) {
     const review = this.coverageReviews.get(state.catalog.chatId);
     return review?.worldbookName === state.worldbookName && review.namespaceId === state.catalog.namespaceId ? structuredClone(review) : null;
@@ -21551,6 +21581,7 @@ var SummaryCoordinator = class {
     };
   }
   emitProgress(state) {
+    this.changeRevision += 1;
     for (const listener of this.progressListeners) listener(state);
   }
   async relocateCheckpointToFloor(floor) {
@@ -21692,11 +21723,14 @@ var SummaryCoordinator = class {
     else if (stop !== null && ranges[0] && ranges[0].end > stop) reason = "\u4E0B\u4E00\u5B8C\u6574\u6279\u6B21\u5C06\u8D8A\u8FC7\u505C\u6B62\u70B9\uFF0C\u4E0D\u4F1A\u622A\u77ED\u6216\u542F\u52A8\u8BE5\u6279\u6B21";
     return { reason, ranges, pendingCount: pending.length, start: pending[0]?.floor, end: pending.at(-1)?.floor, stop, draft };
   }
-  load() {
-    return this.store.load();
+  load(signal) {
+    return this.store.load(signal);
   }
   async recoveryDraft() {
     return readSummaryDraft(await this.load());
+  }
+  hasRecoveryDraft(state) {
+    return hasSummaryDraft(state);
   }
   async discardRecovery() {
     if (this.isRunning()) throw new Error("\u8BF7\u5148\u505C\u6B62\u6B63\u5728\u8FD0\u884C\u7684\u603B\u7ED3\u3002");
@@ -21780,7 +21814,7 @@ var SummaryCoordinator = class {
     }, defaultDecision);
   }
   async checkIntegrity(currentState, signal) {
-    const state = currentState ?? await this.load();
+    const state = currentState ?? await this.load(signal);
     signal?.throwIfAborted();
     if (SillyTavern.getContext().chatId !== state.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) {
       return state;
@@ -21795,6 +21829,7 @@ var SummaryCoordinator = class {
     const marked = await this.store.invalidateBatches(state, changed, signal);
     signal?.throwIfAborted();
     await this.compression.restoreBatch(marked, changed, false);
+    this.emitProgress(marked);
     return marked;
   }
   async setAutoRun(enabled) {
@@ -21904,6 +21939,7 @@ var SummaryCoordinator = class {
         this.pausedAutomatic.add(lockedChatId);
         this.rerunAutomatic.delete(lockedChatId);
         state = await this.store.setAutoRun(state.worldbookName, false);
+        this.emitProgress(state);
         toastr.warning("\u5DF2\u8FBE\u5230\u81EA\u52A8\u603B\u7ED3\u6279\u6B21\u4E0A\u9650\uFF0C\u81EA\u52A8\u603B\u7ED3\u5DF2\u5173\u95ED\u3002\u5DF2\u5B8C\u6210\u7684\u5185\u5BB9\u548C\u68C0\u67E5\u70B9\u4FDD\u7559\u3002", "Echoes");
         break;
       }
@@ -29785,10 +29821,20 @@ var WorldbookMemoryStore = class {
   listWorldbooks() {
     return requiredHelper2().getWorldbookNames();
   }
-  async load() {
+  async load(signal) {
+    signal?.throwIfAborted();
     return this.enqueue(async (target) => {
-      const { worldbookName, entries } = await this.ensureCurrentCatalog(target);
+      const { worldbookName, entries } = await this.ensureCurrentCatalog(target, signal);
+      signal?.throwIfAborted();
       return this.stateFromEntries(worldbookName, entries);
+    });
+  }
+  async loadForAutomation(signal) {
+    return this.enqueue(async (target) => {
+      const { worldbookName, entries } = await this.ensureCurrentCatalog(target, signal);
+      signal.throwIfAborted();
+      const { catalog } = catalogFromEntries(entries);
+      return catalog.automation.enabled ? this.stateFromEntries(worldbookName, entries, catalog) : null;
     });
   }
   async inspect(worldbookName) {
@@ -30221,7 +30267,8 @@ var WorldbookMemoryStore = class {
       throw new Error("The active chat changed before the structured-memory operation started.");
     }
   }
-  async ensureCurrentCatalog(target) {
+  async ensureCurrentCatalog(target, signal) {
+    signal?.throwIfAborted();
     const helper6 = requiredHelper2();
     this.assertCurrentChat(target.chatId);
     const baseName = target.chatId.replace(/\.(json|jsonl)$/i, "");
@@ -30229,9 +30276,11 @@ var WorldbookMemoryStore = class {
     if (!worldbookName) {
       this.assertCurrentChat(target.chatId);
       worldbookName = await helper6.getOrCreateChatWorldbook("current", `Echoes-${baseName}`);
+      signal?.throwIfAborted();
       this.assertCurrentChat(target.chatId);
     }
     let entries = await helper6.getWorldbook(worldbookName);
+    signal?.throwIfAborted();
     const existingCatalogEntry = entries.find(
       (entry) => echoesMetadata(entry)?.kind === "catalog"
     );
@@ -30246,8 +30295,10 @@ var WorldbookMemoryStore = class {
           suffix += 1;
         }
         await helper6.createWorldbook(candidate);
+        signal?.throwIfAborted();
         this.assertCurrentChat(target.chatId);
         await helper6.rebindChatWorldbook("current", candidate);
+        signal?.throwIfAborted();
         this.assertCurrentChat(target.chatId);
         worldbookName = candidate;
         entries = [];
@@ -30259,6 +30310,7 @@ var WorldbookMemoryStore = class {
         [catalogEntry2(createDefaultCatalog(target.chatId))],
         { render: "debounced" }
       );
+      signal?.throwIfAborted();
       entries = created.worldbook;
     }
     return { worldbookName, entries };
@@ -30267,8 +30319,7 @@ var WorldbookMemoryStore = class {
     const entries = await requiredHelper2().getWorldbook(worldbookName);
     return this.stateFromEntries(worldbookName, entries);
   }
-  stateFromEntries(worldbookName, entries) {
-    const { catalog } = catalogFromEntries(entries);
+  stateFromEntries(worldbookName, entries, catalog = catalogFromEntries(entries).catalog) {
     const typeById = new Map(catalog.types.map((type) => [type.id, type]));
     const rows = [];
     const issues = [];
@@ -30541,6 +30592,10 @@ var ExtractionCoordinator = class {
   rerunAutomatic = /* @__PURE__ */ new Set();
   cleaningOptions = /* @__PURE__ */ new Map();
   checkpointUpdates = /* @__PURE__ */ new Set();
+  changeRevision = 0;
+  get revision() {
+    return this.changeRevision;
+  }
   subscribe(listener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -30588,7 +30643,7 @@ var ExtractionCoordinator = class {
     const mode = this.reviews.get(chatId)?.prepared.batch.mode ?? this.traces.get(chatId)?.batch?.mode ?? "manual";
     this.reviews.delete(chatId);
     this.pauses.delete(chatId);
-    this.emit();
+    this.emit(true);
     await this.start(mode, true);
   }
   async stopCurrent() {
@@ -30606,7 +30661,7 @@ var ExtractionCoordinator = class {
           message: reason
         });
       }
-      this.emit();
+      this.emit(true);
     };
     this.rerunAutomatic.delete(chatId);
     const jobId = this.activeJobIds.get(chatId);
@@ -30656,7 +30711,7 @@ var ExtractionCoordinator = class {
       attempts: review.result.attempts,
       message: "\u4EBA\u5DE5\u5BA1\u6838\u5DF2\u63D0\u4EA4\uFF0C\u672A\u9009\u62E9\u53CA\u65E0\u6548\u64CD\u4F5C\u5DF2\u660E\u786E\u8DF3\u8FC7\u3002"
     });
-    this.emit();
+    this.emit(true);
     if (review.prepared.batch.mode === "auto") void this.runAutomatic();
     return summary;
   }
@@ -30669,7 +30724,7 @@ var ExtractionCoordinator = class {
       this.pauses.delete(chatId);
       void this.runAutomatic();
     }
-    this.emit();
+    this.emit(true);
   }
   async relocateCheckpoint(messageId) {
     const chatId = SillyTavern.getContext().chatId;
@@ -30688,7 +30743,7 @@ var ExtractionCoordinator = class {
       this.cleaningOptions.delete(chatId);
     } finally {
       this.checkpointUpdates.delete(chatId);
-      this.emit();
+      this.emit(true);
     }
   }
   start(mode, userInitiated = false) {
@@ -30733,9 +30788,9 @@ var ExtractionCoordinator = class {
       let state = null;
       try {
         signal.throwIfAborted();
-        state = await this.store.load();
+        state = mode === "auto" && !(userInitiated && firstBatch) ? await this.store.loadForAutomation(signal) : await this.store.load(signal);
+        if (!state) return;
         if (state.catalog.chatId !== lockedChatId) throw new Error("\u7ED3\u6784\u5316\u8BB0\u5FC6\u4E16\u754C\u4E66\u4E0E\u5F53\u524D\u804A\u5929\u4E0D\u5339\u914D\u3002");
-        if (mode === "auto" && !state.catalog.automation.enabled && !(userInitiated && firstBatch)) return;
         const cleaning = this.cleaningOptions.get(lockedChatId);
         if (mode === "cleaning" && !cleaning) throw new Error("\u6E05\u6D17\u8303\u56F4\u5DF2\u4E0D\u5B58\u5728\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9\u697C\u5C42\u3002");
         const prepared = mode === "cleaning" ? await prepareCleaningExtraction(state, getSettings(), cleaning) : await prepareExtraction(state, getSettings(), mode);
@@ -30762,7 +30817,7 @@ var ExtractionCoordinator = class {
           attempts: [],
           message
         });
-        this.emit();
+        this.emit(true);
         if (userInitiated) throw error51;
         return;
       }
@@ -30841,7 +30896,7 @@ var ExtractionCoordinator = class {
             attempts,
             message: reason
           });
-          this.emit();
+          this.emit(true);
           return "paused";
         }
         request = {
@@ -30878,7 +30933,7 @@ var ExtractionCoordinator = class {
           attempts,
           message: reviewMessage
         });
-        this.emit();
+        this.emit(true);
         return "review";
       }
       signal.throwIfAborted();
@@ -30905,7 +30960,7 @@ var ExtractionCoordinator = class {
         attempts,
         message: `\u5DF2\u63D0\u4EA4\uFF1A\u65B0\u589E ${summary.added}\uFF0C\u4FEE\u6539 ${summary.updated}\uFF0C\u5220\u9664 ${summary.deleted}\u3002`
       });
-      this.emit();
+      this.emit(true);
       return "committed";
     }
   }
@@ -30916,7 +30971,8 @@ var ExtractionCoordinator = class {
       throw new Error("\u672A\u63D0\u4EA4\u6279\u6B21\u7684\u804A\u5929\u6D88\u606F\u5728\u4EFB\u52A1\u671F\u95F4\u53D1\u751F\u53D8\u5316\uFF0C\u7ED3\u679C\u5DF2\u4E22\u5F03\u3002");
     }
   }
-  emit() {
+  emit(changed = false) {
+    if (changed) this.changeRevision += 1;
     for (const listener of this.listeners) listener();
   }
 };
@@ -31487,12 +31543,14 @@ function ownedChatId(entries) {
   return null;
 }
 var StatusWorldbookStore = class {
-  async load() {
+  async load(signal) {
+    signal?.throwIfAborted();
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) throw new Error("Open a SillyTavern chat before using status memory.");
     const api = helper3();
     const boundWorldbookName = api.getChatWorldbookName("current");
     return worldbookWriteCoordinator.run(boundWorldbookName ?? `chat:${chatId}`, async () => {
+      signal?.throwIfAborted();
       if (SillyTavern.getContext().chatId !== chatId) {
         throw new Error("The active chat changed before the status operation started.");
       }
@@ -31500,11 +31558,13 @@ var StatusWorldbookStore = class {
       let worldbookName = boundWorldbookName;
       if (!worldbookName) {
         worldbookName = await api.getOrCreateChatWorldbook("current", `Echoes-${baseName}`);
+        signal?.throwIfAborted();
         if (SillyTavern.getContext().chatId !== chatId) {
           throw new Error("The active chat changed while the status worldbook was being created.");
         }
       }
       let entries = await api.getWorldbook(worldbookName);
+      signal?.throwIfAborted();
       let state = readState2(worldbookName, entries);
       const owner2 = ownedChatId(entries);
       if (state && state.catalog.chatId !== chatId || !state && owner2 && owner2 !== chatId) {
@@ -31513,10 +31573,12 @@ var StatusWorldbookStore = class {
         let suffix = 2;
         while (names.has(candidate)) candidate = `Echoes-${baseName}-${suffix++}`;
         await api.createWorldbook(candidate);
+        signal?.throwIfAborted();
         if (SillyTavern.getContext().chatId !== chatId) {
           throw new Error("The active chat changed before the status worldbook could be rebound.");
         }
         await api.rebindChatWorldbook("current", candidate);
+        signal?.throwIfAborted();
         if (SillyTavern.getContext().chatId !== chatId) {
           throw new Error("The active chat changed while the status worldbook was being rebound.");
         }
@@ -31526,7 +31588,9 @@ var StatusWorldbookStore = class {
       }
       if (!state) {
         await api.createWorldbookEntries(worldbookName, [catalogEntry3(createCatalog2(chatId))]);
+        signal?.throwIfAborted();
         entries = await api.getWorldbook(worldbookName);
+        signal?.throwIfAborted();
         state = readState2(worldbookName, entries);
       }
       if (!state) throw new Error("Failed to initialize the Echoes status catalog.");
@@ -31645,7 +31709,7 @@ var StatusSnapshotConflictError = class extends Error {
 };
 function helper4() {
   const api = window.TavernHelper;
-  if (!api || typeof api.getVariables !== "function" || typeof api.updateVariablesWith !== "function") {
+  if (!api || typeof api.updateVariablesWith !== "function") {
     throw new Error("Echoes requires TavernHelper message variable APIs for status memory.");
   }
   return api;
@@ -31658,8 +31722,9 @@ function statusSwipeId(message) {
   return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 function parseSnapshot(value, namespaceId) {
+  if (!value || typeof value !== "object" || value.namespaceId !== namespaceId) return null;
   const parsed = statusSnapshotSchema.safeParse(value);
-  return parsed.success && parsed.data.namespaceId === namespaceId ? parsed.data : null;
+  return parsed.success ? parsed.data : null;
 }
 function rawSwipeVariables(message, swipeId) {
   const variables = message.variables;
@@ -31673,8 +31738,9 @@ function rawSwipeVariables(message, swipeId) {
 }
 var StatusSnapshotStore = class {
   selected(messageIndex, namespaceId) {
-    const variables = helper4().getVariables({ type: "message", message_id: messageIndex });
-    return parseSnapshot(variables.echoes_status, namespaceId);
+    const message = SillyTavern.getContext().chat[messageIndex];
+    if (!message) return null;
+    return parseSnapshot(rawSwipeVariables(message, statusSwipeId(message))?.echoes_status, namespaceId);
   }
   history(namespaceId) {
     const messages2 = SillyTavern.getContext().chat;
@@ -31688,7 +31754,7 @@ var StatusSnapshotStore = class {
         Array.isArray(message.variables) ? message.variables.length : 0
       );
       for (let swipeId = 0; swipeId < swipeCount; swipeId += 1) {
-        const variables = swipeId === selectedSwipe ? helper4().getVariables({ type: "message", message_id: messageIndex }) : rawSwipeVariables(message, swipeId);
+        const variables = rawSwipeVariables(message, swipeId);
         const snapshot = parseSnapshot(variables?.echoes_status, namespaceId);
         if (!snapshot) continue;
         records2.set(snapshot.snapshotId, {
@@ -34372,6 +34438,63 @@ var GROUP_LABELS = {
 init_client();
 init_settings();
 
+// src/extension/worldbook/overview.ts
+init_schemas3();
+async function loadWorldbookOverview(signal) {
+  const chatId = SillyTavern.getContext().chatId;
+  const api = window.TavernHelper;
+  if (!chatId || !api) throw new Error("Open a chat with TavernHelper before reading the memory overview.");
+  const read = async () => {
+    signal.throwIfAborted();
+    const worldbookName = api.getChatWorldbookName("current");
+    if (!worldbookName) return null;
+    const assertCurrent = () => {
+      signal.throwIfAborted();
+      if (SillyTavern.getContext().chatId !== chatId || api.getChatWorldbookName("current") !== worldbookName)
+        throw new Error("\u5F53\u524D\u804A\u5929\u6216\u4E16\u754C\u4E66\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u8BFB\u53D6\u6982\u89C8\u3002");
+    };
+    return worldbookWriteCoordinator.run(worldbookName, async () => {
+      assertCurrent();
+      const entries = await api.getWorldbook(worldbookName);
+      assertCurrent();
+      const memoryEntry = entries.find((entry) => entry.extra?.echoes?.kind === "catalog");
+      const summaryEntry = entries.find((entry) => entry.extra?.echoes?.kind === "summary_catalog" && [1, 2].includes(entry.extra.echoes.version));
+      const statusEntry = entries.find((entry) => entry.extra?.echoes?.kind === "status_catalog" && entry.extra.echoes.version === 1);
+      if (!memoryEntry || !summaryEntry || !statusEntry) return null;
+      const memory = structuredMemoryCatalogSchema.parse(memoryEntry.extra.echoes.catalog);
+      const summary = summaryCatalogSchema.parse(summaryEntry.extra.echoes.catalog);
+      const status = statusCatalogSchema.parse(statusEntry.extra.echoes.catalog);
+      if ([memory, summary, status].some((catalog) => catalog.chatId !== chatId)) return null;
+      const typeIds = new Set(memory.types.map((type) => type.id));
+      const batches = /* @__PURE__ */ new Set();
+      let rows = 0, slices = 0, ready = 0;
+      for (const entry of entries) {
+        const metadata3 = entry.extra?.echoes;
+        if (metadata3?.kind === "row" && typeIds.has(metadata3.typeId)) rows += 1;
+        if (metadata3?.kind !== "summary_slice") continue;
+        if (metadata3.version !== 2) throw new Error("Echoes summary slices must use metadata version 2.");
+        slices += 1;
+        batches.add(metadata3.batch.id);
+        if (metadata3.batch.state === "ready") ready += 1;
+      }
+      return {
+        worldbookName,
+        memory: { catalog: memory, rows },
+        summary: { catalog: summary, slices, batches: batches.size, ready },
+        status: { worldbookName, catalog: status }
+      };
+    });
+  };
+  const existing = await read();
+  if (existing) return existing;
+  await new WorldbookMemoryStore().load(signal);
+  await new SummaryWorldbookStore().load(signal);
+  await new StatusWorldbookStore().load(signal);
+  const initialized2 = await read();
+  if (!initialized2) throw new Error("Failed to initialize the Echoes memory catalogs.");
+  return initialized2;
+}
+
 // src/extension/ui/pages/shared.ts
 init_continuity();
 
@@ -34832,9 +34955,9 @@ function traceView(trace) {
 }
 
 // src/extension/ui/pages/overview.ts
-async function connectionCard() {
+async function connectionCard(signal) {
   try {
-    const status = await echoesApi.systemStatus();
+    const status = await echoesApi.systemStatus(signal);
     const ready = status.protocolCompatible && status.bootstrap.state === "ready";
     const bootstrap = { ready: "\u5C31\u7EEA", degraded: "\u964D\u7EA7\u8FD0\u884C", unavailable: "\u4E0D\u53EF\u7528" }[status.bootstrap.state];
     return callout(
@@ -34866,11 +34989,11 @@ function setupChecklist(credentials, navigate) {
     )))
   );
 }
-async function structuredMemoryCard(ctx) {
-  const body = await new WorldbookMemoryStore().load().then((memory) => stack2(
+function structuredMemoryCard(ctx, memory) {
+  const body = stack2(
     stats([
       ["\u8868", String(memory.catalog.types.length)],
-      ["\u6761\u76EE", String(memory.rows.length)],
+      ["\u6761\u76EE", String(memory.rows)],
       ["\u68C0\u67E5\u70B9", floorText(memory.catalog.lastProcessedMessageId)]
     ]),
     switchControl("\u81EA\u52A8\u63D0\u53D6", memory.catalog.automation.enabled, async (value) => {
@@ -34886,25 +35009,42 @@ async function structuredMemoryCard(ctx) {
       }, { icon: "play", small: true, disabled: extractionCoordinator.isRunning() }),
       extractionCoordinator.isRunning() ? badge("\u8FD0\u884C\u4E2D", "accent") : null
     )
-  ), (error51) => callout("danger", errorText(error51)));
+  );
   return card("\u7ED3\u6784\u5316\u8BB0\u5FC6", { actions: [button("\u6253\u5F00", () => ctx.navigate("structured/entries"), { variant: "ghost", small: true })] }, body);
 }
 async function overviewPage(ctx) {
-  const credentials = await echoesApi.listCredentials().then((items) => items.length, () => null);
-  const root = stack2(await connectionCard());
-  const checklist = setupChecklist(credentials, ctx.navigate);
-  if (checklist) root.append(checklist);
+  const connection = h("div", "", muted("\u6B63\u5728\u8FDE\u63A5\u540E\u7AEF\u2026"));
+  const checklist = h("div");
+  const showChecklist = (credentials) => {
+    const content = setupChecklist(credentials, ctx.navigate);
+    checklist.hidden = !content;
+    checklist.replaceChildren(...content ? [content] : []);
+  };
+  showChecklist(null);
+  const root = stack2(connection, checklist);
+  ctx.mount(root);
+  void connectionCard(ctx.signal).then((content) => {
+    if (!ctx.signal.aborted) connection.replaceChildren(content);
+  });
+  void echoesApi.listCredentials(ctx.signal).then((items) => {
+    if (!ctx.signal.aborted) showChecklist(items.length);
+  }, () => {
+    if (!ctx.signal.aborted) showChecklist(null);
+  });
   if (!ctx.chatId) {
     root.append(card("\u5F53\u524D\u804A\u5929", {}, muted("\u5728 SillyTavern \u4E2D\u6253\u5F00\u4E00\u4E2A\u804A\u5929\u540E\uFF0C\u8FD9\u91CC\u4F1A\u663E\u793A\u5404\u8BB0\u5FC6\u6A21\u5757\u7684\u72B6\u6001\u3002")));
     return root;
   }
-  const [memoryCard, summary, status] = await Promise.all([
-    structuredMemoryCard(ctx),
-    ctx.summary.load(),
-    statusCoordinator.load()
-  ]);
+  const loading = muted("\u6B63\u5728\u8BFB\u53D6\u8BB0\u5FC6\u2026");
+  root.append(loading);
+  const overview = await loadWorldbookOverview(ctx.signal);
+  ctx.signal.throwIfAborted();
+  const { memory, summary, status } = overview;
+  const memoryCard = structuredMemoryCard(ctx, memory);
   const attention = attentionItems(ctx.summary);
-  const recovery = await ctx.summary.recoveryDraft();
+  const recovery = await ctx.summary.hasRecoveryDraft({ worldbookName: overview.worldbookName, catalog: summary.catalog });
+  ctx.signal.throwIfAborted();
+  loading.remove();
   if (recovery) attention.unshift({ route: "summary/generation", tone: "warning", text: "\u603B\u7ED3\u6709\u672A\u63D0\u4EA4\u7684\u6062\u590D\u8349\u7A3F", action: "\u53BB\u5904\u7406" });
   root.append(card("\u5F85\u5904\u7406", {}, attention.length ? h("div", "ec-attention", ...attention.map((item) => h(
     "div",
@@ -34913,11 +35053,9 @@ async function overviewPage(ctx) {
     h("span", "", item.text),
     button(item.action, () => ctx.navigate(item.route), { variant: "ghost", small: true, icon: "arrow-right" })
   ))) : muted("\u6CA1\u6709\u9700\u8981\u5904\u7406\u7684\u4E8B\u9879\u3002")));
-  const current = statusCoordinator.current(status);
+  const current = status.catalog.enabled ? statusCoordinator.current(status) : null;
   const chat = SillyTavern.getContext().chat;
   const stale = !current || chat.some((message, index) => index > current.messageIndex && message.is_user !== true && message.role !== "user" && Boolean(String(message.mes ?? "").trim()));
-  const ready = summary.slices.filter((slice) => slice.batch.state === "ready").length;
-  const batches = new Set(summary.slices.map((slice) => slice.batch.id)).size;
   const trace = recallCoordinator.trace;
   root.append(h(
     "div",
@@ -34927,9 +35065,9 @@ async function overviewPage(ctx) {
       "\u603B\u7ED3\u8BB0\u5FC6",
       { actions: [button("\u6253\u5F00", () => ctx.navigate("summary/records"), { variant: "ghost", small: true })] },
       stats([
-        ["\u6279\u6B21", String(batches)],
-        ["\u5207\u7247", String(summary.slices.length)],
-        ["\u5411\u91CF\u5C31\u7EEA", `${ready} / ${summary.slices.length}`],
+        ["\u6279\u6B21", String(summary.batches)],
+        ["\u5207\u7247", String(summary.slices)],
+        ["\u5411\u91CF\u5C31\u7EEA", `${summary.ready} / ${summary.slices}`],
         ["\u68C0\u67E5\u70B9", floorText(summary.catalog.lastCommittedMessageId)]
       ]),
       switchControl("\u81EA\u52A8\u603B\u7ED3", summary.catalog.autoRun, async (value) => {
@@ -34947,8 +35085,8 @@ async function overviewPage(ctx) {
       { actions: [button("\u6253\u5F00", () => ctx.navigate("status/current"), { variant: "ghost", small: true })] },
       stats([
         ["\u72B6\u6001", status.catalog.enabled ? "\u5DF2\u542F\u7528" : "\u672A\u542F\u7528"],
-        ["\u5FEB\u7167\u6765\u6E90", current ? `\u7B2C ${current.messageIndex} \u697C` : "\u521D\u59CB\u72B6\u6001"],
-        ["\u540C\u6B65", stale ? "\u5F85\u540C\u6B65" : "\u5DF2\u540C\u6B65"]
+        ["\u5FEB\u7167\u6765\u6E90", status.catalog.enabled ? current ? `\u7B2C ${current.messageIndex} \u697C` : "\u521D\u59CB\u72B6\u6001" : "\u2014"],
+        ["\u540C\u6B65", status.catalog.enabled ? stale ? "\u5F85\u540C\u6B65" : "\u5DF2\u540C\u6B65" : "\u2014"]
       ]),
       h("div", "ec-row", button("\u624B\u52A8\u540C\u6B65", async () => {
         await ctx.run("\u72B6\u6001\u8BB0\u5FC6\u540C\u6B65", () => statusCoordinator.synchronize());
@@ -41232,6 +41370,8 @@ var EchoesApp = class {
   hostInert = /* @__PURE__ */ new Map();
   previousFocus = null;
   activeChat = "";
+  reloadPending = null;
+  reloadRequested = false;
   constructor() {
     this.root.id = "echoes-app";
     this.root.hidden = true;
@@ -41290,23 +41430,27 @@ var EchoesApp = class {
     return !this.root.hidden;
   }
   async open() {
+    if (this.isOpen) {
+      this.main.focus();
+      return;
+    }
     if (!this.root.isConnected) document.body.append(this.root);
     const overlays = layer();
-    if (this.root.hidden) {
-      this.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      for (const sibling of document.body.children)
-        if (sibling instanceof HTMLElement && sibling !== this.root && sibling !== overlays) {
-          this.hostInert.set(sibling, sibling.inert);
-          sibling.inert = true;
-        }
-      this.root.hidden = false;
-    }
-    await this.render();
+    this.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    for (const sibling of document.body.children)
+      if (sibling instanceof HTMLElement && sibling !== this.root && sibling !== overlays) {
+        this.hostInert.set(sibling, sibling.inert);
+        sibling.inert = true;
+      }
+    this.root.hidden = false;
+    const rendering = this.render();
     this.main.focus();
+    await rendering;
   }
   async close() {
     if (this.dirty() && !await confirmAction({ title: "\u653E\u5F03\u672A\u4FDD\u5B58\u7684\u4FEE\u6539\u5E76\u5173\u95ED\uFF1F", confirmLabel: "\u653E\u5F03\u5E76\u5173\u95ED", danger: true })) return false;
     this.scope.abort();
+    this.reloadRequested = false;
     for (const dialog of layer().querySelectorAll("dialog[open]")) dialog.close();
     this.root.hidden = true;
     this.root.classList.remove("nav-open");
@@ -41323,22 +41467,45 @@ var EchoesApp = class {
       for (const dialog of layer().querySelectorAll("dialog[open]")) dialog.close();
     }
     if (this.root.hidden) return;
-    if (changed || !this.dirty()) await this.render();
-    else this.footerNote.textContent = "\u6570\u636E\u5DF2\u5728\u540E\u53F0\u66F4\u65B0\uFF1B\u5237\u65B0\u9875\u9762\u524D\u672A\u4FDD\u5B58\u7684\u7F16\u8F91\u4FDD\u6301\u4E0D\u53D8\u3002";
+    if (!changed && this.dirty()) {
+      this.footerNote.textContent = "\u6570\u636E\u5DF2\u5728\u540E\u53F0\u66F4\u65B0\uFF1B\u5237\u65B0\u9875\u9762\u524D\u672A\u4FDD\u5B58\u7684\u7F16\u8F91\u4FDD\u6301\u4E0D\u53D8\u3002";
+      return;
+    }
+    this.reloadRequested = true;
+    if (this.reloadPending) return this.reloadPending;
+    const operation = (async () => {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        while (this.reloadRequested && !this.root.hidden) {
+          this.reloadRequested = false;
+          if ((SillyTavern.getContext().chatId ?? "") === this.activeChat && this.dirty()) {
+            this.footerNote.textContent = "\u6570\u636E\u5DF2\u5728\u540E\u53F0\u66F4\u65B0\uFF1B\u5237\u65B0\u9875\u9762\u524D\u672A\u4FDD\u5B58\u7684\u7F16\u8F91\u4FDD\u6301\u4E0D\u53D8\u3002";
+            return;
+          }
+          await this.render();
+        }
+      } finally {
+        this.reloadPending = null;
+      }
+    })();
+    this.reloadPending = operation;
+    await operation;
   }
   async checkSummaryAutomation() {
     if (!SillyTavern.getContext().chatId || this.summary.isRunning()) return;
+    const revision = this.summary.revision;
     try {
       await this.summary.runAutomatic();
     } catch (error51) {
       reportError(error51);
     }
-    await this.reload();
+    if (this.summary.revision !== revision) await this.reload();
   }
   async checkExtractionAutomation() {
     if (!SillyTavern.getContext().chatId || extractionCoordinator.isRunning()) return;
+    const revision = extractionCoordinator.revision;
     await extractionCoordinator.runAutomatic();
-    await this.reload();
+    if (extractionCoordinator.revision !== revision) await this.reload();
   }
   dirty() {
     return Boolean(this.root.querySelector('[data-dirty="true"]') || layer().querySelector('[data-dirty="true"]'));
@@ -41445,6 +41612,9 @@ var EchoesApp = class {
       worldbook,
       summary: this.summary,
       signal,
+      mount: (page) => {
+        if (!signal.aborted) this.content.replaceChildren(page);
+      },
       memo: (key2, initial) => {
         if (!memo.has(key2)) memo.set(key2, initial());
         return memo.get(key2);
@@ -41483,7 +41653,7 @@ var EchoesApp = class {
         return;
       }
       guard();
-      this.content.replaceChildren(page);
+      if (this.content.firstElementChild !== page) this.content.replaceChildren(page);
       this.content.scrollTop = this.scrolls.get(`${chatId}:${this.route}`) ?? 0;
       this.footerNote.textContent = "";
     } catch (error51) {
@@ -41825,8 +41995,12 @@ function initialize() {
   };
   events?.on("message_edited", updateLatestStatus);
   events?.on("message_swiped", updateLatestStatus);
-  const summaryCheck = () => void panel?.checkSummaryAutomation();
-  const extractionCheck = () => void panel?.checkExtractionAutomation();
+  const summaryCheck = () => {
+    if (!panel?.summary.compression.isWriting) void panel?.checkSummaryAutomation();
+  };
+  const extractionCheck = () => {
+    if (!panel?.summary.compression.isWriting) void panel?.checkExtractionAutomation();
+  };
   events?.on("user_message_rendered", summaryCheck);
   events?.on("user_message_rendered", extractionCheck);
   events?.on("message_edited", summaryCheck);
