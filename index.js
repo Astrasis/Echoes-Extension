@@ -18755,7 +18755,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.0.3", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.0.4", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -20523,7 +20523,7 @@ var CompressionCoordinator = class {
         const targetBatchId = snapshot.plan.batchByMessageId.get(id);
         const shouldHide = index <= targetEnd && Boolean(targetBatchId) && snapshot.safeBatchIds.has(targetBatchId) && !item?.pinnedVisible;
         const shouldRestoreForCutoff = index > targetEnd && index <= safeEnd;
-        if (shouldHide && (!currentOwned || !message.is_hidden)) {
+        if (shouldHide && (!currentOwned || !item?.hiddenByEchoes || !message.is_hidden)) {
           const compression2 = nextMarker(
             message,
             snapshot.state.catalog.namespaceId,
@@ -20669,13 +20669,14 @@ var CompressionCoordinator = class {
       if (index === void 0) continue;
       const item = marker(message);
       const batchId = snapshot.plan.batchByMessageId.get(id);
-      if (index > targetEnd || !batchId || !snapshot.safeBatchIds.has(batchId) || item?.pinnedVisible || message.is_hidden) continue;
+      const alreadyOwned = item?.namespaceId === state.catalog.namespaceId && item.hiddenByEchoes;
+      if (index > targetEnd || !batchId || !snapshot.safeBatchIds.has(batchId) || item?.pinnedVisible || message.is_hidden && alreadyOwned) continue;
       const compression2 = nextMarker(message, state.catalog.namespaceId, batchId, {
         hiddenByEchoes: true,
         pinnedVisible: false,
-        hiddenAt: (/* @__PURE__ */ new Date()).toISOString()
+        ...message.is_hidden ? {} : { hiddenAt: (/* @__PURE__ */ new Date()).toISOString() }
       });
-      updates.push(compressionPatch(message, compression2, true));
+      updates.push(compressionPatch(message, compression2, message.is_hidden ? void 0 : true));
     }
     await this.apply(state, updates);
     return this.statusFromSnapshot(await this.snapshot(state));
