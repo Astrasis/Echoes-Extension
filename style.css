@@ -113,6 +113,10 @@
 .ec-layer {
   position: fixed;
   inset: 0;
+  /* Keep fixed menus and toasts relative to a viewport-sized layer, not the host html. */
+  height: 100vh;
+  height: 100dvh;
+  contain: layout;
   z-index: 10020;
   pointer-events: none;
   background: transparent;
@@ -131,6 +135,11 @@
 #echoes-app {
   position: fixed;
   inset: 0;
+  /* The host transforms html and fixes body on mobile; inset alone can resolve to zero height. */
+  box-sizing: border-box;
+  height: 100vh;
+  height: 100dvh;
+  contain: layout;
   z-index: 10010;
   display: grid;
   place-items: center;
