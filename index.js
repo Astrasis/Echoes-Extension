@@ -18776,7 +18776,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.1.3", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.1.4", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -19419,7 +19419,7 @@ var SummaryWorldbookStore = class {
         if (options.expectedBatchSnapshot !== void 0 && summaryBatchSnapshot(currentState.slices, options.batch.id) !== options.expectedBatchSnapshot) {
           throw new Error("\u603B\u7ED3\u6279\u6B21\u5DF2\u88AB\u7F16\u8F91\u3001\u589E\u52A0\u6216\u5220\u9664\uFF0C\u672A\u8986\u76D6\u65B0\u5185\u5BB9\u3002");
         }
-        const revision = Math.max(0, ...existing.map((slice) => slice.batch.revision)) + 1;
+        const revision2 = Math.max(0, ...existing.map((slice) => slice.batch.revision)) + 1;
         const createdAt = existing[0]?.batch.createdAt ?? now;
         const parsed = options.candidates.map((candidate) => summarySliceCandidateSchema.parse(candidate));
         const oldByKey = /* @__PURE__ */ new Map();
@@ -19444,7 +19444,7 @@ var SummaryWorldbookStore = class {
               ...options.batch,
               source: { kind: "chat_messages" },
               state: "pending",
-              revision,
+              revision: revision2,
               createdAt,
               updatedAt: now
             }
@@ -20453,18 +20453,33 @@ function marker(message) {
   return null;
 }
 function compressionPatch(message, compression2, hidden) {
-  const extra = withMarker(message, compression2);
   const raw2 = SillyTavern.getContext().chat[message.message_id];
   const swipes = Array.isArray(raw2?.swipes) && raw2.swipes.length ? raw2.swipes.map(String) : [String(raw2?.mes ?? message.message ?? "")];
+  const swipeId = Number(raw2?.swipe_id ?? message.swipe_id ?? 0);
+  if (!Number.isInteger(swipeId) || swipeId < 0 || swipeId >= swipes.length) {
+    throw new Error("The selected swipe changed before the compression marker could be saved.");
+  }
   const swipesInfo = swipes.map((_, index) => structuredClone(raw2?.swipe_info?.[index] ?? {}));
-  const carrier = message.data && typeof message.data === "object" && !Array.isArray(message.data) ? { data: message.data } : { message: String(message.message ?? "") };
+  const selectedExtra = {
+    ...structuredClone(raw2?.extra ?? {}),
+    ...swipesInfo[swipeId],
+    ...structuredClone(message.extra ?? {}),
+    echoes: {
+      ...structuredClone(raw2?.extra?.echoes ?? {}),
+      ...swipesInfo[swipeId]?.echoes,
+      ...structuredClone(message.extra?.echoes ?? {})
+    }
+  };
+  swipesInfo[swipeId] = withMarker({ ...message, extra: selectedExtra }, compression2);
   return {
     message_id: message.message_id,
     ...hidden === void 0 ? {} : { is_hidden: hidden },
+    swipe_id: swipeId,
     swipes,
-    swipes_info: swipesInfo,
-    extra,
-    ...carrier
+    swipes_data: swipes.map((_, index) => structuredClone(
+      raw2?.variables?.[index] ?? message.swipes_data?.[index] ?? (index === swipeId ? message.data : void 0) ?? {}
+    )),
+    swipes_info: swipesInfo
   };
 }
 function withMarker(message, value) {
@@ -20824,7 +20839,10 @@ var CompressionCoordinator = class {
         floor: patch.message_id,
         sourceHash: await sha256Hex(JSON.stringify([message.message, message.swipe_id])),
         before: { hidden: message.is_hidden, marker: marker(message) },
-        after: { hidden: patch.is_hidden ?? message.is_hidden, marker: patch.extra?.echoes?.compression ?? null }
+        after: {
+          hidden: patch.is_hidden ?? message.is_hidden,
+          marker: patch.swipes_info?.[patch.swipe_id ?? message.swipe_id ?? 0]?.echoes?.compression ?? null
+        }
       };
     }));
   }
@@ -20909,38 +20927,80 @@ function selectExtractionRows(rows, types, query, policy, aliases) {
 
 // src/server/services/provider-json.ts
 init_business_regex();
+var MAX_RESPONSE_CHARACTERS = 16 * 1024 * 1024;
+var MAX_DEPTH = 256;
+var MAX_CANDIDATES = 256;
+var MAX_REPAIRS = 16;
+var ParseBudget = class {
+  remaining;
+  constructor(length) {
+    this.remaining = Math.max(65536, length * 12);
+  }
+  spend(amount = 1) {
+    this.remaining -= amount;
+    if (this.remaining < 0) throw new Error("\u6A21\u578B\u54CD\u5E94 JSON \u89E3\u6790\u8D85\u8FC7\u626B\u63CF\u9884\u7B97\u3002");
+  }
+};
 function withoutReasoning(value, rules) {
-  const closed = value.replace(businessRegex("reasoningClosed", rules), " ");
-  const unclosed = closed.search(businessRegex("reasoningOpen", rules));
-  return unclosed < 0 ? closed : closed.slice(0, unclosed);
+  if (Object.hasOwn(rules, "reasoningClosed") || Object.hasOwn(rules, "reasoningOpen")) {
+    const closed = value.replace(businessRegex("reasoningClosed", rules), " ");
+    const unclosed = closed.search(businessRegex("reasoningOpen", rules));
+    return unclosed < 0 ? closed : closed.slice(0, unclosed);
+  }
+  const chunks = [];
+  let after = 0;
+  let open2;
+  for (const match of value.matchAll(/<(\/?)(thinking|think)>/gi)) {
+    const name = match[2].toLowerCase();
+    if (!open2 && !match[1]) {
+      chunks.push(value.slice(after, match.index));
+      open2 = name;
+    } else if (open2 === name && match[1]) {
+      chunks.push(" ");
+      after = match.index + match[0].length;
+      open2 = void 0;
+    }
+  }
+  if (!open2) chunks.push(value.slice(after));
+  return chunks.join("");
 }
-function objectEnd(text, start) {
-  let depth = 0;
+function objectEnds(text, budget) {
+  const ends = /* @__PURE__ */ new Map();
+  const starts = [];
   let inString = false;
   let escaped = false;
-  for (let index = start; index < text.length; index += 1) {
+  let depth = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    budget.spend();
     const char = text[index];
     if (inString) {
       if (escaped) escaped = false;
       else if (char === "\\") escaped = true;
       else if (char === '"') inString = false;
-    } else if (char === '"') {
-      inString = true;
-    } else if (char === "{") {
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-      if (depth === 0) return index + 1;
+      continue;
+    }
+    if (char === '"' && starts.length) inString = true;
+    else if (char === "{") {
+      starts.push(index);
+      if (++depth > MAX_DEPTH) throw new Error("\u6A21\u578B\u54CD\u5E94 JSON \u5D4C\u5957\u8D85\u8FC7 256 \u5C42\u3002");
+    } else if (char === "[") {
+      if (starts.length && ++depth > MAX_DEPTH) throw new Error("\u6A21\u578B\u54CD\u5E94 JSON \u5D4C\u5957\u8D85\u8FC7 256 \u5C42\u3002");
+    } else if (char === "]") depth = Math.max(0, depth - 1);
+    else if (char === "}") {
+      const start = starts.pop();
+      if (start !== void 0) ends.set(start, index + 1);
+      depth = starts.length ? Math.max(0, depth - 1) : 0;
     }
   }
-  return -1;
+  return ends;
 }
-function lenientObject(text, start) {
+function lenientObject(text, start, budget) {
   const open2 = [];
   let inString = false;
   let escaped = false;
   let rewritten = "";
   for (let index = start; index < text.length; index += 1) {
+    budget.spend();
     const char = text[index];
     let emitted = char;
     if (inString) {
@@ -20948,22 +21008,24 @@ function lenientObject(text, start) {
       else if (char === "\\") escaped = true;
       else if (char === '"') {
         let next = index + 1;
-        while (next < text.length && /\s/.test(text.charAt(next))) next += 1;
+        while (next < text.length && /\s/.test(text.charAt(next))) {
+          budget.spend();
+          next += 1;
+        }
         if (next === text.length || ",}]:".includes(text.charAt(next))) inString = false;
         else emitted = '\\"';
       } else if (char === "\n") emitted = "\\n";
       else if (char === "\r") emitted = "\\r";
       else if (char === "	") emitted = "\\t";
-    } else if (char === '"') {
-      inString = true;
-    } else if (char === "{" || char === "[") {
+    } else if (char === '"') inString = true;
+    else if (char === "{" || char === "[") {
       open2.push(char);
-    } else if (char === "]") {
-      open2.pop();
-    } else if (char === "}") {
+      if (open2.length > MAX_DEPTH) throw new Error("\u6A21\u578B\u54CD\u5E94 JSON \u5D4C\u5957\u8D85\u8FC7 256 \u5C42\u3002");
+    } else if (char === "]") open2.pop();
+    else if (char === "}") {
       if (open2.at(-1) === "[") continue;
       open2.pop();
-      if (open2.length === 0) return { text: rewritten + char, end: index + 1 };
+      if (!open2.length) return { text: rewritten + char, end: index + 1 };
     }
     rewritten += emitted;
   }
@@ -20972,72 +21034,53 @@ function lenientObject(text, start) {
 function isObject2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-function embeddedObjects(text) {
-  const objects = [];
-  let start = text.indexOf("{");
-  while (start >= 0) {
-    const end = objectEnd(text, start);
-    if (end > 0) {
-      let value;
-      try {
-        value = JSON.parse(text.slice(start, end));
-      } catch {
-        value = void 0;
-      }
-      if (isObject2(value)) {
-        objects.push(value);
-        start = text.indexOf("{", end);
-        continue;
-      }
-    }
-    const repaired = lenientObject(text, start);
-    if (repaired) {
-      let value;
-      try {
-        value = JSON.parse(repaired.text);
-      } catch {
-        value = void 0;
-      }
-      if (isObject2(value)) {
-        objects.push(value);
-        start = text.indexOf("{", repaired.end);
-        continue;
-      }
-    }
-    start = text.indexOf("{", start + 1);
-  }
-  return objects;
-}
-function failedObjectDiagnostic(text, requiredKey) {
-  let start = text.indexOf("{");
-  while (start >= 0) {
-    const end = objectEnd(text, start);
-    if (end > 0) {
-      const span = text.slice(start, end);
-      if (span.includes(`"${requiredKey}"`)) {
-        try {
-          JSON.parse(span);
-        } catch (error51) {
-          const message = error51.message;
-          const position = message.match(/\bposition (\d+)/);
-          const offset = position ? Number(position[1]) : 0;
-          const excerpt = span.slice(Math.max(0, offset - 30), offset + 30);
-          return ` JSON \u89E3\u6790\u5931\u8D25\uFF1A${message}\uFF1B${position ? "\u9519\u8BEF\u4F4D\u7F6E\u9644\u8FD1" : "\u5BF9\u8C61\u5F00\u5934"}\uFF1A${JSON.stringify(excerpt)}`;
-        }
-      }
-    }
-    start = text.indexOf("{", start + 1);
-  }
-  return "";
-}
 function parseProviderJsonObject(raw2, label, requiredKey, rules = {}) {
+  if (raw2.length > MAX_RESPONSE_CHARACTERS) throw new Error("\u6A21\u578B\u54CD\u5E94\u8D85\u8FC7 JSON \u89E3\u6790\u957F\u5EA6\u9650\u5236\uFF0816 Mi \u5B57\u7B26\uFF09\u3002");
   const cleaned = withoutReasoning(raw2, rules);
-  const candidates = embeddedObjects(cleaned);
-  const qualifying = requiredKey ? candidates.filter((candidate) => Object.hasOwn(candidate, requiredKey)) : candidates;
-  const value = qualifying.at(-1);
+  const budget = new ParseBudget(cleaned.length);
+  const ends = objectEnds(cleaned, budget);
+  let start = cleaned.indexOf("{");
+  let attempts = 0;
+  let repairs = 0;
+  let found = 0;
+  let value;
+  let diagnostic = "";
+  const parse4 = (span) => {
+    budget.spend(span.length * 2);
+    try {
+      const candidate = JSON.parse(span);
+      return isObject2(candidate) ? candidate : void 0;
+    } catch (error51) {
+      if (!diagnostic && requiredKey && span.includes(`"${requiredKey}"`)) {
+        const message2 = error51.message.slice(0, 300);
+        const position = message2.match(/\bposition (\d+)/);
+        const offset = position ? Number(position[1]) : 0;
+        const excerpt = span.slice(Math.max(0, offset - 30), offset + 30);
+        diagnostic = ` JSON \u89E3\u6790\u5931\u8D25\uFF1A${message2}\uFF1B${position ? "\u9519\u8BEF\u4F4D\u7F6E\u9644\u8FD1" : "\u5BF9\u8C61\u5F00\u5934"}\uFF1A${JSON.stringify(excerpt)}`;
+      }
+      return void 0;
+    }
+  };
+  while (start >= 0) {
+    if (++attempts > MAX_CANDIDATES) throw new Error("\u6A21\u578B\u54CD\u5E94 JSON \u5019\u9009\u5BF9\u8C61\u8D85\u8FC7 256 \u4E2A\u3002");
+    let end = ends.get(start);
+    let candidate = end === void 0 ? void 0 : parse4(cleaned.slice(start, end));
+    if (!candidate) {
+      if (++repairs > MAX_REPAIRS) throw new Error("\u6A21\u578B\u54CD\u5E94 JSON \u4FEE\u590D\u6B21\u6570\u8D85\u8FC7 16 \u6B21\u3002");
+      const repaired = lenientObject(cleaned, start, budget);
+      if (repaired) {
+        candidate = parse4(repaired.text);
+        if (candidate) end = repaired.end;
+      }
+    }
+    if (candidate) {
+      found += 1;
+      if (!requiredKey || Object.hasOwn(candidate, requiredKey)) value = candidate;
+      start = cleaned.indexOf("{", end);
+    } else start = cleaned.indexOf("{", start + 1);
+  }
   if (value) return value;
-  const message = candidates.length && requiredKey ? `${label}\u54CD\u5E94\u4E2D\u7684 JSON \u5BF9\u8C61\u90FD\u7F3A\u5C11 "${requiredKey}" \u5B57\u6BB5\uFF1B\u56DE\u590D\u53EF\u80FD\u88AB\u622A\u65AD\u6216\u683C\u5F0F\u4E0D\u7B26\u3002` : `${label}\u54CD\u5E94\u4E2D\u6CA1\u6709\u627E\u5230\u5B8C\u6574\u7684 JSON \u5BF9\u8C61\uFF1B\u56DE\u590D\u53EF\u80FD\u88AB\u622A\u65AD\u6216\u4E0D\u542B JSON\u3002`;
-  const diagnostic = requiredKey ? failedObjectDiagnostic(cleaned, requiredKey) : "";
+  const message = found && requiredKey ? `${label}\u54CD\u5E94\u4E2D\u7684 JSON \u5BF9\u8C61\u90FD\u7F3A\u5C11 "${requiredKey}" \u5B57\u6BB5\uFF1B\u56DE\u590D\u53EF\u80FD\u88AB\u622A\u65AD\u6216\u683C\u5F0F\u4E0D\u7B26\u3002` : `${label}\u54CD\u5E94\u4E2D\u6CA1\u6709\u627E\u5230\u5B8C\u6574\u7684 JSON \u5BF9\u8C61\uFF1B\u56DE\u590D\u53EF\u80FD\u88AB\u622A\u65AD\u6216\u4E0D\u542B JSON\u3002`;
   throw new Error(`${message} \u56DE\u590D\u957F\u5EA6\uFF1A${raw2.length} \u5B57\u7B26\uFF1B\u56DE\u590D\u672B\u5C3E\uFF08\u6700\u591A 200 \u5B57\u7B26\uFF09\uFF1A${raw2.slice(-200).replace(/\s+/g, " ").trim()}${diagnostic}`);
 }
 
@@ -21180,7 +21223,7 @@ var taskRules = {
   preview: []
 };
 function needsBusinessWorker(request) {
-  if (request.task === "preview") return true;
+  if (request.task === "preview" || request.task === "provider") return true;
   const rules = request.args.at(-1);
   return !!rules && typeof rules === "object" && taskRules[request.task].some((id) => Object.hasOwn(rules, id));
 }
@@ -21247,13 +21290,13 @@ function hasSummaryDraft(state) {
 }
 async function saveSummaryDraft(draft) {
   draft.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  const revision = draft.revision ?? 0;
+  const revision2 = draft.revision ?? 0;
   await updateLocalRecord(key(draft), (current) => {
-    if (current ? current.createdAt !== draft.createdAt || (current.revision ?? 0) !== revision : revision !== 0)
+    if (current ? current.createdAt !== draft.createdAt || (current.revision ?? 0) !== revision2 : revision2 !== 0)
       throw new Error("\u672C\u5730\u6062\u590D\u8349\u7A3F\u5DF2\u88AB\u53E6\u4E00\u4E2A\u64CD\u4F5C\u4FEE\u6539\u6216\u6E05\u7406\uFF0C\u672A\u7EE7\u7EED\u8986\u76D6\u3002\u8BF7\u5237\u65B0\u540E\u6838\u5BF9\u3002");
-    return { ...draft, revision: revision + 1 };
+    return { ...draft, revision: revision2 + 1 };
   });
-  draft.revision = revision + 1;
+  draft.revision = revision2 + 1;
 }
 async function clearSummaryDraft(state, expected) {
   if (!expected) return;
@@ -32016,6 +32059,10 @@ function rawSwipeVariables(message, swipeId) {
   return nested && typeof nested === "object" ? nested : null;
 }
 var StatusSnapshotStore = class {
+  rawToken(messageIndex) {
+    const message = SillyTavern.getContext().chat[messageIndex];
+    return JSON.stringify(message ? rawSwipeVariables(message, statusSwipeId(message))?.echoes_status ?? null : null);
+  }
   selected(messageIndex, namespaceId) {
     const message = SillyTavern.getContext().chat[messageIndex];
     if (!message) return null;
@@ -32069,21 +32116,27 @@ var StatusSnapshotStore = class {
     return this.latestBefore(SillyTavern.getContext().chat.length, namespaceId);
   }
   async write(options) {
-    await messageWriteCoordinator.run(async () => {
-      options.guard?.();
-      const context = SillyTavern.getContext();
-      const message = context.chat[options.messageIndex];
-      if (context.chatId !== options.lockedChatId || !message || statusMessageId(message, options.messageIndex) !== options.messageId || statusSwipeId(message) !== options.swipeId) {
-        throw new Error("The target chat or swipe changed before the status snapshot could be saved.");
-      }
+    await messageWriteCoordinator.run(() => worldbookWriteCoordinator.run(options.worldbookName, async () => {
+      const assertTarget = () => {
+        options.guard();
+        const context = SillyTavern.getContext();
+        const message = context.chat[options.messageIndex];
+        if (context.chatId !== options.lockedChatId || !message || statusMessageId(message, options.messageIndex) !== options.messageId || statusSwipeId(message) !== options.swipeId) throw new StatusSnapshotConflictError();
+      };
+      assertTarget();
+      await options.validateBeforeWrite();
+      assertTarget();
       const parsed = statusSnapshotSchema.parse(options.snapshot);
       await helper4().updateVariablesWith((variables) => {
-        options.guard?.();
+        assertTarget();
+        if (JSON.stringify(variables.echoes_status ?? null) !== options.expectedRawSnapshot) {
+          throw new StatusSnapshotConflictError();
+        }
         if (options.expectedSnapshot !== void 0 && JSON.stringify(parseSnapshot(variables.echoes_status, parsed.namespaceId)) !== JSON.stringify(options.expectedSnapshot)) throw new StatusSnapshotConflictError();
         if (options.expectedParent !== void 0 && JSON.stringify(this.latestBefore(options.messageIndex, parsed.namespaceId)) !== JSON.stringify(options.expectedParent)) throw new StatusSnapshotConflictError();
         return { ...variables, echoes_status: parsed };
       }, { type: "message", message_id: options.messageIndex });
-    });
+    }));
   }
 };
 
@@ -32194,6 +32247,15 @@ function renderStatusInjection(catalog, state, template2 = catalog.profile.injec
 ${yaml}`;
   const variables = renderStatusVariables(catalog.customVariables);
   return [status.trim(), variables].filter(Boolean).join("\n\n");
+}
+
+// src/extension/status/status-invalidation.ts
+var revision = 0;
+function statusTaskRevision() {
+  return revision;
+}
+function invalidateStatusTasks() {
+  revision += 1;
 }
 
 // src/extension/status/status-coordinator.ts
@@ -32329,11 +32391,41 @@ var StatusCoordinator = class {
     if (this.pending.has(chatId)) return Promise.reject(new Error("\u8BF7\u7B49\u5F85\u5F53\u524D\u72B6\u6001\u4EFB\u52A1\u5B8C\u6210\u540E\u518D\u91CD\u65B0\u8BA1\u7B97\u3002"));
     return this.startUpdate("manual", chatId, true);
   }
+  writeProtection(state, revision2) {
+    const fingerprint = (value) => JSON.stringify([
+      value.catalog.chatId,
+      value.catalog.namespaceId,
+      value.catalog.enabled,
+      value.catalog.autoUpdate,
+      value.catalog.profile,
+      value.catalog.customVariables
+    ]);
+    const expected = fingerprint(state);
+    const guard = () => {
+      if (statusTaskRevision() !== revision2 || SillyTavern.getContext().chatId !== state.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) {
+        throw new StatusSnapshotConflictError();
+      }
+    };
+    return {
+      worldbookName: state.worldbookName,
+      guard,
+      validateBeforeWrite: async () => {
+        guard();
+        const current = await this.worldbook.find(state.worldbookName);
+        guard();
+        if (!current || fingerprint(current) !== expected) throw new StatusSnapshotConflictError();
+      }
+    };
+  }
   async saveManualState(rawState, origin = "manual", expectedToken) {
+    const revision2 = statusTaskRevision();
     const state = await this.load();
+    const protection = this.writeProtection(state, revision2);
+    protection.guard();
     const token = this.manualStateToken(state);
     if (expectedToken !== void 0 && expectedToken !== token) throw new StatusSnapshotConflictError();
     const guard = () => {
+      protection.guard();
       if (this.manualStateToken(state) !== token) throw new StatusSnapshotConflictError();
     };
     const targetIndex = lastAssistantIndex();
@@ -32343,6 +32435,7 @@ var StatusCoordinator = class {
     const targetSwipeId = statusSwipeId(target);
     const previousRecord = this.snapshots.latestBefore(targetIndex, state.catalog.namespaceId);
     const existing = this.snapshots.selected(targetIndex, state.catalog.namespaceId);
+    const expectedRawSnapshot = this.snapshots.rawToken(targetIndex);
     const previous = await this.verifiedSnapshot(previousRecord);
     const candidate = statusStateSchema.parse(rawState);
     const baseState = previous?.state ?? state.catalog.profile.initialState;
@@ -32378,6 +32471,13 @@ var StatusCoordinator = class {
       snapshot,
       expectedSnapshot: existing,
       expectedParent: previousRecord,
+      expectedRawSnapshot,
+      ...protection,
+      validateBeforeWrite: async () => {
+        await protection.validateBeforeWrite();
+        const current = selectStatusSourceMessages({ baseSnapshot: previous, targetMessageIndex: targetIndex });
+        if (await statusSourceHash(current.originalMessages) !== snapshot.sourceHash) throw new StatusSnapshotConflictError();
+      },
       guard
     });
     this.rerunOrigins.delete(state.catalog.chatId);
@@ -32459,6 +32559,7 @@ var StatusCoordinator = class {
     }));
   }
   startUpdate(origin, chatId, force = false) {
+    const revision2 = statusTaskRevision();
     const operation = this.updateLatest(origin, chatId, force).finally(() => {
       if (this.pending.get(chatId) !== operation) return;
       this.pending.delete(chatId);
@@ -32466,8 +32567,9 @@ var StatusCoordinator = class {
       this.emit();
       const rerunOrigin = this.rerunOrigins.get(chatId);
       this.rerunOrigins.delete(chatId);
-      if (!rerunOrigin || SillyTavern.getContext().chatId !== chatId) return;
+      if (!rerunOrigin || statusTaskRevision() !== revision2 || SillyTavern.getContext().chatId !== chatId) return;
       queueMicrotask(() => {
+        if (statusTaskRevision() !== revision2 || SillyTavern.getContext().chatId !== chatId) return;
         const rerun = rerunOrigin === "manual" ? this.synchronize() : this.runAutomatic();
         void rerun.catch((error51) => {
           console.error("[Echoes] Deferred status update failed.", error51);
@@ -32518,7 +32620,10 @@ var StatusCoordinator = class {
     }
   }
   async performUpdateLatest(origin, startedAt, traceContext, force) {
+    const revision2 = statusTaskRevision();
     const state = await this.load();
+    const protection = this.writeProtection(state, revision2);
+    protection.guard();
     traceContext.chatId = state.catalog.chatId;
     traceContext.namespaceId = state.catalog.namespaceId;
     const skip = (message, record3 = true) => {
@@ -32548,6 +32653,7 @@ var StatusCoordinator = class {
     traceContext.targetSwipeId = targetSwipeId;
     const previousRecord = this.snapshots.latestBefore(targetIndex, state.catalog.namespaceId);
     const existing = this.snapshots.selected(targetIndex, state.catalog.namespaceId);
+    const expectedRawSnapshot = this.snapshots.rawToken(targetIndex);
     const previous = await this.verifiedSnapshot(previousRecord);
     const baseState = previous?.state ?? state.catalog.profile.initialState;
     const baseStateHash = await statusStateHash(baseState);
@@ -32587,6 +32693,7 @@ var StatusCoordinator = class {
     let resumeAfterEndpointId;
     let result;
     while (true) {
+      protection.guard();
       const request = {
         chatId: state.catalog.chatId,
         namespaceId: state.catalog.namespaceId,
@@ -32606,6 +32713,7 @@ var StatusCoordinator = class {
         this.progress.set(state.catalog.chatId, current.message);
         this.emit();
       })).result;
+      protection.guard();
       if (!result.decisionRequired) break;
       if (!await decideAmbiguous(result.decisionRequired)) {
         this.setTrace({
@@ -32628,6 +32736,7 @@ var StatusCoordinator = class {
     if (result.outcome !== "completed" || !result.state || !result.stateHash) {
       throw new Error("\u72B6\u6001\u670D\u52A1\u8FD4\u56DE\u7684\u7ED3\u679C\u7F3A\u5C11\u5B8C\u6210\u72B6\u6001\u6216\u72B6\u6001\u54C8\u5E0C\uFF0C\u672A\u4FEE\u6539\u72B6\u6001\u3002");
     }
+    protection.guard();
     const recomputed = applyStatusOperations({
       baseState,
       operations: result.operations,
@@ -32714,7 +32823,18 @@ var StatusCoordinator = class {
       swipeId: targetSwipeId,
       snapshot,
       expectedSnapshot: existing,
-      expectedParent: previousRecord
+      expectedParent: previousRecord,
+      expectedRawSnapshot,
+      ...protection,
+      validateBeforeWrite: async () => {
+        await protection.validateBeforeWrite();
+        const current = await prepareStatusRequest({
+          catalog: state.catalog,
+          baseSnapshot: previous,
+          targetMessageIndex: targetIndex
+        });
+        if (current.sourceHash !== prepared.sourceHash) throw new StatusSnapshotConflictError();
+      }
     });
     this.setTrace({
       chatId: state.catalog.chatId,
@@ -37713,11 +37833,11 @@ init_settings();
 var TRACE_STATE = { running: "\u8FD0\u884C\u4E2D", succeeded: "\u5B8C\u6210", incomplete: "\u672A\u5B8C\u6210", failed: "\u5931\u8D25", cancelled: "\u5DF2\u53D6\u6D88" };
 function runCard(ctx, initial) {
   const host = h("div", "ec-stack");
-  let revision = 0;
+  let revision2 = 0;
   const render = async (state) => {
-    const ticket = ++revision;
+    const ticket = ++revision2;
     const pending = await ctx.summary.pendingStatus(state);
-    if (ctx.signal.aborted || ticket !== revision) return;
+    if (ctx.signal.aborted || ticket !== revision2) return;
     const running = ctx.summary.isRunning();
     fill(
       host,
@@ -41396,6 +41516,7 @@ var EchoesBackupManager = class {
       let writtenEntries;
       try {
         invalidateRecall(current.worldbookName);
+        invalidateStatusTasks();
         await this.assertRestoreTarget(backup, plan);
         await api.updateWorldbookWith(current.worldbookName, (entries) => {
           if (stableJson(entries) !== stableJson(originalEntries)) throw new Error("\u4E16\u754C\u4E66\u5DF2\u53D8\u5316\uFF0C\u672A\u6267\u884C\u6062\u590D\uFF0C\u8BF7\u91CD\u65B0\u9884\u89C8\u3002");
@@ -41990,19 +42111,19 @@ var EchoesApp = class {
   }
   async checkSummaryAutomation() {
     if (!SillyTavern.getContext().chatId || this.summary.isRunning()) return;
-    const revision = this.summary.revision;
+    const revision2 = this.summary.revision;
     try {
       await this.summary.runAutomatic();
     } catch (error51) {
       reportError(error51);
     }
-    if (this.summary.revision !== revision) await this.reload();
+    if (this.summary.revision !== revision2) await this.reload();
   }
   async checkExtractionAutomation() {
     if (!SillyTavern.getContext().chatId || extractionCoordinator.isRunning()) return;
-    const revision = extractionCoordinator.revision;
+    const revision2 = extractionCoordinator.revision;
     await extractionCoordinator.runAutomatic();
-    if (extractionCoordinator.revision !== revision) await this.reload();
+    if (extractionCoordinator.revision !== revision2) await this.reload();
   }
   containTab(event) {
     if (this.root.hidden || event.key !== "Tab" || event.defaultPrevented || topDialog()) return;
@@ -42308,7 +42429,7 @@ function installStatusFloatingButton(onUpdated) {
   root.append(button2, label);
   document.body.append(root);
   let state = null;
-  let revision = 0;
+  let revision2 = 0;
   let dragged = false;
   let drag = null;
   let position = null;
@@ -42345,18 +42466,18 @@ function installStatusFloatingButton(onUpdated) {
     place();
   };
   const refresh = async () => {
-    const ticket = ++revision;
+    const ticket = ++revision2;
     const name = window.TavernHelper?.getChatWorldbookName("current");
     state = null;
     render();
     if (!name) return;
     try {
       const next = await statusCoordinator.worldbook.find(name);
-      if (revision !== ticket) return;
+      if (revision2 !== ticket) return;
       state = next;
       render();
     } catch (error51) {
-      if (revision === ticket) {
+      if (revision2 === ticket) {
         root.hidden = true;
         console.warn("[Echoes] Cannot read floating status control.", error51);
       }
@@ -42446,6 +42567,7 @@ function initialize() {
   installStatusFloatingButton(() => void panel?.reload());
   const events = SillyTavern.getContext().eventSource;
   const refresh = () => {
+    invalidateStatusTasks();
     discussionCoordinator.chatChanged();
     if (panel?.isOpen) void panel.reload();
     void panel?.checkSummaryAutomation();
@@ -42453,6 +42575,7 @@ function initialize() {
   };
   events?.on("chat_changed", refresh);
   events?.on("chat_id_changed", refresh);
+  window.addEventListener("echoes-status-configuration-changed", invalidateStatusTasks);
   const reportClearFailure = (label) => (error51) => {
     console.error(`[Echoes] ${label}\u4E34\u65F6\u6CE8\u5165\u6E05\u7406\u5931\u8D25`, error51);
     toastr.error(error51 instanceof Error ? error51.message : String(error51), `Echoes ${label}\u6E05\u7406\u5931\u8D25`);
