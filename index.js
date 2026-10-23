@@ -18776,7 +18776,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.1.1", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.1.2", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -35143,6 +35143,66 @@ async function showOriginalSource(state, slice) {
   ], { size: "large" });
 }
 
+// src/extension/ui/pages/recall/candidate-detail.ts
+async function showCandidateContent(trace, candidate) {
+  const document2 = candidate.hit.document;
+  const sources2 = trace.sources.filter((source2) => source2.collectionId === document2.collectionId);
+  const source = sources2.length === 1 ? sources2[0] : void 0;
+  const content = h("div", "ec-stack", muted("\u6B63\u5728\u8BFB\u53D6\u5207\u7247\u6B63\u6587\u2026"));
+  const view = modal("\u5207\u7247\u5185\u5BB9", [
+    kv([
+      ["\u5207\u7247 ID", document2.sourceId],
+      ["\u6765\u6E90\u804A\u5929", source?.chatId ?? "\u672A\u8BB0\u5F55"],
+      ["\u6765\u6E90\u4E16\u754C\u4E66", source?.worldbookName ?? "\u672A\u8BB0\u5F55"]
+    ]),
+    content,
+    lazy2("\u5F53\u6B21\u68C0\u7D22\u6458\u8981", () => h(
+      "div",
+      "ec-stack",
+      muted("\u8BCA\u65AD\u8BB0\u5F55\u53EA\u4FDD\u7559\u68C0\u7D22\u6587\u672C\u7684\u524D 240 \u4E2A\u5B57\u7B26\uFF0C\u53EF\u80FD\u4E0E\u5207\u7247\u6B63\u6587\u4E0D\u540C\u3002"),
+      code(document2.text || "\uFF08\u6CA1\u6709\u8BB0\u5F55\u68C0\u7D22\u6458\u8981\uFF09")
+    ))
+  ], { size: "large" });
+  const unavailable = (message) => fill(content, callout("warning", message));
+  if (document2.sourceType !== "chat_summary") {
+    unavailable("\u8FD9\u6761\u5019\u9009\u4E0D\u662F\u603B\u7ED3\u5207\u7247\uFF0C\u65E0\u6CD5\u8BFB\u53D6\u5207\u7247\u6B63\u6587\u3002\u53EF\u5C55\u5F00\u4E0B\u65B9\u7684\u5F53\u6B21\u68C0\u7D22\u6458\u8981\u67E5\u770B\u8BB0\u5F55\u3002");
+    return;
+  }
+  if (!source) {
+    unavailable("\u8FD9\u6761\u5019\u9009\u7F3A\u5C11\u552F\u4E00\u7684\u6765\u6E90\u8BB0\u5F55\uFF0C\u65E0\u6CD5\u5B9A\u4F4D\u5207\u7247\u6B63\u6587\u3002\u53EF\u5C55\u5F00\u4E0B\u65B9\u7684\u5F53\u6B21\u68C0\u7D22\u6458\u8981\u67E5\u770B\u8BB0\u5F55\u3002");
+    return;
+  }
+  try {
+    const state = await new SummaryWorldbookStore().inspect(source.worldbookName);
+    if (!view.node.open) return;
+    if (state.catalog.namespaceId !== source.namespaceId || state.catalog.chatId !== source.chatId || state.catalog.retrievalCollectionId !== document2.collectionId) {
+      unavailable("\u6765\u6E90\u5DF2\u53D8\u5316\uFF0C\u65E0\u6CD5\u786E\u8BA4\u8FD9\u6761\u5019\u9009\u5BF9\u5E94\u7684\u5F53\u524D\u6B63\u6587\u3002\u53EF\u5C55\u5F00\u4E0B\u65B9\u7684\u5F53\u6B21\u68C0\u7D22\u6458\u8981\u67E5\u770B\u539F\u8BB0\u5F55\u3002");
+      return;
+    }
+    const slice = state.slices.find((item) => item.id === document2.sourceId);
+    if (!slice) {
+      unavailable("\u6E90\u4E16\u754C\u4E66\u4E2D\u5DF2\u627E\u4E0D\u5230\u8FD9\u4E2A\u5207\u7247\uFF0C\u53EF\u80FD\u5DF2\u5220\u9664\u6216\u91CD\u5EFA\u3002\u53EF\u5C55\u5F00\u4E0B\u65B9\u7684\u5F53\u6B21\u68C0\u7D22\u6458\u8981\u67E5\u770B\u539F\u8BB0\u5F55\u3002");
+      return;
+    }
+    fill(
+      content,
+      kv([
+        ["\u6807\u9898", slice.title],
+        ["\u6279\u6B21 / \u5207\u7247", `${slice.batch.batchNumber}.${slice.sliceNumber}`],
+        ["\u6545\u4E8B\u65F6\u95F4", slice.timestamp],
+        ["\u6807\u7B7E", slice.tags.join(" / ")]
+      ]),
+      card(
+        "\u5207\u7247\u6B63\u6587",
+        { description: "\u663E\u793A\u6E90\u4E16\u754C\u4E66\u5F53\u524D\u4FDD\u5B58\u7684\u5B8C\u6574\u6B63\u6587\uFF1B\u82E5\u53EC\u56DE\u540E\u6709\u8FC7\u4FEE\u6539\uFF0C\u8FD9\u91CC\u663E\u793A\u4FEE\u6539\u540E\u7684\u5185\u5BB9\u3002" },
+        h("div", "ec-prose", slice.content)
+      )
+    );
+  } catch (error51) {
+    if (view.node.open) unavailable(`\u65E0\u6CD5\u8BFB\u53D6\u6E90\u5207\u7247\uFF1A${errorText(error51)}\u3002\u53EF\u5C55\u5F00\u4E0B\u65B9\u7684\u5F53\u6B21\u68C0\u7D22\u6458\u8981\u67E5\u770B\u8BB0\u5F55\u3002`);
+  }
+}
+
 // src/extension/ui/pages/recall/trace.ts
 var BRANCH = { succeeded: "\u6210\u529F", failed: "\u5931\u8D25", ambiguous: "\u7ED3\u679C\u4E0D\u786E\u5B9A", disabled: "\u672A\u542F\u7528" };
 var DECISION = { selected: "\u901A\u8FC7", minimum_relevance: "\u4F4E\u4E8E\u9608\u503C", result_limit: "\u8D85\u8FC7\u8FD4\u56DE\u4E0A\u9650" };
@@ -35201,16 +35261,21 @@ function traceView(trace) {
         { label: "\u52A0\u6743\u540E", cell: (item) => item.hit.weightedScore?.toFixed(4) ?? "\u2014" },
         { label: "\u9608\u503C", cell: (item) => String(item.threshold) },
         { label: "\u53BB\u5411", cell: (item) => badge(DECISION[item.decision], item.decision === "selected" ? "success" : "neutral") },
-        { label: "", cell: (item) => iconButton("\u67E5\u770B\u5206\u6570\u6784\u6210", "eye", () => modal("\u5206\u6570\u6784\u6210", [
-          table([
-            { label: "\u6743\u91CD\u9879", cell: (step) => step.label },
-            { label: "\u539F\u59CB", cell: (step) => String(step.before) },
-            { label: "\u52A0\u6743\u91CD", cell: (step) => String(step.add) },
-            { label: "\u4E58\u6743\u91CD", cell: (step) => String(step.multiply) },
-            { label: "\u7ED3\u679C", cell: (step) => String(step.after) }
-          ], item.hit.scoreSteps ?? [], { empty: "\u6CA1\u6709\u8BB0\u5F55\u6743\u91CD\u6B65\u9AA4" }),
-          lazy2("\u5206\u8DEF\u547D\u4E2D", item.hit.queryMatches ?? [])
-        ])) }
+        { label: "", className: "is-actions", cell: (item) => h(
+          "div",
+          "ec-row",
+          button("\u67E5\u770B\u5185\u5BB9", () => showCandidateContent(trace, item), { variant: "ghost", small: true, icon: "file-lines" }),
+          iconButton("\u67E5\u770B\u5206\u6570\u6784\u6210", "eye", () => modal("\u5206\u6570\u6784\u6210", [
+            table([
+              { label: "\u6743\u91CD\u9879", cell: (step) => step.label },
+              { label: "\u539F\u59CB", cell: (step) => String(step.before) },
+              { label: "\u52A0\u6743\u91CD", cell: (step) => String(step.add) },
+              { label: "\u4E58\u6743\u91CD", cell: (step) => String(step.multiply) },
+              { label: "\u7ED3\u679C", cell: (step) => String(step.after) }
+            ], item.hit.scoreSteps ?? [], { empty: "\u6CA1\u6709\u8BB0\u5F55\u6743\u91CD\u6B65\u9AA4" }),
+            lazy2("\u5206\u8DEF\u547D\u4E2D", item.hit.queryMatches ?? [])
+          ]))
+        ) }
       ], page.items), pager(state, page.pages, candidates.length, draw));
     };
     draw();
