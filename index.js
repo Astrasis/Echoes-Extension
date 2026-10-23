@@ -18776,7 +18776,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.1.0", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.1.1", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -20523,10 +20523,7 @@ var CompressionCoordinator = class {
   }
   reconcile(state, beforeWrite) {
     return this.serialize(async () => {
-      let snapshot = await this.snapshot(state);
-      if (await this.reconcileExternalUnhides(snapshot)) {
-        snapshot = await this.snapshot(snapshot.state);
-      }
+      const snapshot = await this.snapshot(state);
       if (!snapshot.state.catalog.recallEnabled || !snapshot.state.catalog.compression.enabled) {
         return this.statusFromSnapshot(snapshot);
       }
@@ -20593,6 +20590,9 @@ var CompressionCoordinator = class {
   restoreAll(state, pinVisible = true) {
     return this.restore(state, (_message, item) => Boolean(item?.hiddenByEchoes), pinVisible, true);
   }
+  recompressAll(state) {
+    return this.recompressBatch(state, uniqueBatches2(state.slices).map((batch) => batch.id));
+  }
   recompressBatch(state, batchIds) {
     return this.serialize(async () => {
       const snapshot = await this.snapshot(state);
@@ -20658,22 +20658,6 @@ var CompressionCoordinator = class {
       await this.apply(state, updates);
       return this.statusFromSnapshot(await this.snapshot(state));
     });
-  }
-  async reconcileExternalUnhides(snapshot) {
-    const updates = [];
-    for (const message of snapshot.raw) {
-      const item = marker(message);
-      if (!item || item.namespaceId !== snapshot.state.catalog.namespaceId || !item.hiddenByEchoes || message.is_hidden) continue;
-      const compression2 = nextMarker(
-        message,
-        item.namespaceId,
-        item.batchId,
-        { hiddenByEchoes: false, pinnedVisible: true }
-      );
-      updates.push(compressionPatch(message, compression2));
-    }
-    await this.apply(snapshot.state, updates);
-    return updates.length > 0;
   }
   async reconcileUnlocked(state) {
     const snapshot = await this.snapshot(state);
@@ -38149,11 +38133,24 @@ async function summaryHidingPage(ctx) {
         const result = await ctx.run("\u91CD\u65B0\u5E94\u7528\u9690\u85CF", () => ctx.summary.compression.reconcile(current));
         toast(result.blockedReason ?? `\u5DF2\u5E94\u7528\uFF1A\u9690\u85CF ${result.hidden} \u6761\uFF0C\u56FA\u5B9A\u53EF\u89C1 ${result.pinned} \u6761\u3002`, result.blockedReason ? "warning" : "success");
         await ctx.refresh();
-      }, { icon: "arrows-rotate", small: true })
+      }, { icon: "arrows-rotate", small: true }),
+      button("\u5168\u90E8\u91CD\u65B0\u9690\u85CF", async () => {
+        if (!await confirmAction({
+          title: "\u89E3\u9664\u6240\u6709\u6279\u6B21\u7684\u56FA\u5B9A\u53EF\u89C1\u5E76\u91CD\u65B0\u9690\u85CF\uFF1F",
+          confirmLabel: "\u5168\u90E8\u91CD\u65B0\u9690\u85CF",
+          message: "\u4F1A\u89E3\u9664\u5F53\u524D\u603B\u7ED3\u6279\u6B21\u539F\u6D88\u606F\u7684\u56FA\u5B9A\u53EF\u89C1\uFF0C\u4ECD\u6309\u5DF2\u4FDD\u5B58\u7684\u81EA\u52A8\u9690\u85CF\u5F00\u5173\u3001\u4FDD\u7559\u8303\u56F4\u548C\u7D22\u5F15\u6821\u9A8C\u6267\u884C\u3002"
+        })) return;
+        ctx.guard();
+        const current = await ctx.summary.load();
+        ctx.guard();
+        const result = await ctx.run("\u5168\u90E8\u91CD\u65B0\u9690\u85CF", () => ctx.summary.compression.recompressAll(current));
+        toast(result.blockedReason ?? `\u5DF2\u91CD\u65B0\u9690\u85CF\uFF1A\u9690\u85CF ${result.hidden} \u6761\uFF0C\u56FA\u5B9A\u53EF\u89C1 ${result.pinned} \u6761\u3002`, result.blockedReason ? "warning" : "success");
+        await ctx.refresh();
+      }, { icon: "eye-slash", small: true })
     ) }),
     card(
       "\u6062\u590D\u539F\u6D88\u606F",
-      { description: "\u6062\u590D\u540E\u7684\u6D88\u606F\u4F1A\u56FA\u5B9A\u53EF\u89C1\uFF0C\u76F4\u5230\u5728\u5BF9\u5E94\u6279\u6B21\u6267\u884C\u201C\u91CD\u65B0\u9690\u85CF\u201D\u3002" },
+      { description: "\u6062\u590D\u540E\u7684\u6D88\u606F\u4F1A\u56FA\u5B9A\u53EF\u89C1\uFF0C\u76F4\u5230\u6267\u884C\u5BF9\u5E94\u6279\u6B21\u7684\u201C\u91CD\u65B0\u9690\u85CF\u201D\u6216\u201C\u5168\u90E8\u91CD\u65B0\u9690\u85CF\u201D\u3002" },
       range.node,
       h(
         "div",
