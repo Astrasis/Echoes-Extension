@@ -1698,13 +1698,13 @@ function time(args) {
   return new RegExp(`^${timeSource(args)}$`);
 }
 function datetime(args) {
-  const time4 = timeSource({ precision: args.precision });
+  const time3 = timeSource({ precision: args.precision });
   const opts = ["Z"];
   if (args.local)
     opts.push("");
   if (args.offset)
     opts.push(`([+-](?:[01]\\d|2[0-3]):[0-5]\\d)`);
-  const timeRegex = `${time4}(?:${opts.join("|")})`;
+  const timeRegex = `${time3}(?:${opts.join("|")})`;
   return new RegExp(`^${dateSource}T(?:${timeRegex})$`);
 }
 function fixedBase64(bodyLength, padding) {
@@ -3450,13 +3450,13 @@ var init_schemas = __esm({
         }
         return propValues;
       });
-      const isObject3 = isObject;
+      const isObject4 = isObject;
       const catchall = def.catchall;
       let value;
       inst._zod.parse = (payload, ctx) => {
         value ?? (value = _normalized.value);
         const input = payload.value;
-        if (!isObject3(input)) {
+        if (!isObject4(input)) {
           payload.issues.push({
             expected: "object",
             code: "invalid_type",
@@ -3583,7 +3583,7 @@ var init_schemas = __esm({
         return (payload, ctx) => fn(shape, payload, ctx);
       };
       let fastpass;
-      const isObject3 = isObject;
+      const isObject4 = isObject;
       const jit = !globalConfig.jitless;
       const allowsEval2 = allowsEval;
       const fastEnabled = jit && allowsEval2.value;
@@ -3592,7 +3592,7 @@ var init_schemas = __esm({
       inst._zod.parse = (payload, ctx) => {
         value ?? (value = _normalized.value);
         const input = payload.value;
-        if (!isObject3(input)) {
+        if (!isObject4(input)) {
           payload.issues.push({
             expected: "object",
             code: "invalid_type",
@@ -15679,6 +15679,56 @@ var init_zod = __esm({
   }
 });
 
+// src/shared/business-regex.ts
+function businessRegex(id, settings = {}) {
+  const rule = settings[id] ?? BUSINESS_REGEX_RULES.find((entry) => entry.id === id);
+  return new RegExp("enabled" in rule && !rule.enabled ? "(?!)" : rule.pattern, rule.flags);
+}
+function splitBusinessText(text, id, settings = {}) {
+  const separator = businessRegex(id, settings);
+  const all = new RegExp(separator.source, separator.flags.includes("g") ? separator.flags : `${separator.flags}g`);
+  const parts = [];
+  let start = 0;
+  for (const match of text.matchAll(all)) {
+    parts.push(text.slice(start, match.index));
+    start = match.index + match[0].length;
+  }
+  parts.push(text.slice(start));
+  return parts;
+}
+var BUSINESS_REGEX_RULES, businessRegexValueSchema, businessRegexSettingsSchema;
+var init_business_regex = __esm({
+  "src/shared/business-regex.ts"() {
+    "use strict";
+    init_zod();
+    BUSINESS_REGEX_RULES = [
+      { id: "aliasName", group: "\u4EBA\u7269\u4E0E\u8D44\u6599", name: "\u522B\u540D\u5217\u540D\u79F0", pattern: "^(\u522B\u540D|\u522B\u79F0|aliases?|alternate_names?)$", flags: "i", usage: "\u8BC6\u522B\u4F5C\u4E3A\u522B\u540D\u4F7F\u7528\u7684\u8868\u683C\u5217\u540D\u79F0\u3002" },
+      { id: "aliasId", group: "\u4EBA\u7269\u4E0E\u8D44\u6599", name: "\u522B\u540D\u5217\u6807\u8BC6", pattern: "^(aliases?|alternate_names?)$", flags: "i", usage: "\u8BC6\u522B\u4F5C\u4E3A\u522B\u540D\u4F7F\u7528\u7684\u8868\u683C\u5217 ID\u3002" },
+      { id: "aliasSeparator", group: "\u4EBA\u7269\u4E0E\u8D44\u6599", name: "\u522B\u540D\u5206\u9694\u7B26", pattern: "[\\n/\u3001,\uFF0C;\uFF1B]", flags: "", usage: "\u628A\u6587\u672C\u5217\u62C6\u6210\u591A\u4E2A\u522B\u540D\uFF1B\u663E\u5F0F aliases \u6570\u7EC4\u4E0D\u53D7\u5F71\u54CD\u3002" },
+      { id: "reasoningClosed", group: "\u6A21\u578B\u8F93\u51FA", name: "\u5B8C\u6574\u601D\u8003\u5757", pattern: "<(thinking|think)>[\\s\\S]*?<\\/\\1>", flags: "gi", usage: "\u89E3\u6790 JSON \u524D\u79FB\u9664\u5339\u914D\u7684\u601D\u8003\u5757\uFF0C\u907F\u514D\u628A\u601D\u8003\u8349\u7A3F\u5F53\u4F5C\u6700\u7EC8\u7ED3\u679C\u3002" },
+      { id: "reasoningOpen", group: "\u6A21\u578B\u8F93\u51FA", name: "\u672A\u95ED\u5408\u601D\u8003\u5757", pattern: "<(thinking|think)>", flags: "i", usage: "\u5B8C\u6574\u601D\u8003\u5757\u79FB\u9664\u540E\uFF0C\u4ECE\u6B8B\u7559\u5F00\u6807\u7B7E\u5904\u622A\u65AD\u3002\u5EFA\u8BAE\u548C\u5B8C\u6574\u601D\u8003\u5757\u89C4\u5219\u4E00\u8D77\u8C03\u6574\u3002" },
+      { id: "sceneEmpty", group: "\u8FDE\u7EED\u6027\u53EC\u56DE", name: "\u65E0\u6709\u6548\u573A\u666F", pattern: "^(?:\u672A\u77E5|\u672A\u660E\u786E|\u65E0|-)$", flags: "u", usage: "\u5339\u914D\u8FD9\u4E9B\u5730\u70B9\u6216\u5728\u573A\u89D2\u8272\u6587\u672C\u65F6\uFF0C\u4E0D\u521B\u5EFA\u573A\u666F\u53EC\u56DE\u3002" },
+      { id: "planDone", group: "\u8FDE\u7EED\u6027\u53EC\u56DE", name: "\u5DF2\u7ED3\u675F\u4E8B\u9879", pattern: "\u5DF2\u5B8C\u6210|\u5DF2\u53D6\u6D88", flags: "", usage: "\u5339\u914D\u8BA1\u5212\u6761\u76EE\u540D\u79F0\u65F6\u8DF3\u8FC7\u8BE5\u4E8B\u9879\u3002" },
+      { id: "planPending", group: "\u8FDE\u7EED\u6027\u53EC\u56DE", name: "\u672A\u5B8C\u6210\u4E8B\u9879", pattern: "\u672A\u89E3\u51B3|\u5F85\u529E|\u672A\u5B8C\u6210|\u7EA6\u5B9A|\u8BA1\u5212|\u627F\u8BFA", flags: "", usage: "\u5339\u914D\u8BA1\u5212\u6761\u76EE\u540D\u79F0\u65F6\u521B\u5EFA\u53EC\u56DE\u67E5\u8BE2\u3002" },
+      { id: "querySeparator", group: "\u53EC\u56DE\u67E5\u8BE2", name: "\u8865\u5145\u67E5\u8BE2\u5206\u53E5", pattern: "[\\n\u3002\uFF01\uFF1F!?]+", flags: "u", usage: "\u4ECE\u5DF2\u6709\u67E5\u8BE2\u62C6\u51FA\u8865\u5145\u67E5\u8BE2\u7247\u6BB5\uFF0C\u4E0D\u751F\u6210\u65B0\u5267\u60C5\u3002" },
+      { id: "coverageWords", group: "\u603B\u7ED3\u8986\u76D6", name: "\u8BCD\u8BED\u63D0\u53D6", pattern: "[\\p{L}\\p{N}]+", flags: "gu", usage: "\u63D0\u53D6\u7528\u4E8E\u672C\u5730\u8986\u76D6\u7387\u53CA\u76F8\u4F3C\u5EA6\u6BD4\u8F83\u7684\u8BCD\u8BED\u3002" },
+      { id: "coverageHan", group: "\u603B\u7ED3\u8986\u76D6", name: "\u6C49\u5B57\u8BC6\u522B", pattern: "\\p{Script=Han}", flags: "u", usage: "\u5339\u914D\u7684\u8BCD\u8BED\u6309\u76F8\u90BB\u4E24\u5B57\u62C6\u5206\u540E\u6BD4\u8F83\u3002" }
+    ];
+    businessRegexValueSchema = external_exports.object({
+      pattern: external_exports.string().max(4e3),
+      flags: external_exports.string().max(8),
+      enabled: external_exports.boolean().default(true)
+    }).strict().superRefine((value, context) => {
+      try {
+        new RegExp(value.pattern, value.flags);
+      } catch (error51) {
+        context.addIssue({ code: "custom", message: `\u6B63\u5219\u65E0\u6CD5\u7F16\u8BD1\uFF1A${error51 instanceof Error ? error51.message : String(error51)}` });
+      }
+    });
+    businessRegexSettingsSchema = external_exports.partialRecord(external_exports.enum(BUSINESS_REGEX_RULES.map((rule) => rule.id)), businessRegexValueSchema);
+  }
+});
+
 // src/shared/continuity.ts
 function currentFact(attributes) {
   return attributes?.validity !== "superseded" && attributes?.validity !== "historical";
@@ -15696,22 +15746,17 @@ function renderContinuity(value) {
     ...(value.knowledge ?? []).map((item) => `\u3010\u89D2\u8272\u8BA4\u77E5\uFF1A${item.character} / ${states[item.state]}${item.learnedTime ? ` / \u5F97\u77E5\u4E8E ${item.learnedTime}` : ""}\u3011${item.claim}`)
   ].filter(Boolean).join("\n");
 }
-var time3, continuitySchema, aliasSchema, continuitySettingsSchema, DEFAULT_CONTINUITY, states, CONTINUITY_EXTRACTION_GUIDE;
+var storyTimeSchema, continuitySchema, aliasSchema, continuitySettingsSchema, DEFAULT_CONTINUITY, states, CONTINUITY_EXTRACTION_GUIDE;
 var init_continuity = __esm({
   "src/shared/continuity.ts"() {
     "use strict";
     init_zod();
-    time3 = external_exports.string().regex(/^(?:unknown|\d{4}(?:-(?:0[1-9]|1[0-2])(?:-(?:0[1-9]|[12]\d|3[01])(?:T(?:[01]\d|2[0-3]))?)?)?)$/).refine((value) => {
-      if (value === "unknown" || value.length < 10) return true;
-      const [year, month, day] = value.slice(0, 10).split("-").map(Number);
-      const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-      return day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
-    }, "Invalid calendar date.");
+    storyTimeSchema = external_exports.string().trim().max(4e3);
     continuitySchema = external_exports.object({
-      eventTime: time3.optional(),
-      learnedTime: time3.optional(),
-      validFrom: time3.optional(),
-      validUntil: time3.optional(),
+      eventTime: storyTimeSchema.optional(),
+      learnedTime: storyTimeSchema.optional(),
+      validFrom: storyTimeSchema.optional(),
+      validUntil: storyTimeSchema.optional(),
       validity: external_exports.enum(["current", "historical", "superseded"]).optional(),
       changeKind: external_exports.enum(["fact_change", "knowledge_change", "canon_correction", "unclassified"]).optional(),
       note: external_exports.string().max(4e3).optional(),
@@ -15719,16 +15764,9 @@ var init_continuity = __esm({
         character: external_exports.string().trim().min(1).max(240),
         state: external_exports.enum(["known", "believed", "suspected", "misunderstood", "unknown"]),
         claim: external_exports.string().trim().min(1).max(4e3),
-        learnedTime: time3.optional()
+        learnedTime: storyTimeSchema.optional()
       }).strict()).max(50).optional()
-    }).strict().superRefine((value, context) => {
-      const from = value.validFrom, until = value.validUntil;
-      if (from && until && from !== "unknown" && until !== "unknown") {
-        const precision = Math.min(from.length, until.length);
-        if (from.slice(0, precision) > until.slice(0, precision))
-          context.addIssue({ code: "custom", path: ["validUntil"], message: "\u6709\u6548\u7EC8\u70B9\u4E0D\u80FD\u65E9\u4E8E\u6709\u6548\u8D77\u70B9\u3002" });
-      }
-    });
+    }).strict();
     aliasSchema = external_exports.array(external_exports.string().trim().min(1).max(240)).max(100);
     continuitySettingsSchema = external_exports.object({
       extractAttributes: external_exports.boolean().default(false),
@@ -15754,9 +15792,9 @@ var init_continuity = __esm({
 - changeKind\uFF1A\u8BB0\u5F55\u7684\u662F\u54EA\u79CD\u53D8\u5316\uFF0C\u53EA\u9009\u4E00\u4E2A\u4EE3\u7801\u2014\u2014fact_change\uFF08\u4E8B\u5B9E\u53D1\u751F\u53D8\u5316\uFF09\u3001knowledge_change\uFF08\u89D2\u8272\u7684\u8BA4\u77E5\u53D1\u751F\u53D8\u5316\uFF09\u3001canon_correction\uFF08\u66F4\u6B63\u65E7\u8BBE\u5B9A\uFF09\u3001unclassified\uFF08\u672A\u5206\u7C7B\uFF09\u3002\u65E0\u6CD5\u5224\u65AD\u65F6\u7528 unclassified \u6216\u7701\u7565\u3002
 - validity\uFF1A\u53EA\u9009\u4E00\u4E2A\u4EE3\u7801\u2014\u2014current\uFF08\u5F53\u524D\u6709\u6548\uFF09\u3001historical\uFF08\u5386\u53F2\u7ECF\u5386\uFF09\u3001superseded\uFF08\u5DF2\u88AB\u66F4\u6B63\u800C\u5931\u6548\uFF09\u3002\u53EA\u6709\u6574\u6761\u8BB0\u5F55\u90FD\u5931\u6548\u65F6\u624D\u7528 superseded\u3002
 - knowledge\uFF1A\u89D2\u8272\u5BF9\u67D0\u6761\u5177\u4F53\u8BF4\u6CD5\u7684\u8BA4\u77E5\uFF0C\u6BCF\u9879\u542B character\uFF08\u89D2\u8272\uFF09\u3001state\uFF08\u72B6\u6001\uFF09\u3001claim\uFF08\u8BF4\u6CD5\uFF09\uFF0C\u53EF\u9009 learnedTime\u3002state \u53EA\u9009\u4E00\u4E2A\u4EE3\u7801\u2014\u2014known\uFF08\u5DF2\u77E5\uFF09\u3001believed\uFF08\u76F8\u4FE1\uFF09\u3001suspected\uFF08\u6000\u7591\uFF09\u3001misunderstood\uFF08\u8BEF\u89E3\uFF09\u3001unknown\uFF08\u672A\u77E5\uFF09\u3002
-- note\uFF1A\u5176\u4ED6\u9650\u5B9A\u8BF4\u660E\uFF0C\u65F6\u95F4\u533A\u95F4\u548C\u201C\u5927\u7EA6\u201D\u4E4B\u7C7B\u7684\u63CF\u8FF0\u4E5F\u5199\u5728\u8FD9\u91CC\u3002
+- note\uFF1A\u5176\u4ED6\u9650\u5B9A\u8BF4\u660E\u3002
 - \u5B57\u6BB5\u540D\u548C\u4EE3\u7801\u4FDD\u7559\u82F1\u6587\uFF1Bcharacter\u3001claim\u3001note \u7528\u4E2D\u6587\u3002
-- \u6240\u6709\u65F6\u95F4\u5B57\u6BB5\u4F7F\u7528\u76F8\u540C\u683C\u5F0F\uFF1AYYYY\u3001YYYY-MM\u3001YYYY-MM-DD\u3001YYYY-MM-DDTHH \u6216 unknown\u3002
+- \u6240\u6709\u65F6\u95F4\u5B57\u6BB5\u4FDD\u7559\u6545\u4E8B\u539F\u6587\u7684\u5386\u6CD5\u3001\u7EAA\u5143\u3001\u7CBE\u5EA6\u3001\u533A\u95F4\u548C\u6A21\u7CCA\u63CF\u8FF0\uFF0C\u4F8B\u5982\u201C\u8F89\u8F6E\u5386270\u5E74\u201D\u201C\u534F\u5B9A\u5386270\u5E74\u201D\u201C\u65B0\u5143\u4E09\u5E74\u51AC\u81F3\u6B21\u5E74\u6625\u201D\u3002\u4E0D\u5F3A\u5236\u516C\u5386\uFF0C\u4E0D\u8865\u96F6\u3001\u4E0D\u6362\u7B97\u5386\u6CD5\uFF0C\u4E0D\u628A\u4E0D\u540C\u5386\u6CD5\u7684\u540C\u5E74\u53F7\u89C6\u4E3A\u540C\u4E00\u5E74\u3002\u6CA1\u6709\u4F9D\u636E\u5C31\u7701\u7565\u65F6\u95F4\u5B57\u6BB5\u3002
 
 \u8BA4\u77E5\u72B6\u6001\u9488\u5BF9\u5177\u4F53\u8BF4\u6CD5\uFF0C\u800C\u4E0D\u662F\u6574\u4E2A\u573A\u666F\u3002\u540E\u6765\u624D\u5F97\u77E5\u7684\u4FE1\u606F\uFF0C\u4E0D\u7B49\u4E8E\u65E9\u5C31\u77E5\u9053\u3002\u533A\u5206\u5B9E\u9645\u53D1\u751F\u7684\u53D8\u5316\u4E0E\u5BF9\u65E7\u8BB0\u5F55\u7684\u66F4\u6B63\u3002\u7701\u7565\u8FD9\u4E2A\u5BF9\u8C61\u4E0D\u4F1A\u6539\u53D8\u5DF2\u6709\u7684\u5C5E\u6027\u3002
 
@@ -16178,6 +16216,7 @@ var init_schemas3 = __esm({
   "src/shared/schemas.ts"() {
     "use strict";
     init_zod();
+    init_business_regex();
     init_continuity();
     init_status_variables();
     init_creative_preferences();
@@ -16413,6 +16452,7 @@ var init_schemas3 = __esm({
       }
     });
     extractionRequestSchema = external_exports.object({
+      businessRegex: businessRegexSettingsSchema.optional(),
       contextPolicy: extractionContextPolicySchema.optional(),
       extractAttributes: external_exports.boolean().optional(),
       chatId: external_exports.string().trim().min(1).max(240),
@@ -16510,35 +16550,7 @@ var init_schemas3 = __esm({
       messageIds: external_exports.array(external_exports.string().min(1).max(240)).min(1).max(500),
       sourceHash: external_exports.string().regex(/^[a-f0-9]{64}$/)
     });
-    summaryTimestampSchema = external_exports.string().trim().superRefine((value, context) => {
-      if (value === "unknown") return;
-      const match = /^(\d{4})(?:-(\d{2})(?:-(\d{2})(?:T(\d{2}))?)?)?$/.exec(value);
-      if (!match) {
-        context.addIssue({
-          code: "custom",
-          message: "Summary timestamp must be YYYY, YYYY-MM, YYYY-MM-DD, YYYY-MM-DDTHH, or unknown."
-        });
-        return;
-      }
-      const month = match[2] === void 0 ? void 0 : Number(match[2]);
-      const day = match[3] === void 0 ? void 0 : Number(match[3]);
-      const hour = match[4] === void 0 ? void 0 : Number(match[4]);
-      if (month !== void 0 && (month < 1 || month > 12)) {
-        context.addIssue({ code: "custom", message: "Summary timestamp month must be between 01 and 12." });
-        return;
-      }
-      if (day !== void 0) {
-        const year = Number(match[1]);
-        const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-        const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-        if (day < 1 || day > days[month - 1]) {
-          context.addIssue({ code: "custom", message: "Summary timestamp contains an invalid calendar day." });
-        }
-      }
-      if (hour !== void 0 && (hour < 0 || hour > 23)) {
-        context.addIssue({ code: "custom", message: "Summary timestamp hour must be between 00 and 23." });
-      }
-    });
+    summaryTimestampSchema = storyTimeSchema;
     summarySliceCandidateSchema = external_exports.object({
       continuity: continuitySchema.optional(),
       timestamp: summaryTimestampSchema,
@@ -16667,6 +16679,7 @@ var init_schemas3 = __esm({
       }
     });
     summaryGenerationRequestSchema = external_exports.object({
+      businessRegex: businessRegexSettingsSchema.optional(),
       extractAttributes: external_exports.boolean().optional(),
       chatId: external_exports.string().trim().min(1).max(240),
       batch: summaryBatchInputSchema,
@@ -16829,6 +16842,7 @@ var init_schemas3 = __esm({
       operations: external_exports.array(statusProviderOperationSchema).max(500)
     }));
     statusUpdateRequestSchema = external_exports.object({
+      businessRegex: businessRegexSettingsSchema.optional(),
       chatId: external_exports.string().trim().min(1).max(240),
       namespaceId: identifierSchema,
       targetMessageId: external_exports.string().trim().min(1).max(240),
@@ -17339,6 +17353,7 @@ var DEFAULT_BATCH_OVERVIEW_PROMPT, batchOverviewPayloadSchema, batchOverviewSche
 var init_batch_overview = __esm({
   "src/shared/batch-overview.ts"() {
     "use strict";
+    init_business_regex();
     init_zod();
     init_schemas3();
     DEFAULT_BATCH_OVERVIEW_PROMPT = `\u4F60\u8D1F\u8D23\u4E3A\u4E00\u6279\u5267\u60C5\u5199\u4E00\u4EFD\u9636\u6BB5\u6982\u89C8\u3002\u8FD9\u4EFD\u6982\u89C8\u4F1A\u5E38\u9A7B\u5728\u4E0A\u4E0B\u6587\u4E2D\uFF0C\u5E2E\u52A9\u540E\u7EED\u53D9\u4E8B\u628A\u63E1\u8FD9\u4E00\u9636\u6BB5\uFF1A\u662F\u4EC0\u4E48\u65F6\u671F\u3001\u4E3B\u8981\u53D1\u751F\u4E86\u4EC0\u4E48\u3001\u6700\u540E\u5F62\u6210\u4E86\u600E\u6837\u7684\u5C40\u9762\u3002\u5404\u6BB5\u5177\u4F53\u7ECF\u5386\u5DF2\u7ECF\u53E6\u5916\u4FDD\u5B58\u5728\u8BE6\u7EC6\u8BB0\u5FC6\u4E2D\u3002
@@ -17365,6 +17380,7 @@ var init_batch_overview = __esm({
       updatedAt: external_exports.string().datetime()
     });
     batchOverviewRequestSchema = external_exports.object({
+      businessRegex: businessRegexSettingsSchema.optional(),
       chatId: external_exports.string().trim().min(1).max(240),
       batch: summaryBatchMetadataSchema,
       messages: external_exports.array(chatMessageSchema).min(1).max(5e4),
@@ -18189,6 +18205,7 @@ var SETTINGS_KEY, DEFAULT_TEMPLATE_ID, DEFAULT_STATUS_TEMPLATE_ID, DEFAULT_TEMPL
 var init_settings = __esm({
   "src/extension/state/settings.ts"() {
     "use strict";
+    init_business_regex();
     init_crypto_compat();
     init_batch_overview();
     init_discussion();
@@ -18270,6 +18287,7 @@ var init_settings = __esm({
       ]
     };
     DEFAULT_SETTINGS = {
+      businessRegex: {},
       discussion: discussionSettingsSchema.parse({}),
       statusFloatingButton: true,
       creativePreferences: EMPTY_CREATIVE_PREFERENCES,
@@ -18361,6 +18379,7 @@ var init_settings = __esm({
       statusFloatingButton: external_exports.boolean().default(true),
       creativePreferences: creativePreferencesSchema.default(() => structuredClone(EMPTY_CREATIVE_PREFERENCES)),
       continuity: continuitySettingsSchema.default(() => structuredClone(DEFAULT_CONTINUITY)),
+      businessRegex: businessRegexSettingsSchema.default({}),
       extractionContext: extractionContextPolicySchema.default(() => structuredClone(DEFAULT_SETTINGS.extractionContext)),
       taskBudget: external_exports.object({
         maxProviderCalls: external_exports.number().int().min(0).max(1e4),
@@ -18446,7 +18465,8 @@ __export(client_exports, {
 async function requestJson(path, init) {
   if (init?.method === "POST" && typeof init.body === "string" && /^(\/memory\/extractions|\/summaries\/(?:generate|coverage|batch-overview)|\/status\/updates|\/retrieval\/|\/endpoints\/)/.test(path)) {
     const body = JSON.parse(init.body);
-    const globalBudget = getSettings().taskBudget;
+    const settings = getSettings();
+    const globalBudget = settings.taskBudget;
     const requested = body.taskBudget;
     const bounded = requested ? {
       maxProviderCalls: Math.min(requested.maxProviderCalls || Infinity, globalBudget.maxProviderCalls || Infinity),
@@ -18456,7 +18476,8 @@ async function requestJson(path, init) {
     for (const key2 of Object.keys(bounded)) {
       if (!Number.isFinite(bounded[key2])) bounded[key2] = 0;
     }
-    init = { ...init, body: JSON.stringify({ ...body, taskBudget: bounded }) };
+    const businessRegex2 = path.startsWith("/summaries/") || path === "/status/updates" || path === "/memory/extractions" ? body.businessRegex ?? settings.businessRegex : void 0;
+    init = { ...init, body: JSON.stringify({ ...body, ...businessRegex2 ? { businessRegex: businessRegex2 } : {}, taskBudget: bounded }) };
   }
   const requestHeaders = SillyTavern.getContext().getRequestHeaders();
   const controller = new AbortController();
@@ -18755,7 +18776,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.0.4", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.1.0", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -20064,8 +20085,8 @@ var SUMMARY_OUTPUT_PROTOCOL = `\u53EA\u8F93\u51FA\u4E00\u4E2A JSON \u5BF9\u8C61\
 \u5B57\u7B26\u4E32\u503C\u5185\u5982\u9700\u5F15\u7528\u6587\u5B57\uFF0C\u8BF7\u4F7F\u7528\u4E2D\u6587\u5F15\u53F7\u201C\u201D\uFF0C\u4E0D\u8981\u4F7F\u7528\u82F1\u6587\u53CC\u5F15\u53F7\uFF1B\u5B57\u7B26\u4E32\u503C\u5185\u4E0D\u8981\u76F4\u63A5\u6362\u884C\u3002
 {"summaries":[{"timestamp":"\u65F6\u95F4","title":"\u6807\u9898","content":"\u6B63\u6587","tags":["\u6807\u7B7E"]}]}
 - summaries \u5305\u542B 1\uFF5E50 \u6761\u8BB0\u5F55\uFF1Btitle\u3001content\u3001tags \u7528\u4E2D\u6587\u3002
-- timestamp \u662F\u4E00\u4E2A\u6545\u4E8B\u5185\u65F6\u95F4\uFF0C\u53EA\u80FD\u662F\u4EE5\u4E0B\u683C\u5F0F\u4E4B\u4E00\uFF1AYYYY\u3001YYYY-MM\u3001YYYY-MM-DD\u3001YYYY-MM-DDTHH\u3001unknown\uFF0C\u4F8B\u5982 "2087"\u3001"2087-04"\u3001"2087-04-09"\u3001"2087-04-09T16"\u3002\u6708\u3001\u65E5\u3001\u5C0F\u65F6\u8865\u8DB3\u4E24\u4F4D\uFF1BT \u662F\u5C0F\u65F6\u524D\u7684\u5206\u9694\u7B26\uFF1B\u7CBE\u786E\u5230\u5C0F\u65F6\u4E3A\u6B62\u3002\u53EA\u6709\u8FDE\u5E74\u4EFD\u90FD\u65E0\u6CD5\u786E\u5B9A\u65F6\u624D\u5199 unknown\u3002
-- timestamp \u4E2D\u4E0D\u5199\u533A\u95F4\u3001\u591A\u4E2A\u5019\u9009\u6216\u8BF4\u660E\u6587\u5B57\uFF0C\u8FD9\u4E9B\u5185\u5BB9\u5199\u8FDB content\u3002
+- timestamp \u662F\u6545\u4E8B\u5185\u65F6\u95F4\u6587\u672C\uFF0C\u4FDD\u7559\u539F\u6587\u5386\u6CD5\u3001\u7EAA\u5143\u548C\u5DF2\u6709\u7CBE\u5EA6\uFF0C\u4F8B\u5982\u201C\u8F89\u8F6E\u5386270\u5E74\u201D\u201C\u534F\u5B9A\u5386270\u5E74\u201D\u201C271-04-07T08\u201D\u201C\u661F\u6D77\u5386\u7B2C\u4E03\u5468\u671F\u201D\u3002\u8FD9\u4E9B\u4E0D\u540C\u5386\u6CD5\u4E2D\u7684\u5E74\u53F7\u4E0D\u80FD\u76F8\u4E92\u66FF\u6362\u3002
+- \u5141\u8BB8\u65F6\u95F4\u533A\u95F4\u3001\u76F8\u5BF9\u65F6\u95F4\u548C\u6A21\u7CCA\u63CF\u8FF0\uFF0C\u4F8B\u5982\u201C\u65B0\u5143\u4E09\u5E74\u51AC\u81F3\u6B21\u5E74\u6625\u201D\u201C\u5927\u7EA6\u4E09\u5929\u540E\u201D\u3002\u4E0D\u5F3A\u5236\u516C\u5386\u683C\u5F0F\uFF0C\u4E0D\u8865\u96F6\u3001\u4E0D\u622A\u6389\u5206\u949F\uFF0C\u4E0D\u64C5\u81EA\u6362\u7B97\u5386\u6CD5\uFF1B\u6CA1\u6709\u65F6\u95F4\u4F9D\u636E\u65F6\u5199\u201C\u672A\u77E5\u201D\u3002
 
 \u865A\u6784\u683C\u5F0F\u793A\u4F8B\uFF0C\u4E0D\u662F\u6545\u4E8B\u4E8B\u5B9E\uFF1A
 {"summaries":[{"timestamp":"2087-04","title":"\u6D1B\u79BE\u6682\u5B58\u7F57\u76D8","content":"\u6D1B\u79BE\u5728\u6625\u5B63\u6D4B\u7ED8\u524D\u628A\u65E7\u7F57\u76D8\u4EA4\u7ED9\u949F\u8868\u5320\u6E29\u781A\u4FDD\u7BA1\u3002\u6E29\u781A\u7B54\u5E94\u53EA\u68C0\u67E5\u5916\u58F3\u3001\u4E0D\u62C6\u5185\u90E8\u9F7F\u8F6E\uFF1B\u53CC\u65B9\u8FD8\u6CA1\u6709\u7EA6\u5B9A\u53D6\u56DE\u7684\u65E5\u671F\u3002","tags":["\u6D1B\u79BE","\u6E29\u781A","\u65E7\u7F57\u76D8"]}]}`;
@@ -20628,7 +20649,7 @@ var CompressionCoordinator = class {
         updates.push(compressionPatch(
           message,
           compression2,
-          owned && message.is_hidden ? false : void 0
+          message.is_hidden ? false : void 0
         ));
       }
       if (beforeWrite) {
@@ -20857,27 +20878,254 @@ var compressionCoordinator = new CompressionCoordinator();
 init_adaptive_batches();
 init_schemas3();
 
+// src/shared/business-regex-tasks.ts
+init_business_regex();
+
+// src/shared/extraction-context.ts
+init_business_regex();
+function declaredAliases(row, types, rules = {}) {
+  const type = types.find((item) => item.id === row.typeId);
+  const columns = type?.columns.filter((column) => businessRegex("aliasName", rules).test(column.name) || businessRegex("aliasId", rules).test(column.id)) ?? [];
+  return [.../* @__PURE__ */ new Set([...row.aliases ?? [], ...columns.flatMap((column) => {
+    const value = row.values[column.id];
+    if (Array.isArray(value)) return value.filter((item) => typeof item === "string").map((item) => item.trim());
+    return typeof value === "string" ? splitBusinessText(value, "aliasSeparator", rules).map((item) => item.trim()) : [];
+  }).filter(Boolean)])];
+}
+function selectExtractionRows(rows, types, query, policy, aliases) {
+  if (!policy?.enabled) return { rows, omitted: [], detailCharacters: JSON.stringify(rows).length };
+  const text = query.toLocaleLowerCase();
+  const scored = rows.map((row, index) => ({
+    row,
+    index,
+    score: [row.dataName, ...aliases?.[row.id] ?? declaredAliases(row, types)].some((name) => name.length > 1 && text.includes(name.toLocaleLowerCase())) ? 100 : row.keywords.filter((word) => word.length > 1 && text.includes(word.toLocaleLowerCase())).length
+  })).filter((item) => item.score > 0).sort((a, b) => b.score - a.score || a.index - b.index);
+  const selected = [];
+  const ids = /* @__PURE__ */ new Set();
+  let detailCharacters = 0;
+  const add = (row) => {
+    const size = JSON.stringify(row).length;
+    if (ids.has(row.id) || selected.length >= policy.maxRows || detailCharacters + size > policy.maxCharacters) return false;
+    selected.push(row);
+    ids.add(row.id);
+    detailCharacters += size;
+    return true;
+  };
+  for (const { row } of scored) add(row);
+  const referencedText = selected.map((row) => JSON.stringify(row.values)).join("\n");
+  let related = 0;
+  for (const row of rows) {
+    if (related >= policy.relatedRows) break;
+    if (referencedText.includes(row.id) || row.dataName.length > 1 && referencedText.includes(row.dataName)) {
+      if (add(row)) related++;
+    }
+  }
+  return { rows: selected, omitted: rows.filter((row) => !ids.has(row.id)).map((row) => row.id), detailCharacters };
+}
+
+// src/server/services/provider-json.ts
+init_business_regex();
+function withoutReasoning(value, rules) {
+  const closed = value.replace(businessRegex("reasoningClosed", rules), " ");
+  const unclosed = closed.search(businessRegex("reasoningOpen", rules));
+  return unclosed < 0 ? closed : closed.slice(0, unclosed);
+}
+function objectEnd(text, start) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+    } else if (char === '"') {
+      inString = true;
+    } else if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return index + 1;
+    }
+  }
+  return -1;
+}
+function lenientObject(text, start) {
+  const open2 = [];
+  let inString = false;
+  let escaped = false;
+  let rewritten = "";
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    let emitted = char;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') {
+        let next = index + 1;
+        while (next < text.length && /\s/.test(text.charAt(next))) next += 1;
+        if (next === text.length || ",}]:".includes(text.charAt(next))) inString = false;
+        else emitted = '\\"';
+      } else if (char === "\n") emitted = "\\n";
+      else if (char === "\r") emitted = "\\r";
+      else if (char === "	") emitted = "\\t";
+    } else if (char === '"') {
+      inString = true;
+    } else if (char === "{" || char === "[") {
+      open2.push(char);
+    } else if (char === "]") {
+      open2.pop();
+    } else if (char === "}") {
+      if (open2.at(-1) === "[") continue;
+      open2.pop();
+      if (open2.length === 0) return { text: rewritten + char, end: index + 1 };
+    }
+    rewritten += emitted;
+  }
+  return void 0;
+}
+function isObject2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function embeddedObjects(text) {
+  const objects = [];
+  let start = text.indexOf("{");
+  while (start >= 0) {
+    const end = objectEnd(text, start);
+    if (end > 0) {
+      let value;
+      try {
+        value = JSON.parse(text.slice(start, end));
+      } catch {
+        value = void 0;
+      }
+      if (isObject2(value)) {
+        objects.push(value);
+        start = text.indexOf("{", end);
+        continue;
+      }
+    }
+    const repaired = lenientObject(text, start);
+    if (repaired) {
+      let value;
+      try {
+        value = JSON.parse(repaired.text);
+      } catch {
+        value = void 0;
+      }
+      if (isObject2(value)) {
+        objects.push(value);
+        start = text.indexOf("{", repaired.end);
+        continue;
+      }
+    }
+    start = text.indexOf("{", start + 1);
+  }
+  return objects;
+}
+function failedObjectDiagnostic(text, requiredKey) {
+  let start = text.indexOf("{");
+  while (start >= 0) {
+    const end = objectEnd(text, start);
+    if (end > 0) {
+      const span = text.slice(start, end);
+      if (span.includes(`"${requiredKey}"`)) {
+        try {
+          JSON.parse(span);
+        } catch (error51) {
+          const message = error51.message;
+          const position = message.match(/\bposition (\d+)/);
+          const offset = position ? Number(position[1]) : 0;
+          const excerpt = span.slice(Math.max(0, offset - 30), offset + 30);
+          return ` JSON \u89E3\u6790\u5931\u8D25\uFF1A${message}\uFF1B${position ? "\u9519\u8BEF\u4F4D\u7F6E\u9644\u8FD1" : "\u5BF9\u8C61\u5F00\u5934"}\uFF1A${JSON.stringify(excerpt)}`;
+        }
+      }
+    }
+    start = text.indexOf("{", start + 1);
+  }
+  return "";
+}
+function parseProviderJsonObject(raw2, label, requiredKey, rules = {}) {
+  const cleaned = withoutReasoning(raw2, rules);
+  const candidates = embeddedObjects(cleaned);
+  const qualifying = requiredKey ? candidates.filter((candidate) => Object.hasOwn(candidate, requiredKey)) : candidates;
+  const value = qualifying.at(-1);
+  if (value) return value;
+  const message = candidates.length && requiredKey ? `${label}\u54CD\u5E94\u4E2D\u7684 JSON \u5BF9\u8C61\u90FD\u7F3A\u5C11 "${requiredKey}" \u5B57\u6BB5\uFF1B\u56DE\u590D\u53EF\u80FD\u88AB\u622A\u65AD\u6216\u683C\u5F0F\u4E0D\u7B26\u3002` : `${label}\u54CD\u5E94\u4E2D\u6CA1\u6709\u627E\u5230\u5B8C\u6574\u7684 JSON \u5BF9\u8C61\uFF1B\u56DE\u590D\u53EF\u80FD\u88AB\u622A\u65AD\u6216\u4E0D\u542B JSON\u3002`;
+  const diagnostic = requiredKey ? failedObjectDiagnostic(cleaned, requiredKey) : "";
+  throw new Error(`${message} \u56DE\u590D\u957F\u5EA6\uFF1A${raw2.length} \u5B57\u7B26\uFF1B\u56DE\u590D\u672B\u5C3E\uFF08\u6700\u591A 200 \u5B57\u7B26\uFF09\uFF1A${raw2.slice(-200).replace(/\s+/g, " ").trim()}${diagnostic}`);
+}
+
+// src/extension/continuity-recall.ts
+init_business_regex();
+init_continuity();
+var renderSummaryBody = (slice) => [slice.content, renderContinuity(slice.continuity)].filter(Boolean).join("\n");
+function statusTriggerQueries(state, _nearDays, rules = {}) {
+  if (!state) return [];
+  const scene = state["\u65F6\u7A7A\u72B6\u6001"];
+  const result = [];
+  const text = (value) => typeof value === "string" ? value.trim() : value && typeof value === "object" ? JSON.stringify(value) : "";
+  for (const [key2, id] of [["\u5F53\u524D\u5730\u70B9", "trigger_place"], ["\u5728\u573A\u89D2\u8272", "trigger_people"]]) {
+    const value = text(scene?.[key2]);
+    if (value && !businessRegex("sceneEmpty", rules).test(value)) result.push({ id, text: `${key2}\uFF1A${value}`.slice(0, 2e3) });
+  }
+  if (result.length > 1) {
+    const sceneText = result.map((item) => item.text).join("\n");
+    result.splice(0, result.length, { id: "trigger_scene", text: sceneText });
+  }
+  const commitments = state["\u8BA1\u5212\u4E0E\u627F\u8BFA"];
+  if (commitments && typeof commitments === "object" && !Array.isArray(commitments)) {
+    for (const [key2, value] of Object.entries(commitments)) {
+      const content = text(value);
+      if (!content || businessRegex("planDone", rules).test(key2) || value && typeof value === "object" && ["\u5DF2\u5B8C\u6210", "\u5DF2\u53D6\u6D88"].includes(String(value["\u72B6\u6001"] ?? ""))) continue;
+      if (businessRegex("planPending", rules).test(key2)) result.push({ id: `trigger_commitment_${result.length}`, text: `${key2}\uFF1A${content}`.slice(0, 2e3) });
+    }
+  }
+  return result;
+}
+
+// src/shared/recall-query.ts
+init_business_regex();
+function supplementQueryVariants(queries, rules = {}) {
+  const original = new Set(queries.map((query) => query.trim()));
+  const variants = [];
+  for (const query of queries) {
+    const clauses = splitBusinessText(query, "querySeparator", rules).map((text) => text.trim()).filter((text) => text.length >= 4);
+    for (const index of [clauses.length - 1, 0, Math.floor(clauses.length / 2)]) {
+      const text = clauses[index];
+      if (!text || original.has(text)) continue;
+      variants.push(text.length > 1e3 ? text.slice(-1e3) : text);
+    }
+  }
+  return [...new Set(variants)].slice(0, 3);
+}
+
 // src/extension/summary/coverage.ts
+init_business_regex();
 init_adaptive_batches();
-function terms(text) {
+function terms(text, rules) {
   const result = /* @__PURE__ */ new Set();
-  for (const word of text.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []) {
-    if (/\p{Script=Han}/u.test(word)) {
+  const words = businessRegex("coverageWords", rules);
+  const allWords = new RegExp(words.source, words.flags.includes("g") ? words.flags : `${words.flags}g`);
+  for (const match of text.normalize("NFKC").toLowerCase().matchAll(allWords)) {
+    const word = match[0];
+    if (businessRegex("coverageHan", rules).test(word)) {
       for (let index = 0; index < word.length - 1; index++) result.add(word.slice(index, index + 2));
     } else if (word.length > 1) result.add(word);
   }
   return result;
 }
-function inspectSummaryCoverage(messages2, slices, entityNames = []) {
+function inspectSummaryCoverage(messages2, slices, entityNames = [], rules = {}) {
   const summaryText = slices.map((slice) => `${slice.title}
 ${slice.content}`).join("\n");
-  const summaryTerms = terms(summaryText);
+  const summaryTerms = terms(summaryText, rules);
   const names = [...new Set(entityNames.filter((name) => name.trim().length > 1))];
   const regions = messages2.flatMap((message) => {
     const regions2 = [];
     for (let start = 0; start < message.content.length; start += 4e3) {
       const text = message.content.slice(start, start + 4e3);
-      const tokens = terms(text);
+      const tokens = terms(text, rules);
       const matched = [...tokens].filter((term) => summaryTerms.has(term)).length;
       const ratio = tokens.size ? matched / tokens.size : null;
       regions2.push({
@@ -20888,7 +21136,6 @@ ${slice.content}`).join("\n");
         matchedRatio: ratio,
         warning: ratio !== null && ratio < 0.15,
         names: names.filter((name) => text.includes(name)),
-        years: [...new Set(text.match(/(?<!\d)\d{4}(?=年|-\d{2})/g) ?? [])],
         excerpt: text.slice(0, 220)
       });
     }
@@ -20905,11 +21152,11 @@ ${slice.content}`).join("\n");
     regions
   };
 }
-function compareSummaryCandidates(candidates, existing) {
+function compareSummaryCandidates(candidates, existing, rules = {}) {
   const keys = new Set(existing.map(summaryPropositionKey));
-  const existingTerms = existing.map((slice) => terms(slice.content));
+  const existingTerms = existing.map((slice) => terms(slice.content, rules));
   return candidates.map((candidate, index) => {
-    const candidateTerms = terms(candidate.content);
+    const candidateTerms = terms(candidate.content, rules);
     const similar = existing.flatMap((slice, existingIndex) => {
       const old = existingTerms[existingIndex];
       const shared = [...candidateTerms].filter((term) => old.has(term)).length;
@@ -20917,6 +21164,83 @@ function compareSummaryCandidates(candidates, existing) {
       return ratio >= 0.65 ? [{ existingIndex, title: slice.title, ratio }] : [];
     }).sort((a, b) => b.ratio - a.ratio).slice(0, 3);
     return { index, duplicate: keys.has(summaryPropositionKey(candidate)), similar };
+  });
+}
+
+// src/shared/business-regex-tasks.ts
+var businessTasks = {
+  aliases: (rows, types, rules) => Object.fromEntries(rows.map((row) => [row.id, declaredAliases(row, types, rules)])),
+  provider: parseProviderJsonObject,
+  triggers: statusTriggerQueries,
+  variants: supplementQueryVariants,
+  coverage: inspectSummaryCoverage,
+  compare: compareSummaryCandidates,
+  preview: (id, text, rules) => {
+    const regex = businessRegex(id, rules);
+    const all = new RegExp(regex.source, regex.flags.includes("g") ? regex.flags : `${regex.flags}g`);
+    const matches = [];
+    for (const match of text.matchAll(all)) {
+      matches.push({ index: match.index, text: match[0], groups: match.slice(1) });
+      if (matches.length === 100) break;
+    }
+    return matches;
+  }
+};
+var taskRules = {
+  aliases: ["aliasName", "aliasId", "aliasSeparator"],
+  provider: ["reasoningClosed", "reasoningOpen"],
+  triggers: ["sceneEmpty", "planDone", "planPending"],
+  variants: ["querySeparator"],
+  coverage: ["coverageWords", "coverageHan"],
+  compare: ["coverageWords", "coverageHan"],
+  preview: []
+};
+function needsBusinessWorker(request) {
+  if (request.task === "preview") return true;
+  const rules = request.args.at(-1);
+  return !!rules && typeof rules === "object" && taskRules[request.task].some((id) => Object.hasOwn(rules, id));
+}
+function executeBusinessTask(request) {
+  const fn = businessTasks[request.task];
+  return fn(...request.args);
+}
+
+// src/extension/business-regex.ts
+function runBusinessTask(request, signal) {
+  signal?.throwIfAborted();
+  if (!needsBusinessWorker(request)) return Promise.resolve(executeBusinessTask(request));
+  if (typeof Worker === "undefined") return Promise.reject(new Error("\u5F53\u524D\u6D4F\u89C8\u5668\u65E0\u6CD5\u9694\u79BB\u6267\u884C\u81EA\u5B9A\u4E49\u6B63\u5219\uFF0C\u8BF7\u6062\u590D\u9ED8\u8BA4\u89C4\u5219\u6216\u542F\u7528 Worker\u3002"));
+  const worker = new Worker(new URL("./business-regex-worker.js", import.meta.url), { type: "module" });
+  return new Promise((resolve, reject) => {
+    const finish = () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+      worker.terminate();
+    };
+    const abort = () => {
+      finish();
+      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    const timeout = setTimeout(() => {
+      finish();
+      reject(new Error("\u4E1A\u52A1\u6B63\u5219\u6267\u884C\u8D85\u8FC7 2 \u79D2\uFF0C\u5DF2\u7EC8\u6B62\uFF1B\u8BF7\u8C03\u6574\u89C4\u5219\u6216\u6062\u590D\u9ED8\u8BA4\u3002"));
+    }, 2e3);
+    signal?.addEventListener("abort", abort, { once: true });
+    worker.addEventListener("message", (event) => {
+      finish();
+      if (event.data.ok) resolve(event.data.result);
+      else reject(new Error(event.data.error ?? "\u4E1A\u52A1\u6B63\u5219\u6267\u884C\u5931\u8D25\u3002"));
+    }, { once: true });
+    worker.addEventListener("error", (event) => {
+      finish();
+      reject(new Error(event.message || "\u4E1A\u52A1\u6B63\u5219 Worker \u5931\u8D25\u3002"));
+    }, { once: true });
+    try {
+      worker.postMessage(request);
+    } catch (error51) {
+      finish();
+      reject(error51);
+    }
   });
 }
 
@@ -21804,7 +22128,7 @@ var SummaryCoordinator = class {
             state,
             batch: draft.batch,
             candidates,
-            comparisons: compareSummaryCandidates(candidates, state.slices.filter((slice) => slice.batch.state !== "stale"))
+            comparisons: await runBusinessTask({ task: "compare", args: [candidates, state.slices.filter((slice) => slice.batch.state !== "stale"), getSettings().businessRegex] })
           });
           return state;
         }
@@ -22181,7 +22505,7 @@ var SummaryCoordinator = class {
         state,
         batch: selected.batch,
         candidates,
-        comparisons: compareSummaryCandidates(candidates, valid)
+        comparisons: await runBusinessTask({ task: "compare", args: [candidates, valid, getSettings().businessRegex] })
       });
       return state;
     }, defaultDecision);
@@ -23059,47 +23383,6 @@ function checkRequiredColumnBackfill(columns, rows) {
   if (missing.length) throw new MemorySchemaBackfillRequiredError(missing);
 }
 
-// src/shared/extraction-context.ts
-function declaredAliases(row, types) {
-  const type = types.find((item) => item.id === row.typeId);
-  const columns = type?.columns.filter((column) => /^(别名|别称|aliases?|alternate_names?)$/i.test(column.name) || /^(aliases?|alternate_names?)$/i.test(column.id)) ?? [];
-  return [.../* @__PURE__ */ new Set([...row.aliases ?? [], ...columns.flatMap((column) => {
-    const value = row.values[column.id];
-    if (Array.isArray(value)) return value.filter((item) => typeof item === "string").map((item) => item.trim());
-    return typeof value === "string" ? value.split(/[\n/、,，;；]/).map((item) => item.trim()) : [];
-  }).filter(Boolean)])];
-}
-function selectExtractionRows(rows, types, query, policy) {
-  if (!policy?.enabled) return { rows, omitted: [], detailCharacters: JSON.stringify(rows).length };
-  const text = query.toLocaleLowerCase();
-  const scored = rows.map((row, index) => ({
-    row,
-    index,
-    score: [row.dataName, ...declaredAliases(row, types)].some((name) => name.length > 1 && text.includes(name.toLocaleLowerCase())) ? 100 : row.keywords.filter((word) => word.length > 1 && text.includes(word.toLocaleLowerCase())).length
-  })).filter((item) => item.score > 0).sort((a, b) => b.score - a.score || a.index - b.index);
-  const selected = [];
-  const ids = /* @__PURE__ */ new Set();
-  let detailCharacters = 0;
-  const add = (row) => {
-    const size = JSON.stringify(row).length;
-    if (ids.has(row.id) || selected.length >= policy.maxRows || detailCharacters + size > policy.maxCharacters) return false;
-    selected.push(row);
-    ids.add(row.id);
-    detailCharacters += size;
-    return true;
-  };
-  for (const { row } of scored) add(row);
-  const referencedText = selected.map((row) => JSON.stringify(row.values)).join("\n");
-  let related = 0;
-  for (const row of rows) {
-    if (related >= policy.relatedRows) break;
-    if (referencedText.includes(row.id) || row.dataName.length > 1 && referencedText.includes(row.dataName)) {
-      if (add(row)) related++;
-    }
-  }
-  return { rows: selected, omitted: rows.filter((row) => !ids.has(row.id)).map((row) => row.id), detailCharacters };
-}
-
 // src/shared/extraction-references.ts
 init_continuity();
 var EXTRACTION_CLEANING_GUIDE = `\u672C\u6B21\u662F\u7528\u6237\u53D1\u8D77\u7684\u8D44\u6599\u6E05\u6D17\uFF0C\u4E0D\u662F\u666E\u901A\u7684\u589E\u91CF\u63D0\u53D6\u3002\u4E3B\u63D0\u793A\u8BCD\u4E2D\u201C\u65B0\u5267\u60C5\u662F\u65B0\u589E\u4FE1\u606F\u7684\u552F\u4E00\u4F9D\u636E\u201D\u548C\u6709\u5173\u5220\u9664\u7684\u9650\u5236\uFF0C\u672C\u6B21\u6539\u6309\u4EE5\u4E0B\u89C4\u5219\u6267\u884C\uFF1A
@@ -23110,13 +23393,13 @@ var EXTRACTION_CLEANING_GUIDE = `\u672C\u6B21\u662F\u7528\u6237\u53D1\u8D77\u768
 - \u6309\u8EAB\u4EFD\u5224\u65AD\u662F\u5426\u91CD\u590D\uFF0C\u4E0D\u53EA\u770B\u540D\u79F0\u3002\u76F8\u5173\u7684\u6761\u76EE\u4E0D\u4E00\u5B9A\u91CD\u590D\uFF1B\u8EAB\u4EFD\u65E0\u6CD5\u786E\u8BA4\u65F6\u4FDD\u6301\u539F\u72B6\u3002
 - \u4E0D\u80FD\u7528\u5386\u53F2\u5267\u60C5\u4E2D\u8F83\u65E9\u7684\u72B6\u6001\uFF0C\u6539\u56DE\u4E4B\u540E\u5DF2\u77E5\u7684\u72B6\u6001\u3002\u4E0E\u8981\u6C42\u65E0\u5173\u7684\u6761\u76EE\u4E0D\u8981\u6539\u52A8\u3002
 - \u786E\u5B9E\u6CA1\u6709\u9700\u8981\u5904\u7406\u7684\u5185\u5BB9\u65F6\uFF0C\u8FD4\u56DE {"operations":[]}\u3002\u7ED3\u679C\u4F1A\u4EA4\u7ED9\u7528\u6237\u5BA1\u6838\uFF0C\u4E0D\u5F71\u54CD\u666E\u901A\u63D0\u53D6\u7684\u8FDB\u5EA6\u3002`;
-function extractionProviderMessages(request) {
+function extractionProviderMessages(request, aliases) {
   return [
     ...request.promptMessages,
     ...request.backgroundMessages,
     ...request.extractAttributes ? [{ role: "system", content: CONTINUITY_EXTRACTION_GUIDE }] : [],
     ...request.batch.mode === "cleaning" ? [{ role: "system", content: EXTRACTION_CLEANING_GUIDE }] : [],
-    { role: "user", content: JSON.stringify(extractionRuntimeInput(request)) },
+    { role: "user", content: JSON.stringify(extractionRuntimeInput(request, aliases)) },
     ...request.additionalInstructions?.trim() ? [{ role: "system", content: request.additionalInstructions.trim() }] : []
   ];
 }
@@ -23130,17 +23413,18 @@ function extractionRowReferences(rows) {
   }
   return references2;
 }
-function extractionContextRows(request) {
+function extractionContextRows(request, aliases) {
   return selectExtractionRows(
     request.rows,
     request.types,
     request.messages.map((message) => message.content).join("\n"),
-    request.batch.mode === "cleaning" ? void 0 : request.contextPolicy
+    request.batch.mode === "cleaning" ? void 0 : request.contextPolicy,
+    aliases
   );
 }
-function extractionRuntimeInput(request) {
+function extractionRuntimeInput(request, aliases) {
   const referenceById = new Map([...extractionRowReferences(request.rows)].map(([ref, id]) => [id, ref]));
-  const selected = extractionContextRows(request);
+  const selected = extractionContextRows(request, aliases);
   return {
     tables: request.types.map((type) => ({
       id: type.id,
@@ -23163,7 +23447,7 @@ function extractionRuntimeInput(request) {
         rowId: referenceById.get(row.id),
         typeId: row.typeId,
         dataName: row.dataName,
-        aliases: declaredAliases(row, request.types)
+        aliases: aliases?.[row.id] ?? declaredAliases(row, request.types)
       }))
     } : {},
     rows: selected.rows.map((row) => ({
@@ -30419,7 +30703,7 @@ async function prepareCleaningExtraction(state, settings, options) {
   if (options.instructions.length > 2e4) throw new Error("\u8865\u5145\u8981\u6C42\u6700\u591A 20000 \u5B57\u7B26\u3002");
   const { messages: messages2 } = messageRangeByFloor(options.startFloor, options.endFloor);
   const selection = await buildSelection(state, "cleaning", messages2);
-  const prepared = prepareSelectedExtraction(state, settings, selection);
+  const prepared = await prepareSelectedExtraction(state, settings, selection);
   prepared.request.backgroundMessages = await extractionBackground(selection.messages, state.worldbookName);
   prepared.request.additionalInstructions = options.instructions.trim();
   return prepared;
@@ -30497,7 +30781,7 @@ function resolvePromptBlocks(state) {
     }];
   });
 }
-function prepareSelectedExtraction(state, settings, selection, resumeAfterEndpointId) {
+async function prepareSelectedExtraction(state, settings, selection, resumeAfterEndpointId) {
   const { types, rows } = extractionContext(state);
   if (types.length === 0) throw new Error("\u5F53\u524D\u5BF9\u8BDD\u6CA1\u6709\u6FC0\u6D3B\u7684\u8BB0\u5FC6\u7C7B\u578B\u3002");
   const promptBlocks = resolvePromptBlocks(state);
@@ -30505,12 +30789,14 @@ function prepareSelectedExtraction(state, settings, selection, resumeAfterEndpoi
   const workflow = settings.generationWorkflows.extraction;
   const generationGroup = settings.generationGroups.find((group) => group.id === workflow.groupId);
   if (!generationGroup) throw new Error("\u8BF7\u5148\u4E3A\u7ED3\u6784\u5316\u8BB0\u5FC6\u914D\u7F6E\u751F\u6210\u7AEF\u70B9\u7EC4\u3002");
+  const aliases = await runBusinessTask({ task: "aliases", args: [rows, types, settings.businessRegex] });
   const runtimePreview = JSON.stringify({
     batch: selection.batch,
-    ...extractionRuntimeInput({ types, rows, batch: selection.batch, messages: selection.messages, contextPolicy: settings.extractionContext })
+    ...extractionRuntimeInput({ types, rows, batch: selection.batch, messages: selection.messages, contextPolicy: settings.extractionContext }, aliases)
   }, null, 2);
   return {
     request: {
+      businessRegex: settings.businessRegex,
       extractAttributes: settings.continuity.extractAttributes,
       contextPolicy: settings.extractionContext,
       chatId: state.catalog.chatId,
@@ -30539,7 +30825,7 @@ async function prepareExtraction(state, settings, mode = "manual", resumeAfterEn
       mode === "auto" ? "\u5C1A\u672A\u8FBE\u5230\u81EA\u52A8\u63D0\u53D6\u9608\u503C\u6216\u6CA1\u6709\u5DF2\u786E\u8BA4\u7684\u52A9\u624B\u56DE\u590D\u3002" : "\u4E0B\u4E00\u6279\u4E2D\u6CA1\u6709\u53EF\u63D0\u4EA4\u7684\u7528\u6237\u6D88\u606F\u3002"
     );
   }
-  const prepared = prepareSelectedExtraction(state, settings, selection, resumeAfterEndpointId);
+  const prepared = await prepareSelectedExtraction(state, settings, selection, resumeAfterEndpointId);
   prepared.request.backgroundMessages = await extractionBackground(selection.messages, state.worldbookName);
   return prepared;
 }
@@ -31223,21 +31509,25 @@ var RecallWorldbookStore = class {
       }
     });
   }
-  async clear(worldbookName) {
+  async clear(worldbookName, guard = () => true) {
     await worldbookWriteCoordinator.run(worldbookName, async () => {
-      await helper2().updateWorldbookWith(worldbookName, (entries) => entries.map((candidate) => {
-        const item = metadata2(candidate);
-        if (!item) return candidate;
-        return {
-          ...candidate,
-          enabled: false,
-          content: "",
-          extra: {
-            ...candidate.extra,
-            echoes: { ...item, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }
-          }
-        };
-      }));
+      if (!guard()) return;
+      await helper2().updateWorldbookWith(worldbookName, (entries) => {
+        if (!guard()) return entries;
+        return entries.map((candidate) => {
+          const item = metadata2(candidate);
+          if (!item) return candidate;
+          return {
+            ...candidate,
+            enabled: false,
+            content: "",
+            extra: {
+              ...candidate.extra,
+              echoes: { ...item, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }
+            }
+          };
+        });
+      });
     });
   }
   async cleanupStale(worldbookName, now = Date.now()) {
@@ -31266,7 +31556,7 @@ var StatusValidationError = class extends Error {
     this.name = "StatusValidationError";
   }
 };
-function isObject2(value) {
+function isObject3(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function assertPath(path) {
@@ -31295,7 +31585,7 @@ function setAtPath(root, path, value) {
       cursor = child;
       continue;
     }
-    if (!isObject2(existing)) {
+    if (!isObject3(existing)) {
       throw new StatusValidationError(`Cannot descend through non-object status path: ${path.join(".")}.`);
     }
     cursor = existing;
@@ -31306,14 +31596,14 @@ function deleteAtPath(root, path) {
   let cursor = root;
   for (const segment of path.slice(0, -1)) {
     const existing = cursor[segment];
-    if (!isObject2(existing)) return;
+    if (!isObject3(existing)) return;
     cursor = existing;
   }
   delete cursor[path.at(-1)];
 }
 function matchRule(current, rulePath, index = 0, path = []) {
   if (index === rulePath.length) return { values: [{ path, value: current }], missingPaths: [] };
-  if (!isObject2(current)) {
+  if (!isObject3(current)) {
     return { values: [], missingPaths: [[...path, ...rulePath.slice(index)]] };
   }
   const segment = rulePath[index];
@@ -31394,7 +31684,7 @@ function validateKnownPaths(value, rules, path = [], previous) {
     if (!pathCovered(childPath, rules)) {
       throw new StatusValidationError(`Unknown status field: ${childPath.join(".")}.`);
     }
-    if (isObject2(child)) validateKnownPaths(child, rules, childPath, isObject2(oldValue) ? oldValue : void 0);
+    if (isObject3(child)) validateKnownPaths(child, rules, childPath, isObject3(oldValue) ? oldValue : void 0);
   }
 }
 function assertSafeValue(value, path = []) {
@@ -31402,7 +31692,7 @@ function assertSafeValue(value, path = []) {
     value.forEach((item, index) => assertSafeValue(item, [...path, String(index)]));
     return;
   }
-  if (!isObject2(value)) return;
+  if (!isObject3(value)) return;
   for (const [key2, child] of Object.entries(value)) {
     if (BLOCKED_SEGMENTS.has(key2)) {
       throw new StatusValidationError(`Unsafe status field: ${[...path, key2].join(".")}.`);
@@ -31682,9 +31972,13 @@ var StatusWorldbookStore = class {
       }
     });
   }
-  async clearInjection(worldbookName) {
+  async clearInjection(worldbookName, guard = () => true) {
     await worldbookWriteCoordinator.run(worldbookName, async () => {
-      await helper3().updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => injectionMetadata(entry) ? { ...entry, enabled: false, content: "" } : entry));
+      if (!guard()) return;
+      await helper3().updateWorldbookWith(worldbookName, (entries) => {
+        if (!guard()) return entries;
+        return entries.map((entry) => injectionMetadata(entry) ? { ...entry, enabled: false, content: "" } : entry);
+      });
     });
   }
   async cleanupStale(worldbookName, now = Date.now()) {
@@ -31968,6 +32262,8 @@ var StatusCoordinator = class {
   rerunOrigins = /* @__PURE__ */ new Map();
   traces = /* @__PURE__ */ new Map();
   lastInjection = null;
+  injectionOwners = /* @__PURE__ */ new Map();
+  injectionSequence = 0;
   listeners = /* @__PURE__ */ new Set();
   progress = /* @__PURE__ */ new Map();
   subscribe(listener) {
@@ -32116,26 +32412,43 @@ var StatusCoordinator = class {
       await this.clearInjection();
       return;
     }
-    let state = await this.load();
-    await this.worldbook.cleanupStale(state.worldbookName);
-    await this.worldbook.clearInjection(state.worldbookName);
-    const ownership = { worldbookName: state.worldbookName, token: /* @__PURE__ */ Symbol() };
-    this.lastInjection = ownership;
-    if (!state.catalog.enabled) return;
-    const pending = this.pending.get(state.catalog.chatId);
-    if (pending) {
-      const timeoutMs = Math.min(6e4, state.catalog.profile.injection.maxWaitMs);
-      const completed = await Promise.race([
-        pending.then(() => true, () => false),
-        sleep2(timeoutMs).then(() => false)
-      ]);
-      if (!completed) toastr.warning("\u72B6\u6001\u4EFB\u52A1\u5C1A\u672A\u5B8C\u6210\uFF0C\u672C\u6B21\u751F\u6210\u4F7F\u7528\u6700\u8FD1\u6709\u6548\u72B6\u6001\u3002", "Echoes \u72B6\u6001\u6EDE\u540E");
-      state = await this.load();
+    const sequence2 = ++this.injectionSequence;
+    const lockedChatId = SillyTavern.getContext().chatId;
+    const isRunCurrent = () => sequence2 === this.injectionSequence && SillyTavern.getContext().chatId === lockedChatId;
+    let isCurrent = isRunCurrent;
+    try {
+      let state = await this.load();
+      if (!isCurrent() || state.catalog.chatId !== lockedChatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) return;
+      const ownership = {
+        worldbookName: state.worldbookName,
+        chatId: state.catalog.chatId,
+        namespaceId: state.catalog.namespaceId,
+        token: /* @__PURE__ */ Symbol()
+      };
+      this.injectionOwners.set(ownership.worldbookName, ownership);
+      this.lastInjection = ownership;
+      isCurrent = () => isRunCurrent() && this.lastInjection === ownership && this.injectionOwners.get(ownership.worldbookName) === ownership && window.TavernHelper?.getChatWorldbookName("current") === ownership.worldbookName;
+      await this.worldbook.clearInjection(ownership.worldbookName, isCurrent);
+      if (!isCurrent() || !state.catalog.enabled) return;
+      const pending = this.pending.get(ownership.chatId);
+      if (pending) {
+        const timeoutMs = Math.min(6e4, state.catalog.profile.injection.maxWaitMs);
+        const completed = await Promise.race([
+          pending.then(() => true, () => false),
+          sleep2(timeoutMs).then(() => false)
+        ]);
+        if (!isCurrent()) return;
+        const fresh = await this.worldbook.find(ownership.worldbookName);
+        if (!isCurrent() || !fresh || fresh.catalog.chatId !== ownership.chatId || fresh.catalog.namespaceId !== ownership.namespaceId || !fresh.catalog.enabled) return;
+        state = fresh;
+        if (!completed) toastr.warning("\u72B6\u6001\u4EFB\u52A1\u5C1A\u672A\u5B8C\u6210\uFF0C\u672C\u6B21\u751F\u6210\u4F7F\u7528\u6700\u8FD1\u6709\u6548\u72B6\u6001\u3002", "Echoes \u72B6\u6001\u6EDE\u540E");
+      }
+      const current = await this.generationState(state, generationType);
+      if (!isCurrent()) return;
+      await this.worldbook.writeInjection(state, (catalog) => renderStatusInjection(catalog, current).trim(), isCurrent);
+    } catch (error51) {
+      if (isCurrent()) throw error51;
     }
-    const current = await this.generationState(state, generationType);
-    const isCurrent = () => this.lastInjection === ownership && SillyTavern.getContext().chatId === state.catalog.chatId && window.TavernHelper?.getChatWorldbookName("current") === state.worldbookName;
-    if (!isCurrent()) return;
-    await this.worldbook.writeInjection(state, (catalog) => renderStatusInjection(catalog, current).trim(), isCurrent);
   }
   async previewInjection() {
     const worldbook = window.TavernHelper?.getChatWorldbookName("current");
@@ -32146,10 +32459,20 @@ var StatusCoordinator = class {
     return renderStatusInjection(state.catalog, current?.state ?? state.catalog.profile.initialState);
   }
   async clearInjection() {
-    const ownership = this.lastInjection;
-    const worldbookName = ownership?.worldbookName ?? window.TavernHelper?.getChatWorldbookName("current") ?? null;
-    if (worldbookName) await this.worldbook.clearInjection(worldbookName);
-    if (this.lastInjection === ownership) this.lastInjection = null;
+    this.injectionSequence += 1;
+    const worldbookName = this.lastInjection?.worldbookName ?? window.TavernHelper?.getChatWorldbookName("current") ?? null;
+    if (worldbookName && !this.injectionOwners.has(worldbookName)) {
+      const ownership = this.lastInjection ?? { worldbookName, token: /* @__PURE__ */ Symbol() };
+      this.injectionOwners.set(worldbookName, ownership);
+      this.lastInjection = ownership;
+    }
+    const owners = [...this.injectionOwners.values()];
+    await Promise.all(owners.map(async (ownership) => {
+      const ownsBook = () => this.injectionOwners.get(ownership.worldbookName) === ownership;
+      await this.worldbook.clearInjection(ownership.worldbookName, ownsBook);
+      if (ownsBook()) this.injectionOwners.delete(ownership.worldbookName);
+      if (this.lastInjection === ownership) this.lastInjection = null;
+    }));
   }
   startUpdate(origin, chatId, force = false) {
     const operation = this.updateLatest(origin, chatId, force).finally(() => {
@@ -32540,55 +32863,8 @@ function planInjectionBudget(items, overhead, config2) {
   return { selected, report };
 }
 
-// src/extension/continuity-recall.ts
-init_continuity();
-var renderSummaryBody = (slice) => [slice.content, renderContinuity(slice.continuity)].filter(Boolean).join("\n");
-function statusTriggerQueries(state, nearDays) {
-  if (!state) return [];
-  const scene = state["\u65F6\u7A7A\u72B6\u6001"];
-  const result = [];
-  const text = (value) => typeof value === "string" ? value.trim() : value && typeof value === "object" ? JSON.stringify(value) : "";
-  for (const [key2, id] of [["\u5F53\u524D\u5730\u70B9", "trigger_place"], ["\u5728\u573A\u89D2\u8272", "trigger_people"]]) {
-    const value = text(scene?.[key2]);
-    if (value && !/^(?:未知|未明确|无|-)$/u.test(value)) result.push({ id, text: `${key2}\uFF1A${value}`.slice(0, 2e3) });
-  }
-  if (result.length > 1) {
-    const sceneText = result.map((item) => item.text).join("\n");
-    result.splice(0, result.length, { id: "trigger_scene", text: sceneText });
-  }
-  const commitments = state["\u8BA1\u5212\u4E0E\u627F\u8BFA"];
-  if (commitments && typeof commitments === "object" && !Array.isArray(commitments)) {
-    const date5 = text(scene?.["\u65E5\u671F"]).match(/(\d{4})[-年](\d{1,2})[-月](\d{1,2})/);
-    const now = date5 ? Date.UTC(Number(date5[1]), Number(date5[2]) - 1, Number(date5[3])) : NaN;
-    for (const [key2, value] of Object.entries(commitments)) {
-      const content = text(value);
-      if (!content || /已完成|已取消/.test(key2) || value && typeof value === "object" && ["\u5DF2\u5B8C\u6210", "\u5DF2\u53D6\u6D88"].includes(String(value["\u72B6\u6001"] ?? ""))) continue;
-      const deadlines = [...content.matchAll(/(\d{4})[-年](\d{1,2})[-月](\d{1,2})/g)];
-      const near = Number.isFinite(now) && deadlines.some((match) => {
-        const days = (Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) - now) / 864e5;
-        return days >= 0 && days <= nearDays;
-      });
-      if (/未解决|待办|未完成/.test(key2) || near) result.push({ id: `trigger_commitment_${result.length}`, text: `${key2}\uFF1A${content}`.slice(0, 2e3) });
-    }
-  }
-  return result;
-}
-
 // src/extension/supplementary-recall.ts
 init_client();
-function supplementQueryVariants(queries) {
-  const original = new Set(queries.map((query) => query.trim()));
-  const variants = [];
-  for (const query of queries) {
-    const clauses = query.split(/[\n。！？!?]+/u).map((text) => text.trim()).filter((text) => text.length >= 4);
-    for (const index of [clauses.length - 1, 0, Math.floor(clauses.length / 2)]) {
-      const text = clauses[index];
-      if (!text || original.has(text)) continue;
-      variants.push(text.length > 1e3 ? text.slice(-1e3) : text);
-    }
-  }
-  return [...new Set(variants)].slice(0, 3);
-}
 async function boundedSupplement(options) {
   const output = { hits: [], calls: 0, messages: [] };
   if (!options.config.maxRequests) return output;
@@ -32891,6 +33167,7 @@ var RecallCoordinator = class {
   lastTrace = null;
   traces = [];
   lastInjection = null;
+  injectionOwners = /* @__PURE__ */ new Map();
   unwatch;
   watchSources(current) {
     this.unwatch?.();
@@ -33086,35 +33363,47 @@ var RecallCoordinator = class {
     this.unwatch = void 0;
     this.runSequence += 1;
     this.previewSequence += 1;
-    const ownership = this.lastInjection;
     const activeJobId = this.activeJobId;
-    if (activeJobId) {
-      this.activeJobId = null;
-      await echoesApi.cancelJob(activeJobId).catch(() => void 0);
-    }
     const previewJobId = this.previewJobId;
-    if (previewJobId) {
-      this.previewJobId = null;
-      await echoesApi.cancelJob(previewJobId).catch(() => void 0);
+    this.activeJobId = null;
+    this.previewJobId = null;
+    const worldbookName = this.lastInjection?.worldbookName ?? window.TavernHelper?.getChatWorldbookName("current") ?? null;
+    if (worldbookName && !this.injectionOwners.has(worldbookName)) {
+      const ownership = this.lastInjection ?? { worldbookName, token: /* @__PURE__ */ Symbol() };
+      this.injectionOwners.set(worldbookName, ownership);
+      this.lastInjection = ownership;
     }
-    const worldbookName = ownership?.worldbookName ?? window.TavernHelper?.getChatWorldbookName("current") ?? null;
-    if (worldbookName) await this.injectionStore.clear(worldbookName);
-    if (this.lastInjection === ownership) this.lastInjection = null;
+    const owners = [...this.injectionOwners.values()];
+    await Promise.all([activeJobId, previewJobId].map((jobId) => jobId ? echoesApi.cancelJob(jobId).catch(() => void 0) : void 0));
+    await Promise.all(owners.map(async (ownership) => {
+      const ownsBook = () => this.injectionOwners.get(ownership.worldbookName) === ownership;
+      await this.injectionStore.clear(ownership.worldbookName, ownsBook);
+      if (ownsBook()) this.injectionOwners.delete(ownership.worldbookName);
+      if (this.lastInjection === ownership) this.lastInjection = null;
+    }));
   }
   async retrieve(chat, generationType, sequence2, inject, abort, queryOverride) {
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
     const floorKey = recallFloorKey(generationType);
+    const lockedChatId = SillyTavern.getContext().chatId;
+    let lockedWorldbookName = null;
+    let ownership = null;
+    const isCurrent = () => sequence2 === (generationType === "preview" ? this.previewSequence : this.runSequence) && SillyTavern.getContext().chatId === lockedChatId && (lockedWorldbookName === null || window.TavernHelper?.getChatWorldbookName("current") === lockedWorldbookName) && (ownership === null || this.lastInjection === ownership && this.injectionOwners.get(ownership.worldbookName) === ownership);
+    const assertCurrent = () => {
+      if (!isCurrent()) throw new RecallRunSupersededError();
+    };
     const sourceSnapshots = /* @__PURE__ */ new Map();
     const settingsSnapshot = JSON.stringify([getSettings().retrieval, getSettings().continuity, getSettings().summary.embeddingGroupId]);
     const assertFresh = async () => {
-      if (sequence2 !== (generationType === "preview" ? this.previewSequence : this.runSequence) || settingsSnapshot !== JSON.stringify([getSettings().retrieval, getSettings().continuity, getSettings().summary.embeddingGroupId])) {
+      assertCurrent();
+      if (settingsSnapshot !== JSON.stringify([getSettings().retrieval, getSettings().continuity, getSettings().summary.embeddingGroupId])) {
         throw new RecallRunSupersededError();
       }
       for (const [name, expected] of sourceSnapshots) {
         const fresh = await this.summaryStore.inspect(name);
         if (recallSourceFingerprint(fresh) !== expected) throw new RecallRunSupersededError();
       }
-      if (sequence2 !== (generationType === "preview" ? this.previewSequence : this.runSequence)) throw new RecallRunSupersededError();
+      assertCurrent();
     };
     const remember = (state) => {
       sourceSnapshots.set(state.worldbookName, recallSourceFingerprint(state));
@@ -33126,14 +33415,18 @@ var RecallCoordinator = class {
     const existingWorldbook = window.TavernHelper?.getChatWorldbookName("current");
     if (!inject && !existingWorldbook) throw new Error("\u8BF7\u5148\u5EFA\u7ACB\u5F53\u524D\u804A\u5929\u7684\u603B\u7ED3\u8BB0\u5FC6\u3002");
     const current = inject ? await this.summaryStore.load() : await this.summaryStore.inspect(existingWorldbook);
+    lockedWorldbookName = current.worldbookName;
+    assertCurrent();
+    if (current.catalog.chatId !== lockedChatId) throw new RecallRunSupersededError();
     remember(current);
     this.watchSources(current);
-    const lockedWorldbookName = current.worldbookName;
     if (inject) {
-      await this.injectionStore.cleanupStale(lockedWorldbookName);
-      await this.injectionStore.clear(lockedWorldbookName);
+      ownership = { worldbookName: lockedWorldbookName, token: /* @__PURE__ */ Symbol() };
+      this.injectionOwners.set(lockedWorldbookName, ownership);
+      this.lastInjection = ownership;
+      await this.injectionStore.clear(lockedWorldbookName, isCurrent);
+      assertCurrent();
     }
-    if (inject) this.lastInjection = { worldbookName: lockedWorldbookName, token: /* @__PURE__ */ Symbol() };
     let queryState;
     if (!queryOverride && (continuity.triggers.enabled || recall.queryPreset.items.some((item) => item.enabled && ["scene", "participants", "commitments"].includes(item.kind)))) {
       const state = await statusCoordinator.worldbook.find(current.worldbookName);
@@ -33150,7 +33443,7 @@ var RecallCoordinator = class {
       ...generationIdentity()
     });
     if (!queryOverride && continuity.triggers.enabled) {
-      const triggers = statusTriggerQueries(queryState, continuity.triggers.nearDays).filter((trigger) => !prepared.queries.some((query) => query.text.includes(trigger.text))).slice(0, Math.min(continuity.triggers.maxQueries, 8 - prepared.queries.length));
+      const triggers = (await runBusinessTask({ task: "triggers", args: [queryState, continuity.triggers.nearDays, settings.businessRegex] })).filter((trigger) => !prepared.queries.some((query) => query.text.includes(trigger.text))).slice(0, Math.min(continuity.triggers.maxQueries, 8 - prepared.queries.length));
       prepared.queries.push(...triggers);
       const budget = recall.queryPreset.maxCharacters ?? 12e3;
       const perQuery = Math.max(1, Math.floor((budget - Math.max(0, prepared.queries.length - 1) * 2) / Math.max(1, prepared.queries.length)));
@@ -33395,7 +33688,7 @@ var RecallCoordinator = class {
       if (isSuperseded()) throw new RecallRunSupersededError();
       if (decision === "abort") {
         abort?.();
-        await this.injectionStore.clear(lockedWorldbookName);
+        await this.injectionStore.clear(lockedWorldbookName, isCurrent);
         return finalize2({
           current,
           sequence: sequence2,
@@ -33479,7 +33772,7 @@ var RecallCoordinator = class {
     if (continuity.supplement.auto && authoritative.hits.length < continuity.supplement.minimumHits && !result.decisionRequired) {
       const supplemental = await boundedSupplement({
         request: { ...queryRequest, excludeSourceIds: [...excludeSourceIds, ...authoritative.hits.map((hit) => hit.document.sourceId)] },
-        queries: supplementQueryVariants(prepared.queries.map((query) => query.text)),
+        queries: await runBusinessTask({ task: "variants", args: [prepared.queries.map((query) => query.text), settings.businessRegex] }),
         config: continuity.supplement,
         guard: () => {
           if (isSuperseded() || SillyTavern.getContext().chatId !== current.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== lockedWorldbookName) throw new RecallRunSupersededError();
@@ -37599,6 +37892,7 @@ async function summaryGenerationPage(ctx) {
 }
 
 // src/extension/ui/pages/summary/coverage.ts
+init_settings();
 async function summaryCoveragePage(ctx) {
   const state = await ctx.summary.load();
   const range = ctx.memo("summary-coverage-range", () => ({ start: 0, end: lastFloor(), instructions: "" }));
@@ -37636,7 +37930,8 @@ async function summaryCoveragePage(ctx) {
     const entries = await window.TavernHelper.getWorldbook(state.worldbookName);
     const memory = entries.some((entry) => entry.extra?.echoes?.kind === "catalog") ? await new WorldbookMemoryStore().inspect(state.worldbookName) : null;
     ctx.guard();
-    const report = inspectSummaryCoverage(messages2, slices, memory?.rows.map((row) => row.dataName) ?? []);
+    const report = await runBusinessTask({ task: "coverage", args: [messages2, slices, memory?.rows.map((row) => row.dataName) ?? [], getSettings().businessRegex] }, ctx.signal);
+    ctx.guard();
     const paging = { page: 0 };
     const regions = h("div");
     const draw = () => {
@@ -37644,7 +37939,6 @@ async function summaryCoveragePage(ctx) {
       fill(regions, table([
         { label: "\u697C\u5C42 / \u5B57\u7B26", cell: (region) => `${checkpointFloor(region.messageId)} / ${region.start}\u2013${region.end}` },
         { label: "\u8BCD\u9762\u5339\u914D", cell: (region) => badge(region.matchedRatio === null ? "\u65E0\u6CD5\u8BC4\u4F30" : `${Math.round(region.matchedRatio * 100)}%`, region.warning ? "warning" : "neutral") },
-        { label: "\u5E74\u4EFD\u7EBF\u7D22", cell: (region) => region.years.join(" / ") || "\u2014" },
         { label: "\u547D\u540D\u6761\u76EE", cell: (region) => region.names.join(" / ") || "\u2014" },
         { label: "", className: "is-actions", cell: (region) => h(
           "div",
@@ -38885,9 +39179,8 @@ function recallContinuityPage(ctx) {
     hint: "\u7ED3\u6784\u5316\u63D0\u53D6\u548C\u603B\u7ED3\u751F\u6210\u90FD\u4F1A\u4E3A\u8BB0\u5F55\u9644\u4E0A\u4E8B\u4EF6\u65F6\u95F4\u3001\u6709\u6548\u671F\u548C\u89D2\u8272\u77E5\u60C5\u60C5\u51B5"
   }]);
   const triggers = form([
-    { key: "enabled", label: "\u72B6\u6001\u9A71\u52A8\u67E5\u8BE2", type: "switch", value: config2.triggers.enabled, hint: "\u6839\u636E\u5F53\u524D\u72B6\u6001\u4E2D\u7684\u8BA1\u5212\u4E0E\u7EA6\u5B9A\u8FFD\u52A0\u67E5\u8BE2" },
-    { key: "maxQueries", label: "\u8FFD\u52A0\u67E5\u8BE2\u4E0A\u9650", type: "number", min: 1, max: 4, value: config2.triggers.maxQueries, required: true },
-    { key: "nearDays", label: "\u7EA6\u5B9A\u4E34\u8FD1\u5929\u6570", type: "number", min: 0, max: 30, value: config2.triggers.nearDays, required: true }
+    { key: "enabled", label: "\u72B6\u6001\u9A71\u52A8\u67E5\u8BE2", type: "switch", value: config2.triggers.enabled, hint: "\u6839\u636E\u5730\u70B9\u3001\u5728\u573A\u89D2\u8272\u53CA\u672A\u7ED3\u675F\u7684\u8BA1\u5212\u4E0E\u7EA6\u5B9A\u8FFD\u52A0\u67E5\u8BE2\uFF1B\u4FDD\u7559\u6545\u4E8B\u5386\u6CD5\uFF0C\u4E0D\u6362\u7B97\u4E34\u8FD1\u5929\u6570" },
+    { key: "maxQueries", label: "\u8FFD\u52A0\u67E5\u8BE2\u4E0A\u9650", type: "number", min: 1, max: 4, value: config2.triggers.maxQueries, required: true }
   ]);
   const supplement = form([
     { key: "auto", label: "\u547D\u4E2D\u4E0D\u8DB3\u65F6\u81EA\u52A8\u8865\u5145\u68C0\u7D22", type: "switch", value: config2.supplement.auto },
@@ -38921,7 +39214,7 @@ function recallContinuityPage(ctx) {
       next.extractAttributes = values.extractAttributes;
     }), { scope: "global" }),
     formCard("\u72B6\u6001\u9A71\u52A8\u67E5\u8BE2", triggers, (values) => save((next) => {
-      next.triggers = { enabled: values.enabled, maxQueries: values.maxQueries, nearDays: values.nearDays };
+      next.triggers = { ...next.triggers, enabled: values.enabled, maxQueries: values.maxQueries };
     }), { scope: "global" }),
     formCard("\u6709\u754C\u8865\u5145\u68C0\u7D22", supplement, (values) => save((next) => {
       next.supplement = {
@@ -40341,8 +40634,8 @@ async function inspectWorldbookDiagnostics() {
     });
     worldbook.staleInjectionCount = entries.filter((entry) => {
       const data = entry.extra?.echoes;
-      const time4 = Date.parse(String(data?.updatedAt ?? data?.createdAt ?? ""));
-      return entry.enabled && ["retrieval_injection", "status_injection", "creative_preferences_injection"].includes(data?.kind) && (!Number.isFinite(time4) || Date.now() - time4 > 3e5);
+      const time3 = Date.parse(String(data?.updatedAt ?? data?.createdAt ?? ""));
+      return entry.enabled && ["retrieval_injection", "status_injection", "creative_preferences_injection"].includes(data?.kind) && (!Number.isFinite(time3) || Date.now() - time3 > 3e5);
     }).length;
   } catch (error51) {
     return { worldbook, errors: ["\u4E16\u754C\u4E66\u8BFB\u53D6\u5931\u8D25\uFF1A" + String(error51)] };
@@ -41255,6 +41548,95 @@ async function backupPage(ctx) {
   );
 }
 
+// src/extension/ui/pages/system/regex.ts
+init_business_regex();
+init_settings();
+function regexPage(ctx) {
+  const configured = getSettings().businessRegex;
+  const rules = BUSINESS_REGEX_RULES.map((rule) => {
+    const current = configured[rule.id] ?? { pattern: rule.pattern, flags: rule.flags, enabled: true };
+    return card(rule.name, { description: `${rule.group} \xB7 ${rule.usage}`, actions: [
+      badge(configured[rule.id] ? current.enabled ? "\u81EA\u5B9A\u4E49" : "\u5DF2\u505C\u7528" : "\u9ED8\u8BA4"),
+      button("\u7F16\u8F91\u4E0E\u8BD5\u8FD0\u884C", () => {
+        const latest = getSettings().businessRegex[rule.id] ?? { pattern: rule.pattern, flags: rule.flags, enabled: true };
+        const target = form([
+          { key: "enabled", label: "\u542F\u7528", type: "switch", value: latest.enabled },
+          { key: "pattern", label: "\u8868\u8FBE\u5F0F", type: "code", rows: 3, value: latest.pattern, hint: "\u53EA\u586B\u5199\u8868\u8FBE\u5F0F\u672C\u4F53\uFF0C\u4E0D\u5305\u542B\u4E24\u4FA7 /\u3002" },
+          { key: "flags", label: "\u6807\u5FD7", value: latest.flags, hint: "\u4F8B\u5982 g\u3001i\u3001m\u3001s\u3001u\u3002" }
+        ]);
+        const sample = form([{ key: "sample", label: "\u6837\u672C\u6587\u672C", type: "textarea", rows: 4 }], { track: false });
+        const result = h("div");
+        target.node.append(
+          lazy2("\u9ED8\u8BA4\u89C4\u5219", () => code(`/${rule.pattern}/${rule.flags}`)),
+          sample.field("sample"),
+          button("\u8BD5\u8FD0\u884C", async () => {
+            ctx.guard();
+            const value = businessRegexValueSchema.parse(target.values());
+            fill(result, h("p", "ec-muted", "\u6B63\u5728\u5339\u914D\u2026"));
+            try {
+              const matches = await runBusinessTask({ task: "preview", args: [rule.id, String(sample.values().sample).slice(0, 1e5), { [rule.id]: value }] }, ctx.signal);
+              ctx.guard();
+              fill(result, h("p", "ec-muted", `\u5339\u914D ${matches.length} \u5904\uFF0C\u6700\u591A\u663E\u793A 100 \u5904\u3002`), code(JSON.stringify(matches, null, 2)));
+            } catch (error51) {
+              if (!ctx.signal.aborted) fill(result, callout("danger", errorText(error51)));
+            }
+          }, { variant: "ghost" }),
+          result
+        );
+        formModal(`\u7F16\u8F91 \xB7 ${rule.name}`, target, async (values) => {
+          ctx.guard();
+          const value = businessRegexValueSchema.parse(values);
+          const settings = getSettings();
+          settings.businessRegex[rule.id] = value;
+          saveSettings(settings);
+          await ctx.refresh();
+        });
+      }, { small: true }),
+      ...configured[rule.id] ? [button("\u6062\u590D\u9ED8\u8BA4", async () => {
+        ctx.guard();
+        const settings = getSettings();
+        delete settings.businessRegex[rule.id];
+        saveSettings(settings);
+        await ctx.refresh();
+      }, { small: true, variant: "ghost" })] : []
+    ] }, code(`/${current.pattern}/${current.flags}`));
+  });
+  const statusHost = h("div");
+  return stack2(
+    callout("info", "\u4E1A\u52A1\u5339\u914D\u89C4\u5219\u5728\u8FD9\u91CC\u7EDF\u4E00\u7BA1\u7406\uFF0C\u4FDD\u5B58\u540E\u7528\u4E8E\u540E\u7EED\u4EFB\u52A1\u3002\u6545\u4E8B\u65F6\u95F4\u652F\u6301\u4EFB\u610F\u5386\u6CD5\u4E0E\u539F\u6587\u63CF\u8FF0\uFF0C\u65E0\u9700\u8BBE\u7F6E\u65F6\u95F4\u6B63\u5219\u3002"),
+    ...rules,
+    card(
+      "\u603B\u7ED3\u6D88\u606F\u6E05\u6D17",
+      { scope: "global", description: "\u4E0E\u201C\u603B\u7ED3\u8BB0\u5FC6 \u2192 \u8BBE\u7F6E\u201D\u4F7F\u7528\u540C\u4E00\u7EC4\u89C4\u5219\u3002" },
+      cleaningList(getSettings().summary.preprocessRules, (preprocessRules) => {
+        ctx.guard();
+        const settings = getSettings();
+        settings.summary.preprocessRules = preprocessRules;
+        saveSettings(settings);
+      })
+    ),
+    card(
+      "\u72B6\u6001\u6D88\u606F\u6E05\u6D17",
+      { scope: "chat", description: "\u8BFB\u53D6\u5F53\u524D\u804A\u5929\u7684\u6E05\u6D17\u89C4\u5219\uFF0C\u548C\u201C\u72B6\u6001\u8BB0\u5FC6 \u2192 \u8BBE\u7F6E\u201D\u4FDD\u6301\u4E00\u81F4\u3002" },
+      button("\u8BFB\u53D6\u5F53\u524D\u804A\u5929\u89C4\u5219", async () => {
+        ctx.guard();
+        const state = await statusCoordinator.load();
+        ctx.guard();
+        fill(statusHost, cleaningList(state.catalog.profile.preprocessRules, async (preprocessRules) => {
+          ctx.guard();
+          const fresh = await statusCoordinator.worldbook.find(state.worldbookName);
+          ctx.guard();
+          if (!fresh || fresh.catalog.namespaceId !== state.catalog.namespaceId) throw new Error("\u72B6\u6001\u8BB0\u5FC6\u7ED1\u5B9A\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u8BFB\u53D6\u89C4\u5219\u3002");
+          await statusCoordinator.worldbook.saveConfiguration(state.worldbookName, {
+            profile: { ...fresh.catalog.profile, preprocessRules, updatedAt: nowIso() }
+          });
+        }));
+      }, { variant: "ghost" }),
+      statusHost
+    )
+  );
+}
+
 // src/extension/ui/pages/system/about.ts
 init_client();
 init_settings();
@@ -41337,6 +41719,7 @@ var MODULES = [
     { id: "credentials", label: "\u51ED\u636E", render: credentialsPage }
   ] },
   { id: "system", label: "\u7CFB\u7EDF\u7EF4\u62A4", icon: "screwdriver-wrench", group: "config", requiresChat: false, tabs: [
+    { id: "regex", label: "\u6B63\u5219\u7BA1\u7406", render: regexPage },
     { id: "logs", label: "\u4EFB\u52A1\u4E0E\u65E5\u5FD7", render: logsPage },
     { id: "retrieval", label: "\u68C0\u7D22\u5E93", render: retrievalLibraryPage },
     { id: "diagnostics", label: "\u8BCA\u65AD\u4FEE\u590D", render: diagnosticsPage },
@@ -41368,7 +41751,9 @@ var EchoesApp = class {
   scope = new AbortController();
   memos = /* @__PURE__ */ new Map();
   scrolls = /* @__PURE__ */ new Map();
-  hostInert = /* @__PURE__ */ new Map();
+  opening = null;
+  openingSequence = 0;
+  redirectingFocus = false;
   previousFocus = null;
   activeChat = "";
   reloadPending = null;
@@ -41412,6 +41797,18 @@ var EchoesApp = class {
       event.preventDefault();
       void this.close();
     });
+    document.addEventListener("keydown", (event) => this.containTab(event));
+    document.addEventListener("focusin", (event) => {
+      if (this.root.hidden || this.redirectingFocus || topDialog()) return;
+      if (event.target instanceof Node && (this.root.contains(event.target) || layer().contains(event.target))) return;
+      event.stopPropagation();
+      this.redirectingFocus = true;
+      try {
+        this.main.focus({ preventScroll: true });
+      } finally {
+        this.redirectingFocus = false;
+      }
+    }, true);
     window.addEventListener("beforeunload", (event) => {
       if (!this.root.hidden && this.dirty()) {
         event.preventDefault();
@@ -41432,33 +41829,70 @@ var EchoesApp = class {
   }
   async open() {
     if (this.isOpen) {
-      this.main.focus();
+      if (!this.opening && !topDialog()) this.main.focus({ preventScroll: true });
       return;
     }
-    if (!this.root.isConnected) document.body.append(this.root);
-    const overlays = layer();
-    this.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    for (const sibling of document.body.children)
-      if (sibling instanceof HTMLElement && sibling !== this.root && sibling !== overlays) {
-        this.hostInert.set(sibling, sibling.inert);
-        sibling.inert = true;
+    const opening = new AbortController();
+    this.opening = opening;
+    const sequence2 = ++this.openingSequence;
+    const started = performance.now();
+    const phase = (name) => console.info(`[Echoes] UI open #${sequence2} ${name}: ${Math.round(performance.now() - started)}ms`);
+    let renderSignal;
+    phase("start");
+    try {
+      if (!this.root.isConnected) document.body.append(this.root);
+      layer();
+      this.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      this.content.replaceChildren(h("div", "ec-loading", icon("spinner", "fa-spin"), h("span", "", "\u6B63\u5728\u6253\u5F00\u2026")));
+      this.main.setAttribute("aria-busy", "true");
+      this.root.hidden = false;
+      phase("shell-visible");
+      await new Promise((resolve) => {
+        let frame = 0;
+        const finish = () => {
+          cancelAnimationFrame(frame);
+          opening.signal.removeEventListener("abort", finish);
+          resolve();
+        };
+        opening.signal.addEventListener("abort", finish, { once: true });
+        frame = requestAnimationFrame(() => {
+          frame = requestAnimationFrame(finish);
+        });
+      });
+      if (opening.signal.aborted || this.root.hidden) {
+        phase("interrupted");
+        return;
       }
-    this.root.hidden = false;
-    const rendering = this.render();
-    this.main.focus();
-    await rendering;
+      this.opening = null;
+      phase("shell-frame");
+      this.main.focus({ preventScroll: true });
+      phase("focused");
+      phase("page-start");
+      const rendering = this.render();
+      renderSignal = this.scope.signal;
+      await rendering;
+      phase(renderSignal.aborted ? "page-superseded" : "page-settled");
+    } catch (error51) {
+      if (opening.signal.aborted || renderSignal?.aborted || this.root.hidden || sequence2 !== this.openingSequence) return;
+      console.error(`[Echoes] UI open #${sequence2} failed after ${Math.round(performance.now() - started)}ms.`, error51);
+      this.main.removeAttribute("aria-busy");
+      this.content.replaceChildren(empty(errorText(error51), button("\u91CD\u8BD5", () => this.reload(), { icon: "rotate" })));
+    } finally {
+      if (this.opening === opening) this.opening = null;
+    }
   }
   async close() {
     if (this.dirty() && !await confirmAction({ title: "\u653E\u5F03\u672A\u4FDD\u5B58\u7684\u4FEE\u6539\u5E76\u5173\u95ED\uFF1F", confirmLabel: "\u653E\u5F03\u5E76\u5173\u95ED", danger: true })) return false;
+    this.opening?.abort();
+    this.opening = null;
     this.scope.abort();
     this.reloadRequested = false;
-    for (const dialog of layer().querySelectorAll("dialog[open]")) dialog.close();
     this.root.hidden = true;
+    for (const dialog of layer().querySelectorAll("dialog[open]")) dialog.close();
     this.root.classList.remove("nav-open");
     this.tray.toggle(false);
-    for (const [node, inert] of this.hostInert) node.inert = inert;
-    this.hostInert.clear();
-    this.previousFocus?.focus();
+    this.previousFocus?.focus({ preventScroll: true });
+    this.previousFocus = null;
     return true;
   }
   async reload() {
@@ -41507,6 +41941,17 @@ var EchoesApp = class {
     const revision = extractionCoordinator.revision;
     await extractionCoordinator.runAutomatic();
     if (extractionCoordinator.revision !== revision) await this.reload();
+  }
+  containTab(event) {
+    if (this.root.hidden || event.key !== "Tab" || event.defaultPrevented || topDialog()) return;
+    const focusable = [...this.root.querySelectorAll(
+      'a[href], button, input, select, textarea, [tabindex], [contenteditable="true"]'
+    )].filter((node) => node.tabIndex >= 0 && !node.matches(":disabled") && !node.closest("[inert]") && node.getClientRects().length > 0 && getComputedStyle(node).visibility === "visible");
+    const index = focusable.indexOf(document.activeElement);
+    if (index < 0 || (event.shiftKey ? index === 0 : index === focusable.length - 1)) {
+      event.preventDefault();
+      (event.shiftKey ? focusable.at(-1) ?? this.main : focusable[0] ?? this.main).focus({ preventScroll: true });
+    }
   }
   dirty() {
     return Boolean(this.root.querySelector('[data-dirty="true"]') || layer().querySelector('[data-dirty="true"]'));
@@ -41587,6 +42032,8 @@ var EchoesApp = class {
     return chatId ? `${chatId}${worldbook ? " \xB7 " + worldbook : " \xB7 \u5C1A\u672A\u5EFA\u7ACB\u8BB0\u5FC6\u4E16\u754C\u4E66"}` : "\u672A\u6253\u5F00\u804A\u5929";
   }
   async render(retried = false) {
+    this.opening?.abort();
+    this.opening = null;
     this.scope.abort();
     this.scope = new AbortController();
     const signal = this.scope.signal;
