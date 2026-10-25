@@ -150,6 +150,8 @@
 .ec-window {
   position: relative;
   display: grid;
+  /* Long titles and page content must not expand the window's single column. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   width: min(1480px, 100%);
   height: min(940px, 100%);
