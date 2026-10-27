@@ -24180,7 +24180,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.1.7", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.1.8", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -36981,6 +36981,7 @@ init_schemas3();
 // src/shared/status-core.ts
 init_crypto_compat();
 var BLOCKED_SEGMENTS = /* @__PURE__ */ new Set(["__proto__", "prototype", "constructor"]);
+var ARRAY_INDEX = /^(?:0|[1-9]\d*)$/;
 var StatusValidationError = class extends Error {
   code = "INVALID_STATUS_UPDATE";
   constructor(message) {
@@ -37007,35 +37008,97 @@ function assertOperations(operations, evidenceMessageIds) {
     }
   }
 }
+function statusSlot(container, segment, path, writing) {
+  if (!Array.isArray(container)) {
+    return {
+      value: Object.hasOwn(container, segment) ? container[segment] : void 0,
+      set: (value) => {
+        container[segment] = value;
+      },
+      remove: () => {
+        delete container[segment];
+      }
+    };
+  }
+  if (segment === "-" || ARRAY_INDEX.test(segment)) {
+    if (!writing && segment === "-") {
+      throw new StatusValidationError(`The append marker cannot be deleted: ${path.join(".")}.`);
+    }
+    const index2 = segment === "-" ? container.length : Number(segment);
+    if (!Number.isSafeInteger(index2) || index2 > container.length || !writing && index2 === container.length) {
+      if (!writing) return void 0;
+      throw new StatusValidationError(`Status list index is out of range: ${path.join(".")}.`);
+    }
+    return {
+      value: container[index2],
+      set: (value) => {
+        container[index2] = value;
+      },
+      remove: () => {
+        container.splice(index2, 1);
+      }
+    };
+  }
+  if (/^[+-]?\d+(?:\.\d+)?$/.test(segment)) {
+    throw new StatusValidationError(`Invalid status list index: ${path.join(".")}.`);
+  }
+  const matches = container.flatMap((item2, index2) => item2 === segment || isObject3(item2) && Object.hasOwn(item2, segment) ? [index2] : []);
+  if (matches.length > 1) {
+    throw new StatusValidationError(`Ambiguous status list item: ${path.join(".")}. Use an explicit index.`);
+  }
+  const index = matches[0] ?? container.length;
+  if (index === container.length && !writing) return void 0;
+  const item = container[index];
+  return {
+    value: isObject3(item) ? item[segment] : void 0,
+    set: (value) => {
+      if (isObject3(item)) item[segment] = value;
+      else container[index] = { [segment]: value };
+    },
+    remove: () => {
+      if (isObject3(item)) {
+        delete item[segment];
+        if (Object.keys(item).length) return;
+      }
+      container.splice(index, 1);
+    }
+  };
+}
 function setAtPath(root, path, value) {
   let cursor = root;
-  for (const segment of path.slice(0, -1)) {
-    const existing = cursor[segment];
-    if (existing === void 0) {
-      const child = {};
-      cursor[segment] = child;
-      cursor = child;
-      continue;
+  for (const [index, segment] of path.entries()) {
+    const slot = statusSlot(cursor, segment, path.slice(0, index + 1), true);
+    if (index === path.length - 1) {
+      slot.set(structuredClone(value));
+      return;
     }
-    if (!isObject3(existing)) {
+    if (slot.value === void 0) {
+      const child = {};
+      slot.set(child);
+      cursor = child;
+    } else if (isObject3(slot.value) || Array.isArray(slot.value)) {
+      cursor = slot.value;
+    } else {
       throw new StatusValidationError(`Cannot descend through non-object status path: ${path.join(".")}.`);
     }
-    cursor = existing;
   }
-  cursor[path.at(-1)] = structuredClone(value);
 }
 function deleteAtPath(root, path) {
   let cursor = root;
-  for (const segment of path.slice(0, -1)) {
-    const existing = cursor[segment];
-    if (!isObject3(existing)) return;
-    cursor = existing;
+  for (const [index, segment] of path.entries()) {
+    const slot = statusSlot(cursor, segment, path.slice(0, index + 1), false);
+    if (!slot) return;
+    if (index === path.length - 1) {
+      slot.remove();
+      return;
+    }
+    if (!isObject3(slot.value) && !Array.isArray(slot.value)) return;
+    cursor = slot.value;
   }
-  delete cursor[path.at(-1)];
 }
 function matchRule(current, rulePath, index = 0, path = []) {
   if (index === rulePath.length) return { values: [{ path, value: current }], missingPaths: [] };
-  if (!isObject3(current)) {
+  if (!isObject3(current) && !Array.isArray(current)) {
     return { values: [], missingPaths: [[...path, ...rulePath.slice(index)]] };
   }
   const segment = rulePath[index];
@@ -37051,7 +37114,7 @@ function matchRule(current, rulePath, index = 0, path = []) {
       return result;
     }, { values: [], missingPaths: [] });
   }
-  const next = current[segment];
+  const next = Array.isArray(current) ? ARRAY_INDEX.test(segment) ? current[Number(segment)] : void 0 : Object.hasOwn(current, segment) ? current[segment] : void 0;
   return next === void 0 ? { values: [], missingPaths: [[...path, ...rulePath.slice(index)]] } : matchRule(next, rulePath, index + 1, [...path, segment]);
 }
 function matchValues(current, rulePath) {
