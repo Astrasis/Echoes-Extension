@@ -24180,7 +24180,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.1.6", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.1.7", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -24198,7 +24198,7 @@ function indexedChatMessages() {
     let id = seen.has(rawId) ? `${rawId}:${floor}` : rawId;
     while (seen.has(id)) id += `:${floor}`;
     seen.add(id);
-    return [{ floor, message: {
+    return [{ floor, hidden: entry.is_system === true || entry.is_hidden === true, message: {
       id,
       role: entry.is_user === true || entry.role === "user" ? "user" : "assistant",
       content
@@ -25771,10 +25771,10 @@ function compressionPlan(messages2, slices, lastCommittedMessageId, keepRecentMe
   }
   return { chain, hideThroughIndex, coveredMessageIds, batchByMessageId };
 }
-function recentSummaryBatches(slices, count, messages2 = []) {
+function recentSummaryBatches(slices, count, messages2, hiddenMessageIds) {
   if (count <= 0) return [];
   const { compare: compare3 } = createBatchOrder(messages2);
-  return uniqueBatches(slices).filter(({ batch }) => batch.state !== "stale" && batch.source?.kind !== "imported" && batch.purpose !== "supplement").sort((left, right) => compare3(left.batch, right.batch)).slice(-count).map(({ batch, slices: batchSlices }) => ({
+  return uniqueBatches(slices).filter(({ batch }) => batch.state !== "stale" && batch.source?.kind !== "imported" && batch.purpose !== "supplement" && batch.messageIds.some((id) => hiddenMessageIds.has(id))).sort((left, right) => compare3(left.batch, right.batch)).slice(-count).map(({ batch, slices: batchSlices }) => ({
     batch,
     slices: batchSlices,
     startIndex: -1,
@@ -38964,7 +38964,13 @@ var RecallCoordinator = class {
       }
     }
     const compressionActive = current.catalog.recallEnabled && current.catalog.compression.enabled;
-    const recentBatches = compressionActive ? recentSummaryBatches(current.slices, current.catalog.compression.recentBatchCount, currentChatMessages()) : [];
+    const indexedMessages = indexedChatMessages();
+    const recentBatches = compressionActive ? recentSummaryBatches(
+      current.slices,
+      current.catalog.compression.recentBatchCount,
+      indexedMessages.map((entry) => entry.message),
+      new Set(indexedMessages.filter((entry) => entry.hidden).map((entry) => entry.message.id))
+    ) : [];
     const recentSlices = recentBatches.flatMap((coverage) => coverage.slices).filter((slice) => slice.continuity?.validity !== "superseded");
     if (!current.catalog.recallEnabled || !prepared.query) {
       return finalize2({
@@ -43685,7 +43691,7 @@ async function summaryHidingPage(ctx) {
       min: 0,
       max: 100,
       value: config2.recentBatchCount,
-      hint: "\u6700\u8FD1\u8FD9\u4E48\u591A\u4E2A\u6279\u6B21\u7684\u603B\u7ED3\u56FA\u5B9A\u6CE8\u5165\uFF0C\u5176\u4F59\u9760\u53EC\u56DE"
+      hint: "\u53EA\u8BA1\u7B97\u4ECD\u6709\u539F\u6D88\u606F\u88AB\u9690\u85CF\u7684\u6279\u6B21\uFF0C\u53D6\u5176\u4E2D\u6700\u8FD1\u8FD9\u4E48\u591A\u4E2A\u56FA\u5B9A\u6CE8\u5165\uFF1B\u539F\u6D88\u606F\u5168\u90E8\u53EF\u89C1\u7684\u6279\u6B21\u4E0D\u5360\u540D\u989D"
     },
     {
       key: "deletionPolicy",
