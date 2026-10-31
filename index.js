@@ -24180,7 +24180,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.1.9", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.1.10", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -24290,6 +24290,7 @@ init_batch_overview();
 
 // src/extension/worldbook/batch-overview.ts
 init_batch_overview();
+var OVERVIEW_POSITION = { type: "after_character_definition", role: "system", depth: 4, order: 80 };
 function readBatchOverview(entry) {
   if (entry.extra?.echoes?.kind !== "summary_batch_overview") return null;
   return batchOverviewSchema.parse(entry.extra.echoes.overview);
@@ -24299,13 +24300,30 @@ function batchOverviewEntry(overview) {
     name: `\u6279\u6B21\u603B\u7ED3 ${overview.batch.batchNumber}`,
     enabled: overview.enabled && Boolean(overview.content.trim()),
     strategy: { type: "constant", keys: [] },
-    position: { type: "after_character_definition", role: "system", depth: 4, order: 80 },
+    position: { ...OVERVIEW_POSITION },
     content: overview.content ? `[\u6279\u6B21\u603B\u7ED3 ${overview.batch.batchNumber}]
 ${overview.content}` : "",
     probability: 100,
     recursion: { prevent_incoming: true, prevent_outgoing: true, delay_until: null },
     extra: { echoes: { kind: "summary_batch_overview", version: 1, overview } }
   };
+}
+function orderBatchOverviewEntries(entries, messages2) {
+  const { compare: compare3 } = createBatchOrder(messages2);
+  const overviews = entries.flatMap((entry) => {
+    const overview = readBatchOverview(entry);
+    return overview ? [{ entry, batch: overview.batch }] : [];
+  }).sort((left, right) => compare3(left.batch, right.batch) || left.batch.batchNumber - right.batch.batchNumber || left.batch.id.localeCompare(right.batch.id));
+  const ordered = overviews.map(({ entry }, index2) => {
+    const order = OVERVIEW_POSITION.order + index2 / overviews.length;
+    return entry.position?.order === order ? entry : {
+      ...entry,
+      position: { ...OVERVIEW_POSITION, ...entry.position, order }
+    };
+  });
+  let index = 0;
+  const result = entries.map((entry) => entry.extra?.echoes?.kind === "summary_batch_overview" ? ordered[index++] : entry);
+  return result.every((entry, offset) => entry === entries[offset]) ? entries : result;
 }
 function pruneBatchOverviews(entries) {
   const batchIds = new Set(entries.filter((entry) => entry.extra?.echoes?.kind === "summary_slice").map((entry) => entry.extra.echoes.batch.id));
@@ -24407,6 +24425,9 @@ function undoFingerprint(entry) {
   const copy = structuredClone(entry);
   delete copy.uid;
   const item = copy.extra?.echoes;
+  if (item?.kind === "summary_batch_overview" && copy.position) {
+    copy.position.order = 0;
+  }
   if (item?.kind === "summary_slice") {
     item.batch.state = item.batch.state === "stale" ? "stale" : "sync_state";
     delete item.batch.updatedAt;
@@ -24704,7 +24725,7 @@ function readState(worldbookName, entries) {
   const batchOverviews = entries.flatMap((entry) => {
     const overview = readBatchOverview(entry);
     return overview ? [overview] : [];
-  });
+  }).sort((left, right) => compare3(left.batch, right.batch) || left.batch.batchNumber - right.batch.batchNumber || left.batch.id.localeCompare(right.batch.id));
   return { worldbookName, catalog, slices, batchOverviews };
 }
 function structuredCatalogChatId(entries) {
@@ -24765,6 +24786,19 @@ var SummaryWorldbookStore = class {
         state = readState(worldbookName, entries);
       }
       if (!state) throw new Error("Failed to initialize the Echoes summary catalog.");
+      if (orderBatchOverviewEntries(entries, chatMessages()) !== entries) {
+        const namespaceId = state.catalog.namespaceId;
+        entries = await api.updateWorldbookWith(worldbookName, (currentEntries) => {
+          signal?.throwIfAborted();
+          const current = readState(worldbookName, currentEntries);
+          if (!current || current.catalog.namespaceId !== namespaceId || current.catalog.chatId !== chatId || SillyTavern.getContext().chatId !== chatId || api.getChatWorldbookName("current") !== worldbookName) {
+            throw new Error("\u804A\u5929\u6216\u603B\u7ED3\u76EE\u5F55\u5DF2\u53D8\u5316\uFF0C\u672A\u8C03\u6574\u6279\u6B21\u603B\u7ED3\u987A\u5E8F\u3002");
+          }
+          return orderBatchOverviewEntries(currentEntries, chatMessages());
+        });
+        state = readState(worldbookName, entries);
+        if (!state) throw new Error("The summary catalog disappeared while ordering batch summaries.");
+      }
       return state;
     });
   }
@@ -24893,14 +24927,15 @@ var SummaryWorldbookStore = class {
         const overviewIndex = nextEntries.findIndex((entry) => readBatchOverview(entry)?.batch.id === options.batch.id);
         if (overviewIndex < 0) nextEntries.push(batchOverviewEntry(overview));
         else nextEntries[overviewIndex] = { ...nextEntries[overviewIndex], ...batchOverviewEntry(overview) };
+        const orderedEntries = orderBatchOverviewEntries(nextEntries, chatMessages());
         if (writeMode === "rebuild") undoId = await recordMemoryUndo(
           options.worldbookName,
           "summary",
           `\u66FF\u6362\u603B\u7ED3\u6279\u6B21 ${options.batch.batchNumber}`,
           entries,
-          nextEntries
+          orderedEntries
         );
-        return nextEntries;
+        return orderedEntries;
       });
       await completeMemoryUndo(options.worldbookName, options.catalog.chatId, undoId, written);
       return { ...await this.inspect(options.worldbookName), undoOperationId: undoId };
@@ -24949,7 +24984,7 @@ var SummaryWorldbookStore = class {
             throw new Error("\u6279\u6B21\u603B\u7ED3\u7684\u64A4\u9500\u57FA\u7EBF\u5DF2\u53D8\u5316\uFF0C\u672A\u8986\u76D6\u65B0\u5185\u5BB9\u3002");
           change.pendingAfter = structuredClone(entries.find((entry) => readBatchOverview(entry)?.batch.id === batchId));
         });
-        return entries;
+        return orderBatchOverviewEntries(entries, chatMessages());
       });
       if (undoId) await amendMemoryUndo(expected.worldbookName, expected.catalog.chatId, undoId, (record3) => {
         const change = record3.changes.find((change2) => change2.key === `overview:${batchId}`);
@@ -43164,7 +43199,8 @@ async function summaryRecordsPage(ctx) {
   }
   const byBatch = /* @__PURE__ */ new Map();
   for (const slice of state.slices) byBatch.set(slice.batch.id, [...byBatch.get(slice.batch.id) ?? [], slice]);
-  const groups = [...byBatch.values()].sort((a, b) => b[0].batch.batchNumber - a[0].batch.batchNumber);
+  const { compare: compare3 } = createBatchOrder(indexedChatMessages().map((entry) => entry.message));
+  const groups = [...byBatch.values()].sort((a, b) => compare3(a[0].batch, b[0].batch) || a[0].batch.batchNumber - b[0].batch.batchNumber || a[0].batch.id.localeCompare(b[0].batch.id));
   const overviews = new Map(state.batchOverviews?.map((item) => [item.batch.id, item]));
   const pane = drawer("\u5207\u7247\u8BE6\u60C5");
   pane.onChange((key2) => {
