@@ -22676,6 +22676,14 @@ var init_schemas3 = __esm({
 });
 
 // src/shared/batch-overview.ts
+function batchOverviewHasCurrentSource(overview, batch = overview.batch) {
+  return batch.state !== "stale" && overview.batch.state !== "stale" && overview.batch.id === batch.id && overview.batch.sourceHash === batch.sourceHash && overview.contentSourceHash === batch.sourceHash;
+}
+function upgradeLegacyBatchOverview(overview, batch = overview.batch) {
+  if (overview.contentSourceHash !== void 0) return overview;
+  const confirmed = Boolean(overview.content.trim()) && overview.state === "ready" && overview.batch.state !== "stale" && batch.state !== "stale" && overview.batch.id === batch.id && overview.batch.sourceHash === batch.sourceHash;
+  return { ...overview, contentSourceHash: confirmed ? batch.sourceHash : null };
+}
 var DEFAULT_BATCH_OVERVIEW_PROMPT, batchOverviewPayloadSchema, batchOverviewSchema, batchOverviewRequestSchema;
 var init_batch_overview = __esm({
   "src/shared/batch-overview.ts"() {
@@ -22701,6 +22709,8 @@ var init_batch_overview = __esm({
       batch: summaryBatchMetadataSchema,
       enabled: external_exports.boolean().default(true),
       content: external_exports.string().max(2e5),
+      // Undefined denotes legacy metadata; null records that the old text's source is unknown.
+      contentSourceHash: external_exports.string().regex(/^[a-f0-9]{64}$/).nullable().optional(),
       state: external_exports.enum(["pending", "ready", "failed"]),
       error: external_exports.string().max(2e3).optional(),
       revision: external_exports.number().int().min(1),
@@ -24180,7 +24190,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.1.10", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.1.11", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -24269,27 +24279,46 @@ function createBatchOrder(messages2) {
     starts.set(batch, value);
     return value;
   };
-  const compare3 = (left, right) => {
-    const a = start(left), b = start(right);
-    if (a !== null && b !== null) return a - b || left.messageIds.length - right.messageIds.length;
-    return left.createdAt.localeCompare(right.createdAt);
+  const confirmedStart = (batch) => {
+    const first = positions.get(batch.startMessageId);
+    if (first === void 0 || batch.messageIds[0] !== batch.startMessageId || batch.messageIds.at(-1) !== batch.endMessageId || !batch.messageIds.every((id, offset) => positions.get(id) === first + offset)) return null;
+    return first;
   };
-  return { start, compare: compare3 };
+  const compare3 = (left, right) => {
+    if (left.id === right.id) return 0;
+    const a = start(left), b = start(right);
+    if (a === null && b !== null) return 1;
+    if (a !== null && b === null) return -1;
+    return (a !== null && b !== null ? a - b || left.messageIds.length - right.messageIds.length : 0) || left.createdAt.localeCompare(right.createdAt) || left.batchNumber - right.batchNumber || left.id.localeCompare(right.id);
+  };
+  return { start, confirmedStart, compare: compare3 };
 }
 function summarySuffix(slices, batchNumber, messages2) {
   const selected = slices.find((slice) => slice.batch.batchNumber === batchNumber)?.batch;
   if (!selected || selected.source?.kind === "imported") throw new Error("\u627E\u4E0D\u5230\u53EF\u91CD\u7F6E\u7684\u804A\u5929\u603B\u7ED3\u6279\u6B21\u3002");
-  const selectedIndex = slices.findIndex((slice) => slice.batch.id === selected.id);
-  const { compare: compare3 } = createBatchOrder(messages2);
-  return slices.filter((slice, index) => slice.batch.source?.kind !== "imported" && (slice.batch.id === selected.id || compare3(slice.batch, selected) > 0 || compare3(slice.batch, selected) === 0 && index >= selectedIndex));
+  const { confirmedStart } = createBatchOrder(messages2);
+  const first = confirmedStart(selected);
+  if (first === null) throw new Error("\u6240\u9009\u6279\u6B21\u7684\u539F\u6D88\u606F\u8303\u56F4\u65E0\u6CD5\u5B9A\u4F4D\uFF0C\u8BF7\u660E\u786E\u9009\u62E9\u8981\u5220\u9664\u7684\u6279\u6B21\u540E\u4F7F\u7528\u5220\u9664\u64CD\u4F5C\u3002");
+  return slices.filter((slice) => {
+    const position = confirmedStart(slice.batch);
+    return slice.batch.source?.kind !== "imported" && position !== null && position >= first;
+  });
 }
 
 // src/extension/worldbook/summary-worldbook.ts
 init_adaptive_batches();
 init_batch_overview();
 
+// src/shared/source-hash.ts
+init_crypto_compat();
+async function sourceMessagesHash(messages2) {
+  const value = JSON.stringify(messages2.map(({ id, role: role2, content }) => ({ id, role: role2, content })));
+  return sha256Hex(value);
+}
+
 // src/extension/worldbook/batch-overview.ts
 init_batch_overview();
+init_schemas3();
 var OVERVIEW_POSITION = { type: "after_character_definition", role: "system", depth: 4, order: 80 };
 function readBatchOverview(entry) {
   if (entry.extra?.echoes?.kind !== "summary_batch_overview") return null;
@@ -24298,7 +24327,7 @@ function readBatchOverview(entry) {
 function batchOverviewEntry(overview) {
   return {
     name: `\u6279\u6B21\u603B\u7ED3 ${overview.batch.batchNumber}`,
-    enabled: overview.enabled && Boolean(overview.content.trim()),
+    enabled: overview.enabled && Boolean(overview.content.trim()) && batchOverviewHasCurrentSource(overview),
     strategy: { type: "constant", keys: [] },
     position: { ...OVERVIEW_POSITION },
     content: overview.content ? `[\u6279\u6B21\u603B\u7ED3 ${overview.batch.batchNumber}]
@@ -24307,6 +24336,31 @@ ${overview.content}` : "",
     recursion: { prevent_incoming: true, prevent_outgoing: true, delay_until: null },
     extra: { echoes: { kind: "summary_batch_overview", version: 1, overview } }
   };
+}
+function reconcileBatchOverviewEntries(entries) {
+  const batches = /* @__PURE__ */ new Map();
+  for (const entry of entries) {
+    if (entry.extra?.echoes?.kind !== "summary_slice") continue;
+    const batch = summaryBatchMetadataSchema.parse(entry.extra.echoes.batch);
+    batches.set(batch.id, [...batches.get(batch.id) ?? [], batch]);
+  }
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const result = entries.map((entry) => {
+    const overview = readBatchOverview(entry);
+    if (!overview) return entry;
+    const sources2 = batches.get(overview.batch.id) ?? [];
+    const first = sources2[0];
+    const valid = first && sources2.every((batch2) => batch2.state !== "stale" && batch2.sourceHash === first.sourceHash);
+    const batch = valid ? first : { ...first ?? overview.batch, state: "stale" };
+    const upgraded = upgradeLegacyBatchOverview(overview, batch);
+    const sourceChanged = overview.batch.sourceHash !== batch.sourceHash || overview.batch.revision !== batch.revision || overview.batch.state === "stale" !== (batch.state === "stale");
+    const updated = { ...upgraded, batch: sourceChanged ? batch : overview.batch };
+    const enabled = updated.enabled && Boolean(updated.content.trim()) && batchOverviewHasCurrentSource(updated, batch);
+    if (!sourceChanged && upgraded === overview && entry.enabled === enabled) return entry;
+    const next = { ...updated, revision: overview.revision + 1, updatedAt: now };
+    return { ...entry, enabled, extra: { ...entry.extra, echoes: { ...entry.extra.echoes, overview: next } } };
+  });
+  return result.every((entry, index) => entry === entries[index]) ? entries : result;
 }
 function orderBatchOverviewEntries(entries, messages2) {
   const { compare: compare3 } = createBatchOrder(messages2);
@@ -24560,6 +24614,9 @@ function applyMemoryUndo(record3, entries) {
       item.batch.revision = Math.max(item.batch.revision, actual?.extra?.echoes?.batch?.revision ?? 0) + 1;
       item.batch.updatedAt = now;
       if (item.batch.state !== "stale") item.batch.state = "pending";
+    } else if (!record3.restoring && item.kind === "summary_batch_overview") {
+      item.overview.revision = Math.max(item.overview.revision, actual?.extra?.echoes?.overview?.revision ?? 0) + 1;
+      item.overview.updatedAt = now;
     }
     if (index >= 0) next[index] = restored;
     else next.push(restored);
@@ -24583,6 +24640,14 @@ function applyMemoryUndo(record3, entries) {
 }
 
 // src/extension/worldbook/summary-worldbook.ts
+function summaryResetSnapshot(state) {
+  return JSON.stringify({
+    catalog: state.catalog,
+    slices: state.slices,
+    overviews: state.batchOverviews,
+    messages: chatMessages()
+  });
+}
 function summaryMigrationFingerprint(state) {
   return JSON.stringify({
     namespace: state.catalog.namespaceId,
@@ -24606,6 +24671,15 @@ function summaryBatchSnapshot(slices, batchId) {
 }
 function chatMessages() {
   return indexedChatMessages().map((entry) => entry.message);
+}
+async function batchSourceMatches(batch) {
+  if (batch.source?.kind === "imported") return true;
+  const messages2 = chatMessages();
+  const token = JSON.stringify(messages2);
+  const start = messages2.findIndex((message) => message.id === batch.startMessageId);
+  const end = messages2.findIndex((message) => message.id === batch.endMessageId);
+  const selected = start >= 0 && end >= start ? messages2.slice(start, end + 1) : [];
+  return selected.length === batch.messageIds.length && selected.every((message, index) => message.id === batch.messageIds[index]) && await sourceMessagesHash(selected) === batch.sourceHash && JSON.stringify(chatMessages()) === token;
 }
 function prunePool(catalog, removed) {
   if (!catalog.recallPool) return catalog;
@@ -24786,7 +24860,7 @@ var SummaryWorldbookStore = class {
         state = readState(worldbookName, entries);
       }
       if (!state) throw new Error("Failed to initialize the Echoes summary catalog.");
-      if (orderBatchOverviewEntries(entries, chatMessages()) !== entries) {
+      if (orderBatchOverviewEntries(reconcileBatchOverviewEntries(entries), chatMessages()) !== entries) {
         const namespaceId = state.catalog.namespaceId;
         entries = await api.updateWorldbookWith(worldbookName, (currentEntries) => {
           signal?.throwIfAborted();
@@ -24794,7 +24868,7 @@ var SummaryWorldbookStore = class {
           if (!current || current.catalog.namespaceId !== namespaceId || current.catalog.chatId !== chatId || SillyTavern.getContext().chatId !== chatId || api.getChatWorldbookName("current") !== worldbookName) {
             throw new Error("\u804A\u5929\u6216\u603B\u7ED3\u76EE\u5F55\u5DF2\u53D8\u5316\uFF0C\u672A\u8C03\u6574\u6279\u6B21\u603B\u7ED3\u987A\u5E8F\u3002");
           }
-          return orderBatchOverviewEntries(currentEntries, chatMessages());
+          return orderBatchOverviewEntries(reconcileBatchOverviewEntries(currentEntries), chatMessages());
         });
         state = readState(worldbookName, entries);
         if (!state) throw new Error("The summary catalog disappeared while ordering batch summaries.");
@@ -24916,10 +24990,12 @@ var SummaryWorldbookStore = class {
         });
         nextEntries.push(...slices.filter((slice) => !existingIds.has(slice.id)).map((slice) => sliceEntry(slice)));
         const previousOverview = currentState.batchOverviews?.find((item) => item.batch.id === options.batch.id);
+        const previousSource = previousOverview ? upgradeLegacyBatchOverview(previousOverview, existing[0]?.batch) : void 0;
         const overview = batchOverviewSchema.parse({
           batch: slices[0].batch,
           enabled: previousOverview?.enabled ?? true,
           content: previousOverview?.content ?? "",
+          contentSourceHash: previousSource?.contentSourceHash ?? null,
           state: "pending",
           revision: (previousOverview?.revision ?? 0) + 1,
           updatedAt: now
@@ -24962,14 +25038,27 @@ var SummaryWorldbookStore = class {
         const batch = current.slices.find((slice) => slice.batch.id === batchId)?.batch;
         const old = current.batchOverviews?.find((item) => item.batch.id === batchId);
         const before = expected.batchOverviews?.find((item) => item.batch.id === batchId);
-        if (!batch || batch.sourceHash !== expected.slices.find((slice) => slice.batch.id === batchId)?.batch.sourceHash || old?.revision !== before?.revision) throw new Error("\u6279\u6B21\u603B\u7ED3\u5DF2\u53D8\u5316\u6216\u6279\u6B21\u5DF2\u5220\u9664\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5\u3002");
+        const expectedBatch = expected.slices.find((slice) => slice.batch.id === batchId)?.batch;
+        if (!batch || !expectedBatch || batch.sourceHash !== expectedBatch.sourceHash || batch.revision !== expectedBatch.revision || batch.state === "stale" !== (expectedBatch.state === "stale") || summaryBatchSnapshot(current.slices, batchId) !== summaryBatchSnapshot(expected.slices, batchId) || old?.revision !== before?.revision) throw new Error("\u6279\u6B21\u603B\u7ED3\u5DF2\u53D8\u5316\u6216\u6279\u6B21\u5DF2\u5220\u9664\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5\u3002");
+        const sourceToken = JSON.stringify(chatMessages());
+        const entriesToken = JSON.stringify(entries);
+        if ((patch.content !== void 0 || patch.enabled === true) && batch.state !== "stale" && !await batchSourceMatches(batch)) {
+          throw new Error("\u539F\u6D88\u606F\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5148\u68C0\u67E5\u5E76\u91CD\u5EFA\u6279\u6B21\uFF0C\u518D\u4FDD\u5B58\u6279\u6B21\u603B\u7ED3\u6B63\u6587\u3002");
+        }
+        if (JSON.stringify(await helper().getWorldbook(expected.worldbookName)) !== entriesToken || JSON.stringify(chatMessages()) !== sourceToken) throw new Error("\u539F\u6D88\u606F\u6216\u603B\u7ED3\u5DF2\u53D8\u5316\uFF0C\u672A\u4FDD\u5B58\u6279\u6B21\u603B\u7ED3\u3002");
+        signal?.throwIfAborted();
+        if (SillyTavern.getContext().chatId !== current.catalog.chatId || helper().getChatWorldbookName("current") !== expected.worldbookName) {
+          throw new Error("\u804A\u5929\u6216\u603B\u7ED3\u76EE\u5F55\u5DF2\u53D8\u5316\uFF0C\u672A\u4FDD\u5B58\u6279\u6B21\u603B\u7ED3\u3002");
+        }
+        const previous = old ? upgradeLegacyBatchOverview(old, batch) : void 0;
         const overview = batchOverviewSchema.parse({
-          batch,
           content: "",
           enabled: true,
           state: "pending",
-          ...old,
+          ...previous,
           ...patch,
+          batch,
+          contentSourceHash: patch.content !== void 0 ? batch.state === "stale" ? null : batch.sourceHash : previous?.contentSourceHash ?? null,
           revision: (old?.revision ?? 0) + 1,
           updatedAt: (/* @__PURE__ */ new Date()).toISOString()
         });
@@ -24978,13 +25067,14 @@ var SummaryWorldbookStore = class {
         const beforeEntry = index < 0 ? void 0 : structuredClone(entries[index]);
         if (index < 0) entries.push(batchOverviewEntry(overview));
         else entries[index] = { ...entries[index], ...batchOverviewEntry(overview) };
+        const nextEntries = orderBatchOverviewEntries(reconcileBatchOverviewEntries(entries), chatMessages());
         await amendMemoryUndo(expected.worldbookName, expected.catalog.chatId, undoId, (record3) => {
           const change = record3.changes.find((change2) => change2.key === `overview:${batchId}`);
           if (!change || undoFingerprint(change.after) !== undoFingerprint(beforeEntry))
             throw new Error("\u6279\u6B21\u603B\u7ED3\u7684\u64A4\u9500\u57FA\u7EBF\u5DF2\u53D8\u5316\uFF0C\u672A\u8986\u76D6\u65B0\u5185\u5BB9\u3002");
-          change.pendingAfter = structuredClone(entries.find((entry) => readBatchOverview(entry)?.batch.id === batchId));
+          change.pendingAfter = structuredClone(nextEntries.find((entry) => readBatchOverview(entry)?.batch.id === batchId));
         });
-        return orderBatchOverviewEntries(entries, chatMessages());
+        return nextEntries;
       });
       if (undoId) await amendMemoryUndo(expected.worldbookName, expected.catalog.chatId, undoId, (record3) => {
         const change = record3.changes.find((change2) => change2.key === `overview:${batchId}`);
@@ -25031,7 +25121,7 @@ var SummaryWorldbookStore = class {
       const api = helper();
       const now = (/* @__PURE__ */ new Date()).toISOString();
       const targets = sliceIds ? new Set(sliceIds) : null;
-      await api.updateWorldbookWith(worldbookName, (entries) => entries.map((entry) => {
+      await api.updateWorldbookWith(worldbookName, (entries) => reconcileBatchOverviewEntries(entries.map((entry) => {
         const item = metadata(entry);
         if (item?.kind !== "summary_slice" || item.batch.id !== batchId) return entry;
         if (targets && !targets.has(item.summaryId)) return entry;
@@ -25039,10 +25129,15 @@ var SummaryWorldbookStore = class {
           ...entry,
           extra: {
             ...entry.extra,
-            echoes: { ...item, batch: { ...item.batch, state, updatedAt: now } }
+            echoes: { ...item, batch: {
+              ...item.batch,
+              state: item.batch.state === "stale" ? "stale" : state,
+              revision: item.batch.revision + (state === "stale" && item.batch.state !== "stale" ? 1 : 0),
+              updatedAt: now
+            } }
           }
         };
-      }));
+      })));
       return this.inspect(worldbookName);
     }, state === "stale");
   }
@@ -25052,13 +25147,18 @@ var SummaryWorldbookStore = class {
         const current = readState(expected.worldbookName, entries);
         const fresh = current?.slices.find((candidate) => candidate.id === slice.id);
         if (!current || current.catalog.namespaceId !== expected.catalog.namespaceId || current.catalog.retrievalCollectionId !== expected.catalog.retrievalCollectionId || current.catalog.retrievalEmbeddingSpaceId !== expected.catalog.retrievalEmbeddingSpaceId || !fresh || fresh.batch.state === "stale" || slice.batch.state === "stale" || summaryBatchSnapshot([fresh], fresh.batch.id) !== summaryBatchSnapshot([slice], slice.batch.id)) return entries;
-        return entries.map((entry) => {
+        return reconcileBatchOverviewEntries(entries.map((entry) => {
           const item = metadata(entry);
           return item?.kind === "summary_slice" && item.summaryId === slice.id ? { ...entry, extra: { ...entry.extra, echoes: {
             ...item,
-            batch: { ...item.batch, state: syncState, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }
+            batch: {
+              ...item.batch,
+              state: syncState,
+              revision: item.batch.revision + (syncState === "stale" ? 1 : 0),
+              updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+            }
           } } } : entry;
-        });
+        }));
       });
       return this.inspect(expected.worldbookName);
     }, false);
@@ -25122,7 +25222,7 @@ var SummaryWorldbookStore = class {
       await helper().updateWorldbookWith(worldbookName, (entries) => {
         signal?.throwIfAborted();
         const state = readState(worldbookName, entries);
-        if (!state || state.catalog.namespaceId !== expected.catalog.namespaceId) throw new Error("\u603B\u7ED3\u76EE\u5F55\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u8BD5\u5B8C\u6574\u6027\u68C0\u67E5\u3002");
+        if (!state || state.catalog.namespaceId !== expected.catalog.namespaceId || state.catalog.chatId !== SillyTavern.getContext().chatId || helper().getChatWorldbookName("current") !== worldbookName) throw new Error("\u603B\u7ED3\u76EE\u5F55\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u8BD5\u5B8C\u6574\u6027\u68C0\u67E5\u3002");
         for (const id of batchIds) {
           if (summaryBatchSnapshot(state.slices, id) !== summaryBatchSnapshot(expected.slices, id))
             throw new Error("\u603B\u7ED3\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u8BD5\u5B8C\u6574\u6027\u68C0\u67E5\u3002");
@@ -25144,15 +25244,15 @@ var SummaryWorldbookStore = class {
         }
         catalog.pendingRetrievalDeletes = [.../* @__PURE__ */ new Set([...catalog.pendingRetrievalDeletes, ...affected.map((slice) => slice.id)])];
         catalog.updatedAt = now;
-        return entries.map((entry) => {
+        return reconcileBatchOverviewEntries(entries.map((entry) => {
           const item = metadata(entry);
           if (item?.kind === "summary_catalog") return { ...entry, ...catalogEntry(summaryCatalogSchema.parse(catalog)) };
           if (item?.kind !== "summary_slice" || !ids.has(item.batch.id) || item.batch.source?.kind === "imported") return entry;
           return { ...entry, extra: {
             ...entry.extra,
-            echoes: { ...item, batch: { ...item.batch, state: "stale", updatedAt: now } }
+            echoes: { ...item, batch: { ...item.batch, state: "stale", revision: item.batch.revision + 1, updatedAt: now } }
           } };
-        });
+        }));
       });
       return this.inspect(worldbookName);
     });
@@ -25179,7 +25279,7 @@ var SummaryWorldbookStore = class {
             worldbookUid: entry.uid,
             batch: {
               ...item.batch,
-              state: "pending",
+              state: item.batch.state === "stale" ? "stale" : "pending",
               revision: item.batch.revision + 1,
               updatedAt: now
             }
@@ -25279,8 +25379,24 @@ var SummaryWorldbookStore = class {
       const record3 = await requireMemoryUndo(worldbookName, id);
       if (record3.kind !== "summary") throw new Error("\u64A4\u9500\u8BB0\u5F55\u7C7B\u578B\u4E0D\u7B26\u3002");
       const written = await helper().updateWorldbookWith(worldbookName, async (entries) => {
-        const next = applyMemoryUndo(record3, entries);
-        readState(worldbookName, next);
+        let next = applyMemoryUndo(record3, entries);
+        const restored = readState(worldbookName, next);
+        const token = JSON.stringify(chatMessages());
+        const invalid = /* @__PURE__ */ new Set();
+        for (const overview of restored.batchOverviews ?? []) {
+          if (overview.content.trim() && !await batchSourceMatches(overview.batch)) invalid.add(overview.batch.id);
+        }
+        if (SillyTavern.getContext().chatId !== record3.chatId || helper().getChatWorldbookName("current") !== worldbookName || JSON.stringify(chatMessages()) !== token) {
+          throw new Error("\u804A\u5929\u6216\u539F\u6D88\u606F\u5DF2\u53D8\u5316\uFF0C\u672A\u6062\u590D\u6279\u6B21\u603B\u7ED3\u3002");
+        }
+        next = next.map((entry) => {
+          const overview = readBatchOverview(entry);
+          return overview && invalid.has(overview.batch.id) ? { ...entry, extra: {
+            ...entry.extra,
+            echoes: { ...entry.extra.echoes, overview: { ...overview, contentSourceHash: null } }
+          } } : entry;
+        });
+        next = orderBatchOverviewEntries(reconcileBatchOverviewEntries(next), chatMessages());
         await prepareMemoryUndoRestore(record3, next);
         return next;
       });
@@ -25305,30 +25421,44 @@ var SummaryWorldbookStore = class {
       return this.inspect(worldbookName);
     });
   }
-  resetFrom(worldbookName, batchNumber) {
+  resetFrom(worldbookName, batchNumber, expectedSnapshot) {
     return this.serialize(worldbookName, async () => {
-      const state = await this.inspect(worldbookName);
-      const removed = summarySuffix(state.slices, batchNumber, chatMessages());
-      const removedIds = new Set(removed.map((slice) => slice.id));
-      const retained = state.slices.filter((slice) => slice.batch.source?.kind !== "imported" && !removedIds.has(slice.id));
-      const previous = retained.filter((slice) => slice.batch.purpose !== "supplement").at(-1)?.batch;
-      await helper().updateWorldbookWith(worldbookName, (entries) => pruneBatchOverviews(entries.filter((entry) => {
-        const item = metadata(entry);
-        return item?.kind !== "summary_slice" || !removedIds.has(item.summaryId);
-      })));
-      const nextCatalog = {
-        ...prunePool(state.catalog, removedIds),
-        nextBatchNumber: batchNumber,
-        pendingRetrievalDeletes: [.../* @__PURE__ */ new Set([
-          ...state.catalog.pendingRetrievalDeletes,
-          ...removed.map((slice) => slice.id)
-        ])],
-        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      if (previous) nextCatalog.lastCommittedMessageId = previous.endMessageId;
-      else delete nextCatalog.lastCommittedMessageId;
-      delete nextCatalog.checkpointAnchorMessageId;
-      await this.updateCatalog(worldbookName, nextCatalog);
+      await helper().updateWorldbookWith(worldbookName, async (entries) => {
+        const state = readState(worldbookName, entries);
+        if (!state || SillyTavern.getContext().chatId !== state.catalog.chatId || helper().getChatWorldbookName("current") !== worldbookName) throw new Error("\u804A\u5929\u6216\u603B\u7ED3\u76EE\u5F55\u5DF2\u53D8\u5316\uFF0C\u672A\u91CD\u7F6E\u6279\u6B21\u3002");
+        const snapshot = summaryResetSnapshot(state);
+        if (expectedSnapshot !== void 0 && snapshot !== expectedSnapshot) throw new Error("\u91CD\u7F6E\u8303\u56F4\u6216\u804A\u5929\u5185\u5BB9\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u9884\u89C8\u3002");
+        const messages2 = chatMessages();
+        const removed = summarySuffix(state.slices, batchNumber, messages2);
+        const removedIds = new Set(removed.map((slice) => slice.id));
+        const retained = state.slices.filter((slice) => !removedIds.has(slice.id));
+        const { compare: compare3, confirmedStart } = createBatchOrder(messages2);
+        const staleIds = new Set(retained.filter((slice) => slice.batch.state === "stale").map((slice) => slice.batch.id));
+        const candidates = [...new Map(retained.filter((slice) => slice.batch.source?.kind !== "imported" && slice.batch.purpose !== "supplement" && !staleIds.has(slice.batch.id) && confirmedStart(slice.batch) !== null).map((slice) => [slice.batch.id, slice.batch])).values()].sort(compare3).reverse();
+        let previous;
+        for (const candidate of candidates) {
+          if (await batchSourceMatches(candidate)) {
+            previous = candidate;
+            break;
+          }
+        }
+        const latest = readState(worldbookName, await helper().getWorldbook(worldbookName));
+        if (!latest || summaryResetSnapshot(latest) !== snapshot || SillyTavern.getContext().chatId !== state.catalog.chatId || helper().getChatWorldbookName("current") !== worldbookName) throw new Error("\u804A\u5929\u5DF2\u53D8\u5316\uFF0C\u672A\u91CD\u7F6E\u6279\u6B21\uFF0C\u8BF7\u91CD\u65B0\u9884\u89C8\u3002");
+        const nextCatalog = {
+          ...prunePool(state.catalog, removedIds),
+          nextBatchNumber: nextUnusedBatchNumber(new Set(retained.map((slice) => slice.batch.batchNumber)), batchNumber),
+          pendingRetrievalDeletes: [.../* @__PURE__ */ new Set([...state.catalog.pendingRetrievalDeletes, ...removedIds])],
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        if (previous) nextCatalog.lastCommittedMessageId = previous.endMessageId;
+        else delete nextCatalog.lastCommittedMessageId;
+        delete nextCatalog.checkpointAnchorMessageId;
+        return orderBatchOverviewEntries(pruneBatchOverviews(entries.flatMap((entry) => {
+          const item = metadata(entry);
+          if (item?.kind === "summary_catalog") return [{ ...entry, ...catalogEntry(nextCatalog) }];
+          return item?.kind === "summary_slice" && removedIds.has(item.summaryId) ? [] : [entry];
+        })), messages2);
+      });
       return this.inspect(worldbookName);
     });
   }
@@ -25369,13 +25499,6 @@ var SummaryWorldbookStore = class {
 
 // src/extension/summary/summary-request.ts
 init_summary_prompts();
-
-// src/shared/source-hash.ts
-init_crypto_compat();
-async function sourceMessagesHash(messages2) {
-  const value = JSON.stringify(messages2.map(({ id, role: role2, content }) => ({ id, role: role2, content })));
-  return sha256Hex(value);
-}
 
 // src/extension/summary/preprocess-core.ts
 function expression(rule, forceGlobal = false) {
@@ -28072,9 +28195,10 @@ var SummaryCoordinator = class {
     const state = await this.load();
     return this.store.setNextBatchNumber(state.worldbookName, batchNumber);
   }
-  async resetFrom(batchNumber) {
+  async resetFrom(batchNumber, expectedSnapshot) {
     const state = await this.load();
-    const updated = await this.store.resetFrom(state.worldbookName, batchNumber);
+    if (expectedSnapshot !== void 0 && summaryResetSnapshot(state) !== expectedSnapshot) throw new Error("\u91CD\u7F6E\u8303\u56F4\u6216\u804A\u5929\u5185\u5BB9\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u9884\u89C8\u3002");
+    const updated = await this.store.resetFrom(state.worldbookName, batchNumber, expectedSnapshot);
     return this.syncSlices(updated, [], updated.catalog.pendingRetrievalDeletes);
   }
   async repairIndex(decide = defaultDecision) {
@@ -28298,7 +28422,7 @@ ${failures.join("\n")}`);
     return [...new Map(state.slices.map((slice) => [slice.batch.id, slice.batch])).values()].filter((batch) => {
       if (!selected.has(batch.id) || batch.source?.kind === "imported" || batch.state === "stale") return false;
       const overview = overviews.get(batch.id);
-      return !onlyMissing || !overview?.content.trim() || overview.state !== "ready" || overview.batch.sourceHash !== batch.sourceHash;
+      return !onlyMissing || !overview?.content.trim() || overview.state !== "ready" || !batchOverviewHasCurrentSource(overview, batch);
     }).sort(createBatchOrder(currentChatMessages()).compare);
   }
   regenerateBatchOverviews(batchIds, options = {}) {
@@ -28350,6 +28474,16 @@ ${failures.join("\n")}`);
     await this.assertCurrentSourceUnchanged(initial, batch);
     const state = await this.store.saveBatchOverview(initial, batchId, { state: "pending" }, signal, undoId);
     this.emitProgress(state);
+    const assertOverviewCurrent = async () => {
+      signal.throwIfAborted();
+      await this.assertCurrentSourceUnchanged(state, batch);
+      const current = await this.store.inspect(state.worldbookName);
+      const fresh = current.slices.filter((slice) => slice.batch.id === batchId);
+      if (current.catalog.namespaceId !== state.catalog.namespaceId || current.catalog.chatId !== state.catalog.chatId || !fresh.length || fresh.some((slice) => slice.batch.state === "stale" || slice.batch.sourceHash !== batch.sourceHash) || summaryBatchSnapshot(current.slices, batchId) !== summaryBatchSnapshot(state.slices, batchId) || current.batchOverviews?.find((item) => item.batch.id === batchId)?.revision !== state.batchOverviews?.find((item) => item.batch.id === batchId)?.revision) {
+        throw new Error("\u6279\u6B21\u6216\u6279\u6B21\u603B\u7ED3\u5DF2\u53D8\u5316\uFF0C\u5DF2\u505C\u6B62\u540E\u7EED\u751F\u6210\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5\u3002");
+      }
+      signal.throwIfAborted();
+    };
     try {
       const settings = getSettings();
       const workflow = settings.generationWorkflows.summary;
@@ -28367,7 +28501,7 @@ ${failures.join("\n")}`);
       let request = initialRequest;
       let result;
       while (true) {
-        signal.throwIfAborted();
+        await assertOverviewCurrent();
         result = (await this.trackedJob(state.catalog.chatId, () => echoesApi.startBatchOverview(request), signal)).result;
         if (!result.decisionRequired) break;
         if (!await abortable(decide(result.decisionRequired), signal)) throw new DOMException("\u6279\u6B21\u603B\u7ED3\u5DF2\u505C\u6B62\u3002", "AbortError");
@@ -28376,7 +28510,7 @@ ${failures.join("\n")}`);
       }
       if (result.outcome !== "completed" || !result.content?.trim()) throw new Error("\u6279\u6B21\u603B\u7ED3\u672A\u8FD4\u56DE\u6B63\u6587\u3002");
       signal.throwIfAborted();
-      await this.assertCurrentSourceUnchanged(state, batch);
+      await assertOverviewCurrent();
       const updated = await this.store.saveBatchOverview(state, batchId, { content: result.content, state: "ready" }, signal, undoId);
       this.emitProgress(updated);
       return updated;
@@ -37202,19 +37336,27 @@ function validateRule(state, previousState, rule, changedOnly = false) {
 }
 function pathCovered(path, rules) {
   return rules.some((rule) => {
-    if (path.length > rule.path.length && rule.type !== "object") return false;
-    return path.slice(0, rule.path.length).every((segment, index) => rule.path[index] === "*" || rule.path[index] === segment);
+    if (!path.slice(0, rule.path.length).every((segment, index) => rule.path[index] === "*" || rule.path[index] === segment)) return false;
+    if (path.length <= rule.path.length || rule.type === "object") return true;
+    if (rule.type !== "array") return false;
+    const parent = path.slice(0, rule.path.length);
+    return !rules.some((child) => child.path.length > parent.length && parent.every((segment, index) => child.path[index] === "*" || child.path[index] === segment));
   });
 }
 function validateKnownPaths(value, rules, path = [], previous) {
   for (const [key2, child] of Object.entries(value)) {
     const childPath = [...path, key2];
-    const oldValue = previous?.[key2];
+    const oldValue = Array.isArray(previous) ? previous[Number(key2)] : previous?.[key2];
     if (oldValue !== void 0 && canonical2(child) === canonical2(oldValue)) continue;
     if (!pathCovered(childPath, rules)) {
       throw new StatusValidationError(`Unknown status field: ${childPath.join(".")}.`);
     }
-    if (isObject3(child)) validateKnownPaths(child, rules, childPath, isObject3(oldValue) ? oldValue : void 0);
+    if (isObject3(child) || Array.isArray(child)) validateKnownPaths(
+      child,
+      rules,
+      childPath,
+      isObject3(oldValue) || Array.isArray(oldValue) ? oldValue : void 0
+    );
   }
 }
 function assertSafeValue(value, path = []) {
@@ -42890,18 +43032,24 @@ async function runBatchAction(ctx, state, action, slices) {
     }
     case "reset": {
       const start = batches[0].batchNumber;
-      const affected = summarySuffix(state.slices, start, currentChatMessages());
+      const messages2 = currentChatMessages();
+      const affected = summarySuffix(state.slices, start, messages2);
+      const snapshot = summaryResetSnapshot(state);
+      const affectedIds = new Set(affected.map((slice) => slice.id));
+      const { confirmedStart } = createBatchOrder(messages2);
+      const unlocated = new Set(state.slices.filter((slice) => !affectedIds.has(slice.id) && slice.batch.source?.kind !== "imported" && confirmedStart(slice.batch) === null).map((slice) => slice.batch.id)).size;
       if (!await confirmAction({
         title: `\u4ECE\u6279\u6B21 ${start} \u5F00\u59CB\u91CD\u7F6E\uFF1F`,
         irreversible: true,
         danger: true,
         confirmLabel: "\u91CD\u7F6E",
-        message: `\u4F1A\u5220\u9664\u6B64\u540E\u7684 ${affected.length} \u4E2A\u5207\u7247\u53CA\u5176\u6279\u6B21\u603B\u7ED3\uFF0C\u6062\u590D\u5BF9\u5E94\u539F\u6D88\u606F\uFF0C\u68C0\u67E5\u70B9\u9000\u56DE\u5230\u6279\u6B21 ${start} \u4E4B\u524D\u3002`
+        message: `\u4F1A\u5220\u9664\u4ECE\u6B64\u6279\u6B21\u8D77\u53EF\u786E\u8BA4\u987A\u5E8F\u7684 ${affected.length} \u4E2A\u5207\u7247\u53CA\u5176\u6279\u6B21\u603B\u7ED3\uFF0C\u6062\u590D\u5BF9\u5E94\u539F\u6D88\u606F\uFF0C\u68C0\u67E5\u70B9\u9000\u56DE\u5230\u4ECD\u6709\u6548\u7684\u5148\u524D\u6279\u6B21\u3002${unlocated ? `\u53E6\u6709 ${unlocated} \u4E2A\u65E0\u6CD5\u5B9A\u4F4D\u7684\u5386\u53F2\u6279\u6B21\u4F1A\u4FDD\u7559\u3002` : ""}`
       })) return false;
       ctx.guard();
+      if (summaryResetSnapshot(await coordinator.store.inspect(state.worldbookName)) !== snapshot) throw new Error("\u91CD\u7F6E\u8303\u56F4\u6216\u804A\u5929\u5185\u5BB9\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u9884\u89C8\u3002");
       await coordinator.compression.restoreBatch(state, [...new Set(affected.map((slice) => slice.batch.id))]);
       ctx.guard();
-      await coordinator.resetFrom(start);
+      await coordinator.resetFrom(start, snapshot);
       break;
     }
     case "delete": {
@@ -42935,8 +43083,10 @@ var BATCH_ACTIONS = [
 ];
 
 // src/extension/ui/pages/summary/overview-dialogs.ts
+init_batch_overview();
 function overviewLabel(overview) {
   if (!overview) return ["\u6279\u6B21\u603B\u7ED3\u672A\u751F\u6210", "neutral"];
+  if (overview.content.trim() && !batchOverviewHasCurrentSource(overview)) return ["\u6279\u6B21\u603B\u7ED3\u5DF2\u6682\u505C\u6CE8\u5165", "warning"];
   if (overview.state === "failed") return ["\u6279\u6B21\u603B\u7ED3\u5931\u8D25", "danger"];
   if (overview.state === "pending") return ["\u6279\u6B21\u603B\u7ED3\u5F85\u751F\u6210", "warning"];
   return overview.enabled ? ["\u6279\u6B21\u603B\u7ED3\u5E38\u9A7B", "success"] : ["\u6279\u6B21\u603B\u7ED3\u5DF2\u5173\u95ED", "neutral"];
@@ -42944,7 +43094,7 @@ function overviewLabel(overview) {
 function openBatchOverview(ctx, state, batch) {
   const overview = state.batchOverviews?.find((item) => item.batch.id === batch.id);
   const [label, tone] = overviewLabel(overview);
-  const stale = batch.state === "stale" || overview !== void 0 && overview.batch.sourceHash !== batch.sourceHash;
+  const stale = batch.state === "stale" || overview !== void 0 && !batchOverviewHasCurrentSource(overview, batch);
   const view = modal(`\u6279\u6B21 ${batch.batchNumber} \u7684\u6279\u6B21\u603B\u7ED3`, [
     h("div", "ec-row", badge(label, tone), overview ? switchControl("\u5E38\u9A7B\u6CE8\u5165", overview.enabled, async (enabled) => {
       ctx.guard();
@@ -42952,7 +43102,7 @@ function openBatchOverview(ctx, state, batch) {
       await ctx.refresh();
     }) : null),
     overview?.error ? callout("danger", overview.error) : null,
-    stale ? callout("warning", "\u539F\u6D88\u606F\u5DF2\u53D8\u5316\uFF1B\u8FD9\u91CC\u4ECD\u4FDD\u7559\u65E7\u7684\u6279\u6B21\u603B\u7ED3\uFF0C\u8BF7\u6838\u5BF9\u540E\u91CD\u5EFA\u6279\u6B21\u3002") : null,
+    stale ? callout("warning", "\u6B63\u6587\u6765\u6E90\u5DF2\u53D8\u5316\u6216\u65E0\u6CD5\u786E\u8BA4\uFF0C\u5DF2\u6682\u505C\u6CE8\u5165\uFF1B\u65E7\u6B63\u6587\u548C\u5E38\u9A7B\u5F00\u5173\u4ECD\u4FDD\u7559\u3002\u8BF7\u6838\u5BF9\u539F\u6D88\u606F\u5E76\u91CD\u5EFA\u6279\u6B21\uFF0C\u518D\u751F\u6210\u6216\u7F16\u8F91\u6279\u6B21\u603B\u7ED3\u3002") : null,
     overview?.content && overview.state !== "ready" ? callout("info", "\u5F53\u524D\u663E\u793A\u7684\u662F\u4E0A\u4E00\u6B21\u6210\u529F\u751F\u6210\u7684\u6B63\u6587\u3002") : null,
     overview?.content ? h("div", "ec-prose", overview.content) : empty("\u8FD8\u6CA1\u6709\u6279\u6B21\u603B\u7ED3\u6B63\u6587\u3002")
   ], { size: "large", extra: [
@@ -46783,7 +46933,7 @@ async function rewriteEntry(entry, mode, backup, targetChatId, replacements, tar
       delete echoes.catalog.automaticStopMessageId;
     }
   } else if (kind === "summary_batch_overview") {
-    const overview = batchOverviewSchema.parse(echoes.overview);
+    const overview = upgradeLegacyBatchOverview(batchOverviewSchema.parse(echoes.overview));
     const original = structuredClone(overview.batch);
     overview.batch.id = replacements.get(overview.batch.id) ?? overview.batch.id;
     overview.batch.startMessageId = replacements.get(overview.batch.startMessageId) ?? overview.batch.startMessageId;
@@ -46797,7 +46947,10 @@ async function rewriteEntry(entry, mode, backup, targetChatId, replacements, tar
         const oldIdentity = current.map((message, index) => ({ ...message, id: original.messageIds[index] }));
         const positions = overview.batch.messageIds.map((id) => targetById.get(id)?.index);
         if (original.state === "stale" || !positions.every((index, offset) => index !== void 0 && index === positions[0] + offset) || await sourceMessagesHash(oldIdentity) !== original.sourceHash) overview.batch.state = "stale";
-        else overview.batch.sourceHash = await sourceMessagesHash(current);
+        else {
+          overview.batch.sourceHash = await sourceMessagesHash(current);
+          if (overview.contentSourceHash === original.sourceHash) overview.contentSourceHash = overview.batch.sourceHash;
+        }
       } catch {
         overview.batch.state = "stale";
       }
@@ -47008,7 +47161,7 @@ var EchoesBackupManager = class {
       const mapping = new Map(plan.mappedMessages.map((item) => [item.sourceStableId, item.targetStableId]));
       for (const [source, target] of mapping) replacements.set(source, target);
       const targetById = new Map(baselineTarget.map((item) => [item.stableId, item]));
-      const incoming = await Promise.all(backup.worldbookEntries.map((entry) => rewriteEntry(entry, plan.mode, backup, current.chatId, replacements, targetById)));
+      const incoming = reconcileBatchOverviewEntries(await Promise.all(backup.worldbookEntries.map((entry) => rewriteEntry(entry, plan.mode, backup, current.chatId, replacements, targetById))));
       const rewrittenSnapshots = /* @__PURE__ */ new Map();
       const validSummaryBatches = new Set(incoming.filter((entry) => entry.extra?.echoes?.kind === "summary_slice" && entry.extra.echoes.batch.state !== "stale").map((entry) => entry.extra.echoes.batch.id));
       if (plan.mode === "equivalent_chat") {
