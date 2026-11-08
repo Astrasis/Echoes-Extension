@@ -1198,6 +1198,9 @@
 #echoes-status-floating[data-state="pending"] i { color: #e6b450; }
 #echoes-status-floating[data-state="failed"] button { border-color: #f0707a; }
 #echoes-status-floating[data-state="failed"] i { color: #f0707a; }
+#echoes-status-floating[data-state="oversized"] button { border-color: #f0707a; }
+#echoes-status-floating[data-state="oversized"] i { color: #f0707a; }
+#echoes-status-floating[data-size="large"]:not([data-state="oversized"]) button { border-color: #e6b450; }
 @media (max-width: 760px) {
   #echoes-status-floating { top: 80px; bottom: auto; right: 12px; }
 }
