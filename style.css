@@ -1201,6 +1201,38 @@
 #echoes-status-floating[data-state="oversized"] button { border-color: #f0707a; }
 #echoes-status-floating[data-state="oversized"] i { color: #f0707a; }
 #echoes-status-floating[data-size="large"]:not([data-state="oversized"]) button { border-color: #e6b450; }
+/* Count of paused background tasks, pinned to the corner of the status button. */
+#echoes-status-floating button.echoes-status-health {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 10px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 40%);
+}
+#echoes-status-floating button.echoes-status-health[hidden] { display: none; }
+#echoes-memory-launcher[data-health]::after {
+  content: attr(data-health);
+  margin-left: auto;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
 @media (max-width: 760px) {
   #echoes-status-floating { top: 80px; bottom: auto; right: 12px; }
 }
