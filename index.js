@@ -598,6 +598,47 @@ var init_crypto_compat = __esm({
   }
 });
 
+// src/extension/state/chat-reset-state.ts
+function currentChatId() {
+  return typeof SillyTavern === "undefined" ? "" : SillyTavern.getContext().chatId ?? "";
+}
+function resetChatIds() {
+  return [...blocked];
+}
+function isChatReset(chatId = currentChatId()) {
+  return blocked.has(chatId);
+}
+function beginChatReset(chatId) {
+  if (running) throw new Error("\u6B63\u5728\u6E05\u7A7A\u6570\u636E\uFF0C\u8BF7\u7B49\u5F85\u5F53\u524D\u64CD\u4F5C\u5B8C\u6210\u3002");
+  if (!chatId || currentChatId() !== chatId) throw new Error("\u5F53\u524D\u804A\u5929\u5DF2\u53D8\u5316\uFF0C\u672A\u6E05\u7A7A\u6570\u636E\u3002");
+  blocked.add(chatId);
+  revisions.set(chatId, (revisions.get(chatId) ?? 0) + 1);
+  running = true;
+  return () => {
+    running = false;
+  };
+}
+function chatWriteGuard() {
+  const chatId = currentChatId();
+  const expected = revisions.get(chatId) ?? 0;
+  const guard = () => {
+    if (isChatReset(chatId) || expected !== (revisions.get(chatId) ?? 0)) {
+      throw new Error("\u5F53\u524D\u804A\u5929\u6570\u636E\u6B63\u5728\u6E05\u7A7A\u6216\u5DF2\u7ECF\u6E05\u7A7A\uFF1B\u65E7\u64CD\u4F5C\u5DF2\u505C\u6B62\uFF0C\u8BF7\u5B8C\u6210\u6E05\u7406\u540E\u5237\u65B0\u9875\u9762\u3002");
+    }
+  };
+  guard();
+  return guard;
+}
+var blocked, revisions, running;
+var init_chat_reset_state = __esm({
+  "src/extension/state/chat-reset-state.ts"() {
+    "use strict";
+    blocked = /* @__PURE__ */ new Set();
+    revisions = /* @__PURE__ */ new Map();
+    running = false;
+  }
+});
+
 // node_modules/zod/v4/core/util.js
 var util_exports = {};
 __export(util_exports, {
@@ -726,9 +767,9 @@ function floatSafeRemainder(val, step) {
     return 0;
   return ratio - roundedRatio;
 }
-function defineLazy(object2, key2, getter) {
+function defineLazy(object3, key2, getter) {
   let value = void 0;
-  Object.defineProperty(object2, key2, {
+  Object.defineProperty(object3, key2, {
     get() {
       if (value === EVALUATING) {
         return void 0;
@@ -740,7 +781,7 @@ function defineLazy(object2, key2, getter) {
       return value;
     },
     set(v) {
-      Object.defineProperty(object2, key2, {
+      Object.defineProperty(object3, key2, {
         value: v
         // configurable: true,
       });
@@ -16402,8 +16443,8 @@ function foldObjects(members2) {
   }
   const properties = {};
   const required2 = /* @__PURE__ */ new Set();
-  for (const object2 of objects) {
-    for (const key2 in object2.properties) {
+  for (const object3 of objects) {
+    for (const key2 in object3.properties) {
       if (Object.prototype.hasOwnProperty.call(properties, key2))
         continue;
       const parts = [];
@@ -16417,18 +16458,18 @@ function foldObjects(members2) {
       const merged = parts.length === 1 ? parts[0] : foldObjects(parts) ?? { allOf: parts };
       assignProp(properties, key2, merged);
     }
-    for (const key2 of object2.required ?? [])
+    for (const key2 of object3.required ?? [])
       required2.add(key2);
   }
   const folded = { type: "object", properties };
   if (required2.size)
     folded.required = [...required2];
-  if (objects.every((object2) => object2.additionalProperties === false)) {
+  if (objects.every((object3) => object3.additionalProperties === false)) {
     folded.additionalProperties = false;
   } else {
     const constraints = [];
-    for (const object2 of objects) {
-      const constraint = undeclaredConstraint(object2);
+    for (const object3 of objects) {
+      const constraint = undeclaredConstraint(object3);
       if (constraint && !constraints.some((seen) => JSON.stringify(seen) === JSON.stringify(constraint)))
         constraints.push(constraint);
     }
@@ -24032,6 +24073,9 @@ __export(client_exports, {
   echoesApi: () => echoesApi
 });
 async function requestJson(path, init) {
+  if (isChatReset() && init?.method === "POST" && /^(\/memory\/extractions|\/summaries\/|\/status\/updates|\/retrieval\/)/.test(path)) {
+    throw new Error("\u5F53\u524D\u804A\u5929\u6570\u636E\u5DF2\u8FDB\u5165\u6E05\u7A7A\u6D41\u7A0B\uFF0C\u8BF7\u5B8C\u6210\u6E05\u7406\u540E\u5237\u65B0\u9875\u9762\u3002");
+  }
   if (init?.method === "POST" && typeof init.body === "string" && /^(\/memory\/extractions|\/summaries\/(?:generate|coverage|batch-overview)|\/status\/updates|\/retrieval\/|\/endpoints\/)/.test(path)) {
     const body = JSON.parse(init.body);
     const settings = getSettings();
@@ -24095,11 +24139,13 @@ var init_client = __esm({
     "use strict";
     init_domain();
     init_settings();
+    init_chat_reset_state();
     init_request_error();
     API_ROOT = "/api/plugins/echoes-memory";
     REQUEST_TIMEOUT_MS = 6e4;
     echoesApi = {
       async discuss(input2, signal, onEvent) {
+        if (isChatReset()) throw new Error("\u5F53\u524D\u804A\u5929\u5DF2\u8FDB\u5165\u6E05\u7A7A\u6D41\u7A0B\uFF0C\u8BF7\u5237\u65B0\u9875\u9762\u540E\u64CD\u4F5C\u3002");
         const response = await fetch(`${API_ROOT}/discussion/generate`, {
           method: "POST",
           signal,
@@ -24216,6 +24262,13 @@ var init_client = __esm({
           method: "POST",
           body: JSON.stringify(input2)
         });
+        return result.job;
+      },
+      async resetChatRetrieval(chatId) {
+        const result = await requestJson(
+          "/maintenance/chat-reset",
+          { method: "POST", body: JSON.stringify({ chatId, confirmed: true }) }
+        );
         return result.job;
       },
       async listRetrievalCollections() {
@@ -24353,11 +24406,12 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.1.13", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.2.0", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
 init_crypto_compat();
+init_chat_reset_state();
 init_client();
 init_settings();
 
@@ -24407,11 +24461,18 @@ init_crypto_compat();
 init_schemas3();
 
 // src/extension/worldbook/worldbook-write-coordinator.ts
+init_chat_reset_state();
 var WorldbookWriteCoordinator = class {
   chains = /* @__PURE__ */ new Map();
-  run(worldbookName, operation) {
+  run(worldbookName, operation, duringReset = false) {
+    const guard = duringReset ? () => {
+    } : chatWriteGuard();
+    const guarded = () => {
+      guard();
+      return operation();
+    };
     const previous = this.chains.get(worldbookName) ?? Promise.resolve();
-    const result = previous.then(operation, operation);
+    const result = previous.then(guarded, guarded);
     const settled = result.then(() => void 0, () => void 0);
     this.chains.set(worldbookName, settled);
     void settled.then(() => {
@@ -24608,6 +24669,7 @@ init_crypto_compat();
 
 // src/extension/state/local-journal.ts
 init_crypto_compat();
+init_chat_reset_state();
 var OWNER_KEY = "echoes_local_journal_owner";
 var database;
 function owner() {
@@ -24638,6 +24700,47 @@ function open2() {
     throw error62;
   });
   return database;
+}
+function localRecordBelongsToChat(key2, chatId, value) {
+  for (const prefix of ["undo:", "summary-draft:"]) {
+    if (!key2.startsWith(prefix)) continue;
+    try {
+      const scope2 = JSON.parse(key2.slice(prefix.length));
+      return Array.isArray(scope2) && scope2[0] === chatId;
+    } catch {
+      return false;
+    }
+  }
+  if (["summary", "extraction", "status"].some((kind) => key2 === `task-health:${kind}:${chatId}` || key2 === `task-active-job:${kind}:${chatId}`)) return true;
+  if (key2.startsWith("status-tidy-undo:")) {
+    const split = key2.lastIndexOf(":");
+    const keyOwner = key2.slice("status-tidy-undo:".length, split);
+    const namespace = key2.slice(split + 1);
+    const ownerValue = value && typeof value === "object" ? value.chatId : void 0;
+    return keyOwner === chatId && /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(namespace) && (ownerValue === void 0 || ownerValue === chatId);
+  }
+  return false;
+}
+async function chatLocalRecords(chatId, remove = false) {
+  const scope2 = `${owner()}:`;
+  const db = await open2();
+  return new Promise((resolve, reject) => {
+    const records2 = [];
+    const tx = db.transaction("records", remove ? "readwrite" : "readonly");
+    const request = tx.objectStore("records").openCursor(IDBKeyRange.bound(scope2, `${scope2}\uFFFF`));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      const key2 = String(cursor.key).slice(scope2.length);
+      if (localRecordBelongsToChat(key2, chatId, cursor.value)) {
+        records2.push({ key: key2, value: cursor.value });
+        if (remove) cursor.delete();
+      }
+      cursor.continue();
+    };
+    tx.oncomplete = () => resolve(records2);
+    tx.onabort = () => reject(tx.error ?? new Error("\u6E05\u7406\u5F53\u524D\u804A\u5929\u672C\u5730\u8BB0\u5F55\u5931\u8D25\u3002"));
+  });
 }
 async function readLocalRecord(key2) {
   const scope2 = owner();
@@ -24674,6 +24777,9 @@ async function updateLocalRecord(key2, update) {
     request.onsuccess = () => {
       try {
         const value = update(request.result);
+        if (resetChatIds().some((chatId) => localRecordBelongsToChat(key2, chatId, value ?? request.result))) {
+          throw new Error("\u5F53\u524D\u804A\u5929\u6B63\u5728\u6E05\u7A7A\uFF0C\u672A\u4FDD\u5B58\u65E7\u4EFB\u52A1\u8BB0\u5F55\u3002");
+        }
         if (value === void 0) store.delete(scopedKey);
         else store.put(structuredClone(value), scopedKey);
       } catch (error62) {
@@ -32689,10 +32795,17 @@ async function summaryRetrievalDocument(collectionId, slice, chatId) {
 }
 
 // src/extension/chat/message-write-coordinator.ts
+init_chat_reset_state();
 var MessageWriteCoordinator = class {
   chain = Promise.resolve();
-  run(operation) {
-    const result = this.chain.then(operation, operation);
+  run(operation, duringReset = false) {
+    const guard = duringReset ? () => {
+    } : chatWriteGuard();
+    const guarded = () => {
+      guard();
+      return operation();
+    };
+    const result = this.chain.then(guarded, guarded);
     this.chain = result.then(() => void 0, () => void 0);
     return result;
   }
@@ -34180,6 +34293,7 @@ function formModal(title, target, save, options = {}) {
 init_client();
 init_request_error();
 init_settings();
+init_chat_reset_state();
 var TASK_LABELS = { summary: "\u81EA\u52A8\u603B\u7ED3", extraction: "\u7ED3\u6784\u5316\u8BB0\u5FC6", status: "\u72B6\u6001\u8BB0\u5FC6" };
 var TASK_ROUTES = {
   summary: "summary/generation",
@@ -34329,9 +34443,19 @@ var TaskHealthMonitor = class {
   isRetrying(kind, chatId = SillyTavern.getContext().chatId ?? "") {
     return this.retrying.has(recordKey(kind, chatId));
   }
+  resetChat(chatId) {
+    for (const kind of KINDS) {
+      const key2 = recordKey(kind, chatId);
+      this.clearTimer(key2);
+      this.items.delete(key2);
+      this.probedAt.delete(`${key2}:probe`);
+    }
+    this.loaded.delete(chatId);
+    this.emit();
+  }
   /** Loads persisted records for a chat once and re-arms their retry timers. */
   ensureLoaded(chatId = SillyTavern.getContext().chatId ?? "") {
-    if (!chatId) return Promise.resolve();
+    if (!chatId || isChatReset(chatId)) return Promise.resolve();
     let loading = this.loaded.get(chatId);
     if (!loading) {
       loading = (async () => {
@@ -34339,7 +34463,7 @@ var TaskHealthMonitor = class {
           const key2 = recordKey(kind, chatId);
           try {
             const record3 = await readLocalRecord(key2);
-            if (record3 && !this.items.has(key2)) {
+            if (record3 && !isChatReset(chatId) && !this.items.has(key2)) {
               this.items.set(key2, record3);
               this.schedule(record3);
             }
@@ -34377,7 +34501,7 @@ var TaskHealthMonitor = class {
   async retry(kind, chatId = SillyTavern.getContext().chatId ?? "", automatic = false) {
     const key2 = recordKey(kind, chatId);
     const handler = this.handlers.get(kind);
-    if (!handler || this.retrying.has(key2) || SillyTavern.getContext().chatId !== chatId) return;
+    if (!handler || isChatReset(chatId) || this.retrying.has(key2) || SillyTavern.getContext().chatId !== chatId) return;
     const record3 = this.items.get(key2);
     if (automatic && (!record3 || !this.canRetry(record3))) return;
     this.clearTimer(key2);
@@ -34403,7 +34527,7 @@ var TaskHealthMonitor = class {
   }
   /** Called once per new chat floor: reminders, floor-based retries and lag detection. */
   async onFloor(chatId = SillyTavern.getContext().chatId ?? "") {
-    if (!chatId) return;
+    if (!chatId || isChatReset(chatId)) return;
     await this.ensureLoaded(chatId);
     const settings = getSettings().taskHealth;
     for (const kind of KINDS) {
@@ -34420,7 +34544,7 @@ var TaskHealthMonitor = class {
         } catch (error62) {
           console.warn(`[Echoes] ${kind} lag check failed.`, error62);
         }
-        if (SillyTavern.getContext().chatId !== chatId) return;
+        if (SillyTavern.getContext().chatId !== chatId || isChatReset(chatId)) return;
         if (lag && lag.behind >= settings.lagThreshold) {
           await this.put(kind, chatId, lag.message, lag.category, true);
         } else if (record3?.lag) {
@@ -34457,6 +34581,7 @@ var TaskHealthMonitor = class {
     return result;
   }
   canRetry(record3) {
+    if (isChatReset(record3.chatId)) return false;
     const settings = getSettings().taskHealth;
     if (!settings.autoRetry || SillyTavern.getContext().chatId !== record3.chatId) return false;
     if (record3.category === "ambiguous") return settings.retryAmbiguous && !record3.ambiguousRetried;
@@ -34480,8 +34605,9 @@ var TaskHealthMonitor = class {
     this.timers.delete(key2);
   }
   async put(kind, chatId, message, category, lag = false) {
-    if (!chatId) return;
+    if (!chatId || isChatReset(chatId)) return;
     await this.ensureLoaded(chatId);
+    if (isChatReset(chatId)) return;
     const key2 = recordKey(kind, chatId);
     const previous = this.items.get(key2);
     const length = SillyTavern.getContext().chatId === chatId ? chatLength() : previous?.floor ?? 0;
@@ -34665,10 +34791,24 @@ var SummaryCoordinator = class {
       return updated;
     }, defaultDecision);
   }
+  prepareChatReset(chatId) {
+    this.rerunAutomatic.delete(chatId);
+    this.pausedAutomatic.add(chatId);
+    this.controls.get(chatId)?.abort();
+    this.supplements.delete(chatId);
+    this.coverageReviews.delete(chatId);
+    for (const [key2, draft] of this.rebuildConflicts) {
+      if (draft.state.catalog.chatId === chatId) this.rebuildConflicts.delete(key2);
+    }
+    for (let i = this.pipelineTraces.length - 1; i >= 0; i -= 1) {
+      if (this.pipelineTraces[i]?.chatId === chatId) this.pipelineTraces.splice(i, 1);
+    }
+  }
   isRunning(chatId = SillyTavern.getContext().chatId) {
     return Boolean(chatId && this.activeRuns.has(chatId));
   }
   startRun(chatId, work, decide, tracksHealth = true) {
+    if (isChatReset(chatId)) return Promise.reject(new Error("\u5F53\u524D\u804A\u5929\u5DF2\u8FDB\u5165\u6E05\u7A7A\u6D41\u7A0B\uFF0C\u8BF7\u5237\u65B0\u9875\u9762\u540E\u64CD\u4F5C\u3002"));
     if (this.activeRuns.has(chatId)) return Promise.reject(new Error("\u8BF7\u5148\u505C\u6B62\u5F53\u524D\u603B\u7ED3\u4EFB\u52A1\u3002"));
     const control = new AbortController();
     this.finishCurrent.delete(chatId);
@@ -34903,7 +35043,7 @@ var SummaryCoordinator = class {
   async setAutoRun(enabled) {
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) throw new Error("Open a SillyTavern chat before changing summary automation.");
-    const running = this.activeRuns.get(chatId);
+    const running2 = this.activeRuns.get(chatId);
     if (!enabled) {
       this.pausedAutomatic.add(chatId);
       this.rerunAutomatic.delete(chatId);
@@ -34913,7 +35053,7 @@ var SummaryCoordinator = class {
     if (state.catalog.chatId !== chatId) throw new Error("The active chat changed.");
     const updated = await this.store.setAutoRun(state.worldbookName, enabled);
     if (!enabled) {
-      await running?.catch((error62) => {
+      await running2?.catch((error62) => {
         if (!(error62 instanceof Error) || error62.name !== "AbortError") throw error62;
       });
     }
@@ -34941,7 +35081,7 @@ var SummaryCoordinator = class {
   }
   runAutomatic(decide = defaultDecision) {
     const lockedChatId = SillyTavern.getContext().chatId;
-    if (!lockedChatId || this.supplements.has(lockedChatId)) return Promise.resolve(null);
+    if (!lockedChatId || isChatReset(lockedChatId) || this.supplements.has(lockedChatId)) return Promise.resolve(null);
     const existing = this.activeRuns.get(lockedChatId);
     if (existing) {
       this.rerunAutomatic.add(lockedChatId);
@@ -36266,6 +36406,7 @@ function structuredExtractionContextHash(types, rows) {
 }
 
 // src/extension/memory/extraction-coordinator.ts
+init_chat_reset_state();
 init_client();
 init_settings();
 
@@ -37536,6 +37677,15 @@ var ExtractionCoordinator = class {
     this.pauses.delete(chatId);
     await this.start("auto");
   }
+  prepareChatReset(chatId) {
+    this.rerunAutomatic.delete(chatId);
+    this.controls.get(chatId)?.abort();
+    this.reviews.delete(chatId);
+    this.pauses.delete(chatId);
+    this.traces.delete(chatId);
+    this.cleaningOptions.delete(chatId);
+    return this.activeJobIds.get(chatId);
+  }
   async stopCurrent() {
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) return;
@@ -37641,7 +37791,7 @@ var ExtractionCoordinator = class {
   }
   start(mode, userInitiated = false) {
     const chatId = SillyTavern.getContext().chatId;
-    if (!chatId) return Promise.resolve();
+    if (!chatId || isChatReset(chatId)) return Promise.resolve();
     if (this.checkpointUpdates.has(chatId)) {
       return userInitiated ? Promise.reject(new Error("\u6B63\u5728\u4FEE\u6539\u68C0\u67E5\u70B9\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5\u3002")) : Promise.resolve();
     }
@@ -37697,13 +37847,13 @@ var ExtractionCoordinator = class {
         }
         if (this.pauses.get(lockedChatId)?.startsWith("\u7528\u6237\u505C\u6B62\u4E86")) return;
         const message = error62 instanceof Error ? error62.message : String(error62);
-        const blocked = error62 instanceof ExtractionCheckpointMissingError;
+        const blocked2 = error62 instanceof ExtractionCheckpointMissingError;
         this.pauses.set(lockedChatId, message);
         if (mode !== "cleaning") await taskHealth.fail("extraction", lockedChatId, error62);
         this.traces.set(lockedChatId, {
           chatId: lockedChatId,
           worldbookName: state?.worldbookName ?? window.TavernHelper?.getChatWorldbookName("current") ?? "",
-          state: blocked ? "blocked" : "failed",
+          state: blocked2 ? "blocked" : "failed",
           startedAt: (/* @__PURE__ */ new Date()).toISOString(),
           completedAt: (/* @__PURE__ */ new Date()).toISOString(),
           applied: 0,
@@ -37889,6 +38039,7 @@ init_discussion();
 
 // src/extension/recall-coordinator.ts
 init_client();
+init_chat_reset_state();
 
 // src/extension/recall-query.ts
 init_crypto_compat();
@@ -38695,6 +38846,7 @@ var StatusWorldbookStore = class {
 
 // src/extension/status/status-coordinator.ts
 init_status_prompts();
+init_chat_reset_state();
 
 // src/extension/status/status-request.ts
 init_status_prompts();
@@ -38992,8 +39144,8 @@ function planInjectionBudget(items, overhead, config2) {
   const selected = /* @__PURE__ */ new Set();
   const order = ["status", "batch_overview", "retained", "recent", "semantic"];
   let used = base;
-  let blocked = limit > 0 && policy === "abort" && requestedTokens > limit;
-  if (!blocked) for (const category of order) {
+  let blocked2 = limit > 0 && policy === "abort" && requestedTokens > limit;
+  if (!blocked2) for (const category of order) {
     for (const item of items.filter((item2) => item2.category === category)) {
       const next = used + tokens(item);
       const protectedItem = category === "status" || category === "batch_overview" || policy === "preserve_protected" && (category === "retained" || category === "recent");
@@ -39003,8 +39155,8 @@ function planInjectionBudget(items, overhead, config2) {
       }
     }
   }
-  if (limit > 0 && policy === "strict" && used > limit) blocked = true;
-  if (blocked) {
+  if (limit > 0 && policy === "strict" && used > limit) blocked2 = true;
+  if (blocked2) {
     selected.clear();
     used = 0;
   }
@@ -39017,7 +39169,7 @@ function planInjectionBudget(items, overhead, config2) {
     alwaysOnTokens,
     alwaysOnLimit: limit || ALWAYS_ON_WARNING_TOKENS,
     overflow: limit > 0 && used > limit,
-    blocked,
+    blocked: blocked2,
     categories: order.map((category) => ({
       category,
       requestedTokens: items.filter((item) => item.category === category).reduce((sum, item) => sum + tokens(item), 0),
@@ -39027,7 +39179,7 @@ function planInjectionBudget(items, overhead, config2) {
       id,
       title,
       category,
-      reason: blocked ? "\u9884\u7B97\u4E0D\u8DB3\uFF0C\u4E2D\u6B62\u672C\u8F6E\u751F\u6210" : "\u672C\u8F6E\u6CE8\u5165\u9884\u7B97\u4E0D\u8DB3\uFF0C\u4FDD\u7559\u5B8C\u6574\u5B58\u50A8\u6B63\u6587"
+      reason: blocked2 ? "\u9884\u7B97\u4E0D\u8DB3\uFF0C\u4E2D\u6B62\u672C\u8F6E\u751F\u6210" : "\u672C\u8F6E\u6CE8\u5165\u9884\u7B97\u4E0D\u8DB3\uFF0C\u4FDD\u7559\u5B8C\u6574\u5B58\u50A8\u6B63\u6587"
     }))
   };
   return { selected, report };
@@ -39039,8 +39191,8 @@ function planStatusInjection(catalog, state) {
   const text = renderStatusInjection(catalog, state).trim();
   const tokens = estimateInjectionTokens(text);
   const limit = Math.max(0, catalog.profile.injection.maxTokens ?? 0);
-  const blocked = limit > 0 && tokens > limit;
-  return { text, tokens, limit, blocked, warning: blocked || tokens > (limit > 0 ? limit * 0.8 : STATUS_SIZE_WARNING_TOKENS) };
+  const blocked2 = limit > 0 && tokens > limit;
+  return { text, tokens, limit, blocked: blocked2, warning: blocked2 || tokens > (limit > 0 ? limit * 0.8 : STATUS_SIZE_WARNING_TOKENS) };
 }
 function renderStatusInjection(catalog, state, template2 = catalog.profile.injection.template) {
   const yaml = renderStatusYaml(state);
@@ -39221,9 +39373,15 @@ var StatusCoordinator = class {
     const record3 = type === "regenerate" || type === "swipe" ? this.snapshots.latestBefore(lastAssistantIndex(), state.catalog.namespaceId) : this.snapshots.latest(state.catalog.namespaceId);
     return (await this.verifiedSnapshot(record3))?.state ?? state.catalog.profile.initialState;
   }
+  prepareChatReset(chatId) {
+    invalidateStatusTasks();
+    this.rerunOrigins.delete(chatId);
+    this.traces.delete(chatId);
+    this.progress.delete(chatId);
+  }
   runAutomatic() {
     const chatId = SillyTavern.getContext().chatId;
-    if (!chatId) return Promise.resolve(null);
+    if (!chatId || isChatReset(chatId)) return Promise.resolve(null);
     const existing = this.pending.get(chatId);
     if (existing) {
       if (!this.rerunOrigins.has(chatId)) this.rerunOrigins.set(chatId, "auto");
@@ -39389,16 +39547,16 @@ var StatusCoordinator = class {
       }
       const current = await this.generationState(state, generationType);
       if (!isCurrent()) return;
-      let blocked = null;
+      let blocked2 = null;
       await this.worldbook.writeInjection(state, (catalog) => {
         const plan = planStatusInjection(catalog, current);
         if (plan.blocked) {
-          blocked = plan;
+          blocked2 = plan;
           return "";
         }
         return plan.text;
       }, isCurrent);
-      const withheld = blocked;
+      const withheld = blocked2;
       if (withheld && isCurrent()) {
         toastr.warning(`\u5F53\u524D\u72B6\u6001\u7EA6 ${withheld.tokens} Token\uFF0C\u8D85\u8FC7\u6CE8\u5165\u4E0A\u9650 ${withheld.limit}\uFF0C\u672C\u6B21\u672A\u6CE8\u5165\u72B6\u6001\u3002\u8BF7\u5728\u201C\u72B6\u6001\u8BB0\u5FC6 \u2192 \u5F53\u524D\u201D\u6574\u7406\u72B6\u6001\uFF0C\u6216\u5728\u201C\u53EC\u56DE\u4E0E\u6CE8\u5165 \u2192 \u6CE8\u5165\u201D\u8C03\u9AD8\u4E0A\u9650\u3002`, "Echoes \u72B6\u6001\u8FC7\u5927");
       }
@@ -41210,6 +41368,10 @@ ${renderSummaryBody(slice)}`).join("\n\n");
 var recallCoordinator = new RecallCoordinator();
 function installRecallInterceptor() {
   globalThis.EchoesRecallInterceptor = async (chat, _contextSize, abort, type) => {
+    if (isChatReset()) {
+      abort?.();
+      throw new Error("\u5F53\u524D\u804A\u5929\u6570\u636E\u5DF2\u8FDB\u5165\u6E05\u7A7A\u6D41\u7A0B\uFF0C\u8BF7\u5B8C\u6210\u6E05\u7406\u540E\u5237\u65B0\u9875\u9762\u518D\u751F\u6210\u3002");
+    }
     try {
       await prepareCreativePreferences(type);
     } catch (error62) {
@@ -41759,9 +41921,9 @@ var TaskTray = class {
     });
   }
   update() {
-    const running = this.tasks.filter((task) => task.status === "running").length + (discussionCoordinator.running ? 1 : 0);
-    this.count.textContent = running ? String(running) : "";
-    this.button.classList.toggle("is-busy", running > 0);
+    const running2 = this.tasks.filter((task) => task.status === "running").length + (discussionCoordinator.running ? 1 : 0);
+    this.count.textContent = running2 ? String(running2) : "";
+    this.button.classList.toggle("is-busy", running2 > 0);
     if (!this.panel.hidden) this.draw();
   }
   draw() {
@@ -43581,13 +43743,13 @@ async function extractionPage(ctx) {
   const statusHost = h("div");
   const drawStatus = () => {
     const trace = extractionCoordinator.trace();
-    const running = extractionCoordinator.isRunning();
+    const running2 = extractionCoordinator.isRunning();
     const [label, tone] = trace ? TRACE[trace.state] ?? [trace.state, "neutral"] : ["\u5C1A\u672A\u8FD0\u884C", "neutral"];
     statusHost.replaceChildren(h(
       "div",
       "ec-stack",
       kv([
-        ["\u72B6\u6001", running ? badge("\u6B63\u5728\u63D0\u53D6", "accent") : h("span", "", extractionCoordinator.pauseReason() ?? (review ? "\u7B49\u5F85\u5BA1\u6838" : "\u7B49\u5F85\u5904\u7406"))],
+        ["\u72B6\u6001", running2 ? badge("\u6B63\u5728\u63D0\u53D6", "accent") : h("span", "", extractionCoordinator.pauseReason() ?? (review ? "\u7B49\u5F85\u5BA1\u6838" : "\u7B49\u5F85\u5904\u7406"))],
         ["\u68C0\u67E5\u70B9", floorText(state.catalog.lastProcessedMessageId)],
         ["\u6700\u8FD1\u4E00\u6B21", trace ? h("span", "ec-row", badge(label, tone), h(
           "span",
@@ -43602,12 +43764,12 @@ async function extractionPage(ctx) {
         button("\u5904\u7406\u4E0B\u4E00\u6279", async () => {
           await ctx.run("\u7ED3\u6784\u5316\u8BB0\u5FC6\u63D0\u53D6", () => extractionCoordinator.runManual(), () => extractionCoordinator.stopCurrent());
           await ctx.refresh();
-        }, { variant: "primary", icon: "play", disabled: running || Boolean(review) }),
-        button("\u505C\u6B62", () => extractionCoordinator.stopCurrent(), { variant: "danger", icon: "stop", disabled: !running }),
+        }, { variant: "primary", icon: "play", disabled: running2 || Boolean(review) }),
+        button("\u505C\u6B62", () => extractionCoordinator.stopCurrent(), { variant: "danger", icon: "stop", disabled: !running2 }),
         trace && !review ? button("\u91CD\u8BD5\u4E0A\u4E00\u6279", async () => {
           await ctx.run("\u91CD\u8BD5\u7ED3\u6784\u5316\u63D0\u53D6", () => extractionCoordinator.retryCurrent(), () => extractionCoordinator.stopCurrent());
           await ctx.refresh();
-        }, { icon: "rotate", disabled: running }) : null,
+        }, { icon: "rotate", disabled: running2 }) : null,
         button("\u9884\u89C8\u8BF7\u6C42", async () => {
           const prepared = await prepareExtraction(await memoryStore.load(), getSettings(), "manual");
           requestModal("\u7ED3\u6784\u5316\u63D0\u53D6\u8BF7\u6C42\u9884\u89C8", extractionProviderMessages(prepared.request));
@@ -44608,11 +44770,11 @@ var BATCH_ACTIONS = [
 // src/extension/ui/pages/summary/overview-dialogs.ts
 init_batch_overview();
 init_settings();
-function overviewLabel(overview, running = true) {
+function overviewLabel(overview, running2 = true) {
   if (!overview) return ["\u6279\u6B21\u603B\u7ED3\u672A\u751F\u6210", "neutral"];
   if (overview.content.trim() && !batchOverviewHasCurrentSource(overview)) return ["\u6279\u6B21\u603B\u7ED3\u5DF2\u6682\u505C\u6CE8\u5165", "warning"];
   if (overview.state === "failed") return ["\u6279\u6B21\u603B\u7ED3\u5931\u8D25", "danger"];
-  if (overview.state === "pending") return running ? ["\u6279\u6B21\u603B\u7ED3\u5F85\u751F\u6210", "warning"] : ["\u6279\u6B21\u603B\u7ED3\u5DF2\u4E2D\u65AD", "danger"];
+  if (overview.state === "pending") return running2 ? ["\u6279\u6B21\u603B\u7ED3\u5F85\u751F\u6210", "warning"] : ["\u6279\u6B21\u603B\u7ED3\u5DF2\u4E2D\u65AD", "danger"];
   return overview.enabled ? ["\u6279\u6B21\u603B\u7ED3\u5E38\u9A7B", "success"] : ["\u6279\u6B21\u603B\u7ED3\u5DF2\u5173\u95ED", "neutral"];
 }
 function openBatchOverview(ctx, state, batch) {
@@ -45120,11 +45282,11 @@ function runCard(ctx, initial) {
     const ticket = ++revision2;
     const pending = await ctx.summary.pendingStatus(state);
     if (ctx.signal.aborted || ticket !== revision2) return;
-    const running = ctx.summary.isRunning();
+    const running2 = ctx.summary.isRunning();
     fill(
       host,
       kv([
-        ["\u72B6\u6001", running ? badge(pending.reason, "accent") : h("span", "", pending.reason)],
+        ["\u72B6\u6001", running2 ? badge(pending.reason, "accent") : h("span", "", pending.reason)],
         ["\u68C0\u67E5\u70B9", floorText(state.catalog.lastCommittedMessageId)],
         ["\u4E0B\u4E00\u6279\u6B21\u7F16\u53F7", String(state.catalog.nextBatchNumber)],
         ["\u5F85\u5904\u7406", pending.pendingCount ? `\u7B2C ${pending.start}\u2013${pending.end} \u697C\uFF0C${pending.pendingCount} \u6761\u6709\u5185\u5BB9\u7684\u6D88\u606F` : "\u68C0\u67E5\u70B9\u4E4B\u540E\u6CA1\u6709\u5F85\u5904\u7406\u7684\u6B63\u6587"],
@@ -45145,7 +45307,7 @@ function runCard(ctx, initial) {
             return ctx.summary.checkPending();
           }, () => ctx.summary.stop());
           await ctx.refresh();
-        }, { icon: "play", disabled: running }),
+        }, { icon: "play", disabled: running2 }),
         button("\u5B8C\u6210\u5F53\u524D\u6279\u6B21\u540E\u505C\u6B62", async () => {
           if (!await confirmAction({
             title: "\u5B8C\u6210\u5F53\u524D\u6279\u6B21\u540E\u505C\u6B62\uFF1F",
@@ -45154,8 +45316,8 @@ function runCard(ctx, initial) {
           })) return;
           ctx.guard();
           await ctx.summary.stopAfterCurrentBatch();
-        }, { icon: "hourglass-end", disabled: !running }),
-        button("\u505C\u6B62", () => ctx.summary.stop(), { variant: "danger", icon: "stop", disabled: !running }),
+        }, { icon: "hourglass-end", disabled: !running2 }),
+        button("\u505C\u6B62", () => ctx.summary.stop(), { variant: "danger", icon: "stop", disabled: !running2 }),
         button("\u8BBE\u7F6E\u505C\u6B62\u70B9", () => {
           const target = form([{
             key: "floor",
@@ -47336,9 +47498,9 @@ function discussionPage(ctx) {
   const views = /* @__PURE__ */ new Map();
   const render = () => {
     if (ctx.signal.aborted) return;
-    const running = discussionCoordinator.running;
-    send.disabled = Boolean(running);
-    stop.hidden = !running || running.chatId !== ctx.chatId;
+    const running2 = discussionCoordinator.running;
+    send.disabled = Boolean(running2);
+    stop.hidden = !running2 || running2.chatId !== ctx.chatId;
     const history = discussionCoordinator.history(ctx.chatId);
     idle.hidden = history.length > 0;
     for (const [id, view] of views) if (!history.some((run) => run.id === id)) {
@@ -47395,7 +47557,7 @@ function discussionPage(ctx) {
       view.message.textContent = run.message;
       if (view.text.textContent !== run.text) view.text.textContent = run.text;
       view.resume.hidden = run.status !== "decision_required" || !run.result?.decisionRequired?.nextEndpointId;
-      view.resume.disabled = Boolean(running);
+      view.resume.disabled = Boolean(running2);
       if (view.result !== run.result) {
         view.result = run.result;
         view.attempts.replaceChildren(...run.result?.attempts.length ? [lazy2("\u7AEF\u70B9\u5C1D\u8BD5\u8BB0\u5F55", () => attemptsTable(run.result.attempts))] : []);
@@ -49410,6 +49572,275 @@ async function aboutPage(ctx) {
   }
 }
 
+// src/extension/maintenance/chat-reset.ts
+init_crypto_compat();
+init_client();
+init_chat_reset_state();
+init_recall_invalidation();
+var object2 = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : null;
+function resetOwnedEntry(entry) {
+  return Boolean(entry.extra && Object.hasOwn(entry.extra, "echoes")) || String(entry.name).startsWith("[Echoes]") || ["Echoes Summary Catalog", "Echoes Status Catalog", "Echoes Memory Catalog"].includes(entry.name) || String(entry.name).startsWith("Echoes History ");
+}
+function withoutEchoes(value) {
+  const result = structuredClone(object2(value) ?? {});
+  for (const key2 of Object.keys(result)) {
+    if (key2 === "echoes" || key2.startsWith("echoes_")) delete result[key2];
+  }
+  if (object2(result.extra)) {
+    delete result.extra.echoes;
+    for (const key2 of Object.keys(result.extra)) if (key2.startsWith("echoes_")) delete result.extra[key2];
+  }
+  return result;
+}
+function resetMessagePatch(message, index) {
+  const swipes = Array.isArray(message.swipes) && message.swipes.length ? message.swipes.map(String) : [String(message.mes ?? message.message ?? "")];
+  const selected = Number(message.swipe_id ?? 0);
+  if (!Number.isInteger(selected) || selected < 0 || selected >= swipes.length) {
+    throw new Error(`\u7B2C ${index} \u5C42\u7684\u56DE\u590D\u5206\u652F\u7F16\u53F7\u65E0\u6548\uFF0C\u8BF7\u5148\u5728\u9152\u9986\u4FEE\u590D\u8BE5\u6D88\u606F\u3002`);
+  }
+  const beforeData = swipes.map((_, swipe) => object2(message.variables?.[swipe]) ?? object2(message.swipes_data?.[swipe]?.variables) ?? object2(message.swipes_data?.[swipe]) ?? {});
+  const beforeInfo = swipes.map((_, swipe) => structuredClone(object2(message.swipe_info?.[swipe]) ?? {}));
+  beforeInfo[selected] = { ...beforeInfo[selected], ...structuredClone(object2(message.extra) ?? {}) };
+  const data = beforeData.map(withoutEchoes);
+  const info = beforeInfo.map(withoutEchoes);
+  const selectedExtra = beforeInfo[selected];
+  const restore = selectedExtra.echoes?.compression?.hiddenByEchoes === true || selectedExtra.extra?.echoes?.compression?.hiddenByEchoes === true;
+  const hidden = message.is_system === true || message.is_hidden === true;
+  if (!restore && JSON.stringify(beforeData) === JSON.stringify(data) && JSON.stringify(beforeInfo) === JSON.stringify(info)) return null;
+  return {
+    message_id: index,
+    swipe_id: selected,
+    swipes,
+    swipes_data: data,
+    swipes_info: info,
+    ...restore && hidden ? { is_hidden: false } : {}
+  };
+}
+async function previewChatReset() {
+  const context = SillyTavern.getContext();
+  const chatId = context.chatId;
+  const helper6 = window.TavernHelper;
+  if (!chatId) throw new Error("\u8BF7\u5148\u6253\u5F00\u8981\u6E05\u7A7A\u6570\u636E\u7684\u804A\u5929\u3002");
+  if (!helper6?.getWorldbook || !helper6.setChatMessages) throw new Error("\u8BF7\u5148\u542F\u7528\u652F\u6301\u4E16\u754C\u4E66\u4E0E\u6D88\u606F\u8BFB\u5199\u7684\u9152\u9986\u52A9\u624B\u3002");
+  const worldbookName = helper6.getChatWorldbookName("current");
+  const chatToken = JSON.stringify(context.chat);
+  const patches = context.chat.map(resetMessagePatch).filter((patch) => patch !== null);
+  let entries = [];
+  let worldbookToken = null;
+  let separateWorldbook = false;
+  let worldbookNotice;
+  if (worldbookName) {
+    try {
+      entries = await helper6.getWorldbook(worldbookName);
+      if (!Array.isArray(entries) || entries.some((entry) => !object2(entry))) throw new Error("\u65E0\u6CD5\u8BFB\u53D6\u4E16\u754C\u4E66\u6761\u76EE\u3002");
+      worldbookToken = JSON.stringify(entries);
+      const foreign = entries.some((entry) => {
+        const chat = object2(entry.extra?.echoes)?.catalog?.chatId;
+        return typeof chat === "string" && chat.length > 0 && chat !== chatId;
+      });
+      if (foreign) {
+        separateWorldbook = true;
+        worldbookNotice = "\u7ED1\u5B9A\u4E16\u754C\u4E66\u5305\u542B\u5176\u4ED6\u804A\u5929\u7684\u76EE\u5F55\uFF0C\u5C06\u4FDD\u7559\u65E7\u4E66\u5E76\u4EC5\u4E3A\u5F53\u524D\u804A\u5929\u5EFA\u7ACB\u7A7A\u767D\u4E16\u754C\u4E66\u3002";
+      }
+    } catch {
+      entries = [];
+      worldbookToken = null;
+      separateWorldbook = true;
+      worldbookNotice = "\u7ED1\u5B9A\u4E16\u754C\u4E66\u65E0\u6CD5\u8BFB\u53D6\uFF0C\u5C06\u4FDD\u7559\u635F\u574F\u6587\u4EF6\u5E76\u4EC5\u4E3A\u5F53\u524D\u804A\u5929\u5EFA\u7ACB\u7A7A\u767D\u4E16\u754C\u4E66\u3002";
+    }
+  }
+  if (SillyTavern.getContext().chatId !== chatId || helper6.getChatWorldbookName("current") !== worldbookName || JSON.stringify(SillyTavern.getContext().chat) !== chatToken) throw new Error("\u9884\u89C8\u671F\u95F4\u804A\u5929\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u9884\u89C8\u3002");
+  return {
+    chatId,
+    worldbookName,
+    worldbookToken,
+    chatToken,
+    entries: entries.filter(resetOwnedEntry).length,
+    messages: patches.length,
+    restoredMessages: patches.filter((patch) => patch.is_hidden === false).length,
+    separateWorldbook,
+    ...worldbookNotice ? { worldbookNotice } : {}
+  };
+}
+function savedJobIds(records2) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const { value } of records2) {
+    const raw2 = object2(value);
+    if (typeof raw2?.jobId === "string") ids.add(raw2.jobId);
+    if (Array.isArray(raw2?.parts)) for (const part of raw2.parts) {
+      if (typeof part?.jobId === "string") ids.add(part.jobId);
+    }
+  }
+  return [...ids];
+}
+async function resetCurrentChat(preview2, summary, progress = () => {
+}) {
+  const helper6 = window.TavernHelper;
+  let book = preview2.worldbookName;
+  const guard = () => {
+    if (SillyTavern.getContext().chatId !== preview2.chatId || helper6.getChatWorldbookName("current") !== book) {
+      throw new Error("\u5F53\u524D\u804A\u5929\u6216\u4E16\u754C\u4E66\u5DF2\u53D8\u5316\uFF0C\u672A\u7EE7\u7EED\u6E05\u7406\u3002\u8BF7\u5207\u56DE\u539F\u804A\u5929\u68C0\u67E5\u5DF2\u5B8C\u6210\u7684\u6B65\u9AA4\u3002");
+    }
+  };
+  guard();
+  if (JSON.stringify(SillyTavern.getContext().chat) !== preview2.chatToken) throw new Error("\u6D88\u606F\u5DF2\u5728\u9884\u89C8\u540E\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u9884\u89C8\u5E76\u786E\u8BA4\u3002");
+  const finish = beginChatReset(preview2.chatId);
+  const result = { chatId: preview2.chatId, steps: [], warnings: [], complete: false };
+  const step = async (label, work) => {
+    progress(label);
+    try {
+      guard();
+      result.steps.push({ label, ok: true, message: await work() });
+    } catch (error62) {
+      result.steps.push({ label, ok: false, message: error62 instanceof Error ? error62.message : String(error62) });
+    }
+  };
+  try {
+    summary.prepareChatReset(preview2.chatId);
+    const extractionJob = extractionCoordinator.prepareChatReset(preview2.chatId);
+    statusCoordinator.prepareChatReset(preview2.chatId);
+    taskHealth.resetChat(preview2.chatId);
+    invalidateRecall();
+    await step("\u505C\u6B62\u5DF2\u77E5\u540E\u53F0\u4EFB\u52A1", async () => {
+      const jobs = savedJobIds(await chatLocalRecords(preview2.chatId));
+      if (extractionJob) jobs.push(extractionJob);
+      if (discussionCoordinator.running?.chatId === preview2.chatId) await discussionCoordinator.stop();
+      for (const id of new Set(jobs)) {
+        const job = await echoesApi.getJob(id);
+        if (["queued", "running"].includes(job.status) && !(await echoesApi.cancelJob(id)).cancelled) {
+          throw new Error(`\u4EFB\u52A1 ${id} \u672A\u786E\u8BA4\u53D6\u6D88\uFF1B\u65E7\u7ED3\u679C\u5DF2\u7981\u6B62\u5199\u56DE\u3002`);
+        }
+      }
+      return "\u672C\u804A\u5929\u65E7\u64CD\u4F5C\u5DF2\u7981\u6B62\u5199\u56DE\uFF1B\u5DF2\u63D0\u4EA4\u7684\u4F9B\u5E94\u5546\u8BF7\u6C42\u4ECD\u53EF\u80FD\u8BA1\u8D39\u3002";
+    });
+    await step("\u6062\u590D\u539F\u6587\u5E76\u6E05\u7406\u804A\u5929\u6570\u636E", async () => messageWriteCoordinator.run(async () => {
+      guard();
+      const clear = async () => {
+        guard();
+        if (book && !preview2.separateWorldbook) {
+          const entries = await helper6.getWorldbook(book);
+          guard();
+          if (JSON.stringify(entries) !== preview2.worldbookToken) throw new Error("\u4E16\u754C\u4E66\u5DF2\u5728\u9884\u89C8\u540E\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u9884\u89C8\u518D\u6E05\u7406\u3002");
+        }
+        if (JSON.stringify(SillyTavern.getContext().chat) !== preview2.chatToken) {
+          throw new Error("\u6D88\u606F\u5DF2\u5728\u9884\u89C8\u540E\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u9884\u89C8\u5E76\u786E\u8BA4\u3002");
+        }
+        const patches = SillyTavern.getContext().chat.map(resetMessagePatch).filter((patch) => patch !== null);
+        guard();
+        if (patches.length) await helper6.setChatMessages(patches, { refresh: "all" });
+        guard();
+        if (book && preview2.separateWorldbook) {
+          const name = `Echoes Reset ${randomUuid()}`;
+          if (!await helper6.createWorldbook(name)) throw new Error("\u65E0\u6CD5\u5EFA\u7ACB\u7A7A\u767D\u4E16\u754C\u4E66\uFF0C\u65E7\u7ED1\u5B9A\u5DF2\u4FDD\u7559\u3002");
+          guard();
+          await helper6.rebindChatWorldbook("current", name);
+          book = name;
+          guard();
+        } else if (book) {
+          await helper6.updateWorldbookWith(book, (entries) => {
+            guard();
+            if (JSON.stringify(entries) !== preview2.worldbookToken) throw new Error("\u4E16\u754C\u4E66\u53D1\u751F\u5E76\u53D1\u4FEE\u6539\uFF0C\u672A\u8986\u76D6\u65B0\u6570\u636E\uFF1B\u8BF7\u91CD\u65B0\u9884\u89C8\u540E\u91CD\u8BD5\u3002");
+            return entries.filter((entry) => !resetOwnedEntry(entry));
+          }, { render: "immediate" });
+        }
+        return `\u5DF2\u6E05\u7406 ${patches.length} \u5C42\u6D88\u606F\u7684 Echoes \u6570\u636E${preview2.separateWorldbook ? "\uFF0C\u5E76\u5207\u6362\u5230\u7A7A\u767D\u4E16\u754C\u4E66\uFF08\u65E7\u4E66\u4FDD\u7559\uFF09" : "\u53CA\u672C\u804A\u5929\u4E16\u754C\u4E66\u4E2D\u7684 Echoes \u6761\u76EE"}\u3002`;
+      };
+      return book ? worldbookWriteCoordinator.run(book, clear, true) : clear();
+    }, true));
+    await step("\u6E05\u7406\u5F53\u524D\u804A\u5929\u68C0\u7D22\u6587\u6863", async () => {
+      let job = await echoesApi.resetChatRetrieval(preview2.chatId);
+      const deadline = Date.now() + 12e4;
+      while (["queued", "running"].includes(job.status)) {
+        if (Date.now() > deadline) throw new Error("\u68C0\u7D22\u6E05\u7406\u4ECD\u5728\u540E\u53F0\u6392\u961F\u6216\u8FD0\u884C\u3002\u8BF7\u7A0D\u540E\u91CD\u65B0\u9884\u89C8\u5E76\u91CD\u8BD5\uFF1B\u6B64\u64CD\u4F5C\u53EF\u91CD\u590D\u6267\u884C\u3002");
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        job = await echoesApi.getJob(job.id);
+      }
+      if (job.status !== "succeeded" || !job.result) throw new Error(job.error?.message ?? job.message);
+      if (job.result.skippedCorruptDocuments) result.warnings.push("\u7D22\u5F15\u4E2D\u6709\u65E0\u6CD5\u8BC6\u522B\u804A\u5929\u5F52\u5C5E\u7684\u635F\u574F\u8BB0\u5F55\uFF0C\u5DF2\u4FDD\u7559\u4EE5\u907F\u514D\u8BEF\u5220\u5176\u4ED6\u804A\u5929\u6570\u636E\u3002");
+      return `\u5DF2\u5220\u9664 ${job.result.deletedDocuments} \u6761\u5F52\u5C5E\u5F53\u524D\u804A\u5929\u7684\u7D22\u5F15\u6587\u6863\u4E0E\u5411\u91CF\uFF1B\u5171\u4EAB\u96C6\u5408\u4FDD\u7559\u3002`;
+    });
+    await step("\u6E05\u7406\u672C\u5730\u8349\u7A3F\u3001\u64A4\u9500\u548C\u91CD\u8BD5\u8BB0\u5F55", async () => {
+      const records2 = await chatLocalRecords(preview2.chatId, true);
+      taskHealth.resetChat(preview2.chatId);
+      return `\u5DF2\u5220\u9664 ${records2.length} \u6761\u672C\u804A\u5929\u672C\u5730\u8BB0\u5F55\u3002`;
+    });
+    result.complete = result.steps.every((item) => item.ok) && result.warnings.length === 0;
+    return result;
+  } finally {
+    finish();
+  }
+}
+
+// src/extension/ui/pages/system/reset.ts
+function chatResetPage(ctx) {
+  const output2 = h("div", "ec-stack");
+  output2.setAttribute("aria-live", "polite");
+  const sameChat = () => {
+    if (SillyTavern.getContext().chatId !== ctx.chatId) throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u6E05\u7A7A\u9875\u9762\u3002");
+  };
+  const showResult = (result) => {
+    output2.replaceChildren(
+      callout(result.complete ? "success" : "warning", result.complete ? "\u5F53\u524D\u804A\u5929\u7684 Echoes \u6570\u636E\u5DF2\u6E05\u7A7A\u3002\u8BF7\u5237\u65B0\u9875\u9762\uFF0C\u4F7F\u65E7\u4EFB\u52A1\u548C\u9875\u9762\u7F13\u5B58\u5B8C\u5168\u9000\u51FA\u3002" : "\u90E8\u5206\u6E05\u7406\u672A\u5B8C\u6210\uFF0C\u5DF2\u5B8C\u6210\u7684\u6B65\u9AA4\u4E0D\u4F1A\u56DE\u9000\u3002\u8BF7\u67E5\u770B\u539F\u56E0\uFF0C\u6392\u9664\u95EE\u9898\u540E\u91CD\u65B0\u9884\u89C8\u5E76\u91CD\u8BD5\u3002"),
+      ...result.steps.map((step) => h(
+        "div",
+        "ec-row",
+        badge(step.ok ? "\u5DF2\u5B8C\u6210" : "\u672A\u5B8C\u6210", step.ok ? "success" : "danger"),
+        h("div", "ec-cell-stack", h("strong", "", step.label), muted(step.message))
+      )),
+      ...result.warnings.map((warning) => callout("warning", warning)),
+      button("\u5237\u65B0\u9875\u9762", () => window.location.reload(), { variant: "primary", icon: "rotate" })
+    );
+  };
+  const openPreview = async () => {
+    sameChat();
+    const preview2 = await previewChatReset();
+    sameChat();
+    const confirmation = form([{
+      key: "confirmation",
+      label: "\u8F93\u5165\u201C\u6E05\u7A7A\u5F53\u524D\u804A\u5929\u201D\u4EE5\u786E\u8BA4",
+      required: true,
+      placeholder: "\u6E05\u7A7A\u5F53\u524D\u804A\u5929",
+      value: ""
+    }], { track: false });
+    modal("\u6E05\u7A7A\u5F53\u524D\u804A\u5929\u7684 Echoes \u6570\u636E", stack2(
+      callout("danger", "\u6B64\u64CD\u4F5C\u65E0\u6CD5\u64A4\u9500\u3002\u5F53\u524D\u804A\u5929\u7684\u8BB0\u5FC6\u3001\u603B\u7ED3\u3001\u72B6\u6001\u3001\u9690\u85CF\u6807\u8BB0\u53CA\u672C\u5730\u6062\u590D\u8BB0\u5F55\u90FD\u4F1A\u88AB\u6E05\u7406\u3002"),
+      h("p", "", `\u76EE\u6807\u804A\u5929\uFF1A${preview2.chatId}`),
+      h("p", "", `\u4E16\u754C\u4E66\uFF1A${preview2.worldbookName ?? "\u5C1A\u672A\u7ED1\u5B9A"}\uFF1B\u53EF\u8BC6\u522B Echoes \u6761\u76EE ${preview2.entries} \u4E2A\uFF1B\u6D89\u53CA\u6D88\u606F ${preview2.messages} \u5C42\uFF1B\u6062\u590D\u539F\u6587 ${preview2.restoredMessages} \u5C42\u3002`),
+      ...preview2.worldbookNotice ? [callout("warning", preview2.worldbookNotice)] : [],
+      muted("\u804A\u5929\u6B63\u6587\u3001\u5168\u90E8\u56DE\u590D\u5206\u652F\u3001\u5176\u4ED6\u63D2\u4EF6\u53D8\u91CF\u3001\u666E\u901A\u4E16\u754C\u4E66\u6761\u76EE\u3001\u5168\u5C40\u8BBE\u7F6E\u3001API \u51ED\u636E\u548C\u5176\u4ED6\u804A\u5929\u4FDD\u7559\u3002\u68C0\u7D22\u4EC5\u6309\u5F53\u524D\u804A\u5929\u5F52\u5C5E\u5220\u9664\u6587\u6863\u4E0E\u5411\u91CF\uFF0C\u5171\u4EAB\u96C6\u5408\u4FDD\u7559\u3002"),
+      button("\u4FDD\u5B58\u539F\u59CB\u6062\u590D\u526F\u672C", () => {
+        sameChat();
+        download(`echoes-reset-copy-${Date.now()}.json`, JSON.stringify({
+          kind: "echoes_raw_reset_copy",
+          chatId: preview2.chatId,
+          worldbookName: preview2.worldbookName,
+          chat: JSON.parse(preview2.chatToken),
+          worldbookEntries: preview2.worldbookToken === null ? null : JSON.parse(preview2.worldbookToken)
+        }, null, 2));
+      }, { icon: "download", variant: "ghost" }),
+      muted("\u539F\u59CB\u526F\u672C\u7528\u4E8E\u4EBA\u5DE5\u6062\u590D\uFF0C\u53EF\u80FD\u5305\u542B\u804A\u5929\u6B63\u6587\uFF0C\u4E0D\u662F\u201C\u5907\u4EFD\u4E0E\u64A4\u9500\u201D\u9875\u7684\u6807\u51C6\u5907\u4EFD\u683C\u5F0F\u3002"),
+      confirmation.node
+    ), { size: "medium", primary: { label: "\u6C38\u4E45\u6E05\u7A7A\u5F53\u524D\u804A\u5929\u6570\u636E", danger: true, run: async () => {
+      sameChat();
+      if (String(confirmation.values().confirmation).trim() !== "\u6E05\u7A7A\u5F53\u524D\u804A\u5929") throw new Error("\u8BF7\u51C6\u786E\u8F93\u5165\u201C\u6E05\u7A7A\u5F53\u524D\u804A\u5929\u201D\u3002");
+      const result = await ctx.run("\u6E05\u7A7A\u5F53\u524D\u804A\u5929 Echoes \u6570\u636E", () => resetCurrentChat(
+        preview2,
+        ctx.summary,
+        (label) => output2.replaceChildren(callout("info", `\u6B63\u5728${label}\u2026`))
+      ));
+      showResult(result);
+    } } });
+  };
+  return stack2(card(
+    "\u6E05\u7A7A\u5F53\u524D\u804A\u5929\u6570\u636E",
+    { description: "\u7528\u4E8E\u672C\u804A\u5929\u7684 Echoes \u6587\u4EF6\u635F\u574F\u3001\u65E7\u7248\u672C\u76EE\u5F55\u65E0\u6CD5\u89E3\u6790\uFF0C\u6216\u5E0C\u671B\u4ECE\u7A7A\u767D\u8BB0\u5FC6\u91CD\u65B0\u5F00\u59CB\u3002" },
+    callout("warning", "\u53EA\u5904\u7406\u5F53\u524D\u6253\u5F00\u7684\u804A\u5929\u3002\u6E05\u7A7A\u4F1A\u505C\u6B62\u672C\u804A\u5929\u7684\u65E7\u4EFB\u52A1\uFF0C\u6062\u590D\u7531 Echoes \u9690\u85CF\u7684\u539F\u6587\uFF1B\u5B8C\u6210\u540E\u9700\u8981\u5237\u65B0\u9875\u9762\u3002"),
+    muted("\u5148\u9884\u89C8\u8303\u56F4\uFF0C\u53EF\u9009\u4FDD\u5B58\u539F\u59CB\u6062\u590D\u526F\u672C\uFF0C\u518D\u8F93\u5165\u786E\u8BA4\u6587\u5B57\u6267\u884C\u3002\u65E0\u9700\u6210\u529F\u52A0\u8F7D\u8BB0\u5FC6\u76EE\u5F55\u6216\u8FD0\u884C\u7CFB\u7EDF\u8BCA\u65AD\u3002"),
+    button("\u9884\u89C8\u5E76\u6E05\u7A7A\u5F53\u524D\u804A\u5929\u6570\u636E", openPreview, { variant: "danger", icon: "trash", disabled: !ctx.chatId }),
+    output2
+  ));
+}
+
 // src/extension/ui/shell/routes.ts
 var MODULES = [
   { id: "overview", label: "\u6982\u89C8", icon: "gauge-high", group: "top", requiresChat: false, tabs: [
@@ -49461,6 +49892,7 @@ var MODULES = [
     { id: "logs", label: "\u4EFB\u52A1\u4E0E\u65E5\u5FD7", render: logsPage },
     { id: "retrieval", label: "\u68C0\u7D22\u5E93", render: retrievalLibraryPage },
     { id: "diagnostics", label: "\u8BCA\u65AD\u4FEE\u590D", render: diagnosticsPage },
+    { id: "reset", label: "\u6E05\u7A7A\u6570\u636E", render: chatResetPage },
     { id: "backup", label: "\u5907\u4EFD\u4E0E\u64A4\u9500", render: backupPage, requiresChat: true },
     { id: "about", label: "\u5173\u4E8E", render: aboutPage }
   ] }
@@ -49850,7 +50282,12 @@ var EchoesApp = class {
     } catch (error62) {
       if (signal.aborted) return;
       console.error("[Echoes] Page failed to render.", error62);
-      this.content.replaceChildren(empty(errorText(error62), button("\u91CD\u8BD5", () => this.render(), { icon: "rotate" })));
+      this.content.replaceChildren(empty(errorText(error62), h(
+        "div",
+        "ec-row",
+        button("\u91CD\u8BD5", () => this.render(), { icon: "rotate" }),
+        button("\u6E05\u7A7A\u5F53\u524D\u804A\u5929\u6570\u636E", () => this.navigate("system/reset"), { variant: "danger", icon: "trash" })
+      )));
     } finally {
       if (!signal.aborted) {
         this.main.removeAttribute("aria-busy");
