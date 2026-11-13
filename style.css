@@ -1059,8 +1059,34 @@
 .ec-discussion { display: grid; grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.2fr); gap: 16px; align-items: start; }
 .ec-discussion > .ec-card:first-child { position: sticky; top: 0; }
 .ec-discussion-results { display: flex; flex-direction: column; gap: 12px; }
-.ec-discussion-item { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--ec-line); border-radius: var(--ec-radius-small); background: var(--ec-raised); }
+.ec-discussion-item { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px; border: 1px solid var(--ec-line); border-radius: var(--ec-radius-small); background: var(--ec-raised); }
 .ec-discussion-text:empty { display: none; }
+
+.ec-markdown { min-width: 0; max-width: 100%; }
+.ec-markdown[data-markdown="rendered"] { white-space: normal; }
+.ec-markdown :where(p, ul, ol, blockquote, pre, hr, .ec-markdown-table) { margin: 0 0 12px; }
+.ec-markdown > :last-child { margin-bottom: 0; }
+.ec-markdown :where(h1, h2, h3, h4, h5, h6) { margin: 18px 0 8px; color: var(--ec-text); line-height: 1.4; }
+.ec-markdown > :first-child { margin-top: 0; }
+.ec-markdown h1 { font-size: 22px; }
+.ec-markdown h2 { font-size: 19px; }
+.ec-markdown h3 { font-size: 16px; }
+.ec-markdown :where(h4, h5, h6) { font-size: 14px; }
+.ec-markdown ul { padding-left: 24px; list-style: disc; }
+.ec-markdown ol { padding-left: 24px; list-style: decimal; }
+.ec-markdown li { margin: 3px 0; }
+.ec-markdown li > :where(ul, ol, p) { margin-bottom: 4px; }
+.ec-markdown blockquote { padding: 4px 12px; margin-left: 0; margin-right: 0; border-left: 3px solid var(--ec-accent); color: var(--ec-muted); }
+.ec-markdown blockquote > :last-child { margin-bottom: 0; }
+.ec-markdown code { padding: 2px 4px; border: 0; border-radius: 4px; background: var(--ec-bg); color: var(--ec-text); line-height: inherit; white-space: inherit; text-shadow: none; }
+.ec-markdown pre { max-width: 100%; padding: 12px; overflow-x: auto; border: 1px solid var(--ec-line); border-radius: var(--ec-radius-small); background: var(--ec-bg); white-space: pre; overflow-wrap: normal; }
+.ec-markdown pre code { padding: 0; background: none; font-family: var(--ec-mono); }
+.ec-markdown-table { max-width: 100%; overflow-x: auto; }
+.ec-markdown table { min-width: 100%; border-collapse: collapse; font-size: 13px; }
+.ec-markdown :where(th, td) { padding: 7px 10px; border: 1px solid var(--ec-line); text-align: left; vertical-align: top; }
+.ec-markdown th { background: var(--ec-bg); font-weight: 600; }
+.ec-markdown a { text-decoration: underline; }
+.ec-markdown hr { border: 0; border-top: 1px solid var(--ec-line); }
 
 /* Medium widths: icon-only sidebar. Narrow widths: full-screen window, drawer sheets, stacked tables. */
 

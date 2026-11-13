@@ -24406,7 +24406,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.2.0", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.2.1", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -38031,6 +38031,7 @@ var extractionCoordinator = new ExtractionCoordinator();
 
 // src/extension/discussion/discussion-coordinator.ts
 init_crypto_compat();
+init_discussion();
 init_client();
 init_settings();
 
@@ -41581,6 +41582,7 @@ async function captureDiscussionContext(signal) {
 var DiscussionCoordinator = class {
   active = null;
   runs = /* @__PURE__ */ new Map();
+  contexts = /* @__PURE__ */ new Map();
   listeners = /* @__PURE__ */ new Set();
   subscribe(listener) {
     this.listeners.add(listener);
@@ -41599,6 +41601,9 @@ var DiscussionCoordinator = class {
     if (this.active) throw new Error("\u8BF7\u5148\u7B49\u5F85\u6216\u505C\u6B62\u6B63\u5728\u8FDB\u884C\u7684\u5267\u60C5\u8BA8\u8BBA\u3002");
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) throw new Error("\u8BF7\u5148\u9009\u62E9\u804A\u5929\u3002");
+    if (this.history(chatId).some((run2) => run2.status === "decision_required")) {
+      throw new Error("\u8BF7\u5148\u786E\u8BA4\u5207\u6362\u7AEF\u70B9\uFF0C\u6216\u65B0\u5EFA\u8BA8\u8BBA\u540E\u518D\u53D1\u9001\u3002");
+    }
     if (!prompt.trim()) throw new Error("\u8BF7\u8F93\u5165\u672C\u6B21\u5267\u60C5\u8BA8\u8BBA\u5185\u5BB9\u3002");
     if (prompt.length > 1e5) throw new Error("\u8BA8\u8BBA\u5185\u5BB9\u8D85\u8FC7 100000 \u5B57\u7B26\u3002");
     const settings = getSettings();
@@ -41623,19 +41628,30 @@ var DiscussionCoordinator = class {
     this.active = { run, controller };
     this.emit();
     try {
-      const messages2 = await captureDiscussionContext(controller.signal);
+      let messages2 = this.contexts.get(chatId);
+      if (!messages2) {
+        messages2 = await captureDiscussionContext(controller.signal);
+        controller.signal.throwIfAborted();
+        if (SillyTavern.getContext().chatId !== chatId) throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u8BA8\u8BBA\u672A\u53D1\u9001\u3002");
+        this.contexts.set(chatId, structuredClone(messages2));
+      }
       controller.signal.throwIfAborted();
       if (SillyTavern.getContext().chatId !== chatId) throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u8BA8\u8BBA\u672A\u53D1\u9001\u3002");
-      run.request = {
+      const turns = history.filter((item) => item.status === "completed").flatMap((item) => [
+        { role: "user", content: item.prompt },
+        { role: "assistant", content: item.text }
+      ]);
+      run.request = discussionRequestSchema.parse({
         chatId,
         messages: [
-          ...messages2,
+          ...structuredClone(messages2),
           { role: "system", content: settings.discussion.systemPrompt },
+          ...turns,
           { role: "user", content: prompt }
         ],
         generationGroup: structuredClone(group),
         failoverPolicy: workflow.failoverPolicy
-      };
+      });
       await this.generate(run, controller.signal);
     } catch (error62) {
       this.failed(run, controller.signal, error62);
@@ -41683,8 +41699,9 @@ var DiscussionCoordinator = class {
     }
   }
   clear(chatId) {
-    if (this.active?.run.chatId === chatId) throw new Error("\u8BF7\u5148\u505C\u6B62\u5267\u60C5\u8BA8\u8BBA\uFF0C\u518D\u6E05\u7A7A\u7ED3\u679C\u3002");
+    if (this.active?.run.chatId === chatId) throw new Error("\u8BF7\u5148\u505C\u6B62\u5267\u60C5\u8BA8\u8BBA\uFF0C\u518D\u65B0\u5EFA\u8BA8\u8BBA\u3002");
     this.runs.delete(chatId);
+    this.contexts.delete(chatId);
     this.emit();
   }
   async generate(run, signal) {
@@ -47419,6 +47436,95 @@ function recallDiagnosticsPage(ctx) {
 // src/extension/ui/pages/discussion/chat.ts
 init_discussion();
 init_settings();
+
+// src/extension/ui/kit/markdown.ts
+var TAGS = [
+  "p",
+  "br",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "strong",
+  "em",
+  "b",
+  "i",
+  "s",
+  "del",
+  "ul",
+  "ol",
+  "li",
+  "blockquote",
+  "pre",
+  "code",
+  "hr",
+  "a",
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td"
+];
+var library;
+var revisions2 = /* @__PURE__ */ new WeakMap();
+function loadLibrary() {
+  return library ??= import(
+    /* @vite-ignore */
+    new URL("lib.js", document.baseURI).href
+  ).then((value) => {
+    if (typeof value.showdown?.Converter !== "function" || typeof value.DOMPurify?.sanitize !== "function") {
+      throw new Error("\u9152\u9986\u6CA1\u6709\u63D0\u4F9B Markdown \u6E32\u67D3\u5DE5\u5177\u3002");
+    }
+    return value;
+  });
+}
+async function renderMarkdown(target, source) {
+  const revision2 = /* @__PURE__ */ Symbol();
+  revisions2.set(target, revision2);
+  target.classList.add("ec-markdown");
+  target.textContent = source;
+  target.dataset.markdown = "plain";
+  try {
+    const { showdown, DOMPurify } = await loadLibrary();
+    if (revisions2.get(target) !== revision2) return;
+    const converter = new showdown.Converter({
+      tables: true,
+      strikethrough: true,
+      simplifiedAutoLink: true,
+      literalMidWordUnderscores: true,
+      simpleLineBreaks: true,
+      openLinksInNewWindow: true
+    });
+    const fragment = DOMPurify.sanitize(converter.makeHtml(source), {
+      ALLOWED_TAGS: TAGS,
+      ALLOWED_ATTR: ["href", "title", "start", "colspan", "rowspan"],
+      ALLOW_DATA_ATTR: false,
+      ALLOW_ARIA_ATTR: false,
+      RETURN_DOM_FRAGMENT: true
+    });
+    for (const link of fragment.querySelectorAll("a")) {
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    }
+    for (const table2 of fragment.querySelectorAll("table")) {
+      const scroll = document.createElement("div");
+      scroll.className = "ec-markdown-table";
+      table2.replaceWith(scroll);
+      scroll.append(table2);
+    }
+    target.replaceChildren(fragment);
+    target.dataset.markdown = "rendered";
+    target.removeAttribute("title");
+  } catch {
+    if (revisions2.get(target) !== revision2) return;
+    target.title = "Markdown \u6E32\u67D3\u4E0D\u53EF\u7528\uFF0C\u5F53\u524D\u663E\u793A\u539F\u6587\u3002";
+  }
+}
+
+// src/extension/ui/pages/discussion/chat.ts
 function saveDiscussion(change) {
   const settings = getSettings();
   const discussion = structuredClone(settings.discussion);
@@ -47455,15 +47561,10 @@ function discussionPage(ctx) {
   const workflow = getSettings().generationWorkflows.discussion;
   const group = getSettings().generationGroups.find((item) => item.id === workflow.groupId);
   const draft = ctx.memo("discussion-draft", () => ({ text: "", preset: "" }));
-  const compose = form([{
-    key: "prompt",
-    label: "\u8BA8\u8BBA\u5185\u5BB9",
-    type: "textarea",
-    rows: 10,
-    value: draft.text,
-    required: true,
-    placeholder: "\u4F8B\u5982\uFF1A\u63A5\u4E0B\u6765\u4E09\u8F6E\uFF0C\u600E\u6837\u8BA9\u767D\u68E0\u5BF9\u65E7\u6F6E\u7F57\u76D8\u7684\u79D8\u5BC6\u8D77\u7591\uFF1F"
-  }], { track: false, className: "is-single" });
+  const compose = form(
+    [{ key: "prompt", label: "\u8BA8\u8BBA\u5185\u5BB9", type: "textarea", rows: 10, value: draft.text, required: true }],
+    { track: false, className: "is-single" }
+  );
   const input2 = compose.control("prompt");
   input2.maxLength = 1e5;
   input2.addEventListener("input", () => {
@@ -47490,18 +47591,43 @@ function discussionPage(ctx) {
   const send = button("\u5F00\u59CB\u8BA8\u8BBA", () => {
     ctx.guard();
     compose.values();
-    void discussionCoordinator.start(input2.value).catch(reportError);
+    const prompt = input2.value;
+    void discussionCoordinator.start(prompt).then(() => {
+      if (discussionCoordinator.history(ctx.chatId).at(-1)?.status === "completed" && input2.value === prompt) {
+        compose.node.reset();
+        draft.text = "";
+      }
+    }).catch(reportError);
   }, { variant: "primary", icon: "paper-plane" });
   const stop = button("\u505C\u6B62", () => discussionCoordinator.stop(), { variant: "danger", icon: "stop" });
+  const reset = button("\u65B0\u5EFA\u8BA8\u8BBA", async () => {
+    ctx.guard();
+    if (discussionCoordinator.history(ctx.chatId).length && !await confirmAction({
+      title: "\u65B0\u5EFA\u8BA8\u8BBA\uFF1F",
+      message: "\u6E05\u7A7A\u672C\u8F6E\u8BA8\u8BBA\u95EE\u7B54\uFF0C\u4E0B\u6B21\u53D1\u9001\u65F6\u91CD\u65B0\u8BFB\u53D6\u5F53\u524D\u5267\u60C5\u80CC\u666F\u3002",
+      confirmLabel: "\u65B0\u5EFA\u8BA8\u8BBA"
+    })) return;
+    ctx.guard();
+    discussionCoordinator.clear(ctx.chatId);
+    compose.node.reset();
+    draft.text = "";
+    input2.focus();
+  }, { icon: "plus" });
+  const contextNote = h("p", "ec-muted");
   const results = h("div", "ec-discussion-results");
-  const idle = empty("\u8FD8\u6CA1\u6709\u8BA8\u8BBA\u56DE\u590D\u3002\u56DE\u590D\u53EA\u663E\u793A\u5728\u8FD9\u91CC\uFF0C\u4E0D\u4F1A\u5199\u5165\u804A\u5929\u3002");
+  const idle = empty("\u8FD8\u6CA1\u6709\u8BA8\u8BBA\u56DE\u590D\u3002\u53D1\u9001\u540E\u53EF\u7EE7\u7EED\u8FFD\u95EE\uFF0C\u95EE\u7B54\u53EA\u4FDD\u7559\u5728\u672C\u9875\u4E2D\uFF0C\u4E0D\u4F1A\u5199\u5165\u804A\u5929\u3002");
   const views = /* @__PURE__ */ new Map();
+  let markdownTimer;
   const render = () => {
     if (ctx.signal.aborted) return;
     const running2 = discussionCoordinator.running;
-    send.disabled = Boolean(running2);
-    stop.hidden = !running2 || running2.chatId !== ctx.chatId;
     const history = discussionCoordinator.history(ctx.chatId);
+    const completed = history.filter((run) => run.status === "completed").length;
+    send.disabled = Boolean(running2) || history.some((run) => run.status === "decision_required");
+    send.querySelector("span").textContent = completed ? "\u7EE7\u7EED\u8BA8\u8BBA" : "\u5F00\u59CB\u8BA8\u8BBA";
+    reset.disabled = Boolean(running2);
+    stop.hidden = !running2 || running2.chatId !== ctx.chatId;
+    contextNote.textContent = completed ? `\u672C\u8F6E\u5DF2\u5B8C\u6210 ${completed} \u6B21\u95EE\u7B54\uFF0C\u7EE7\u7EED\u53D1\u9001\u4F1A\u643A\u5E26\u8FD9\u4E9B\u95EE\u7B54\uFF0C\u5E76\u6CBF\u7528\u672C\u8F6E\u5F00\u59CB\u65F6\u7684\u5267\u60C5\u80CC\u666F\u3002` : "\u9996\u6B21\u53D1\u9001\u4F1A\u8BFB\u53D6\u5F53\u524D\u5267\u60C5\u80CC\u666F\uFF0C\u4E4B\u540E\u53EF\u4EE5\u56F4\u7ED5\u56DE\u590D\u8FDE\u7EED\u8FFD\u95EE\u3002";
     idle.hidden = history.length > 0;
     for (const [id, view] of views) if (!history.some((run) => run.id === id)) {
       view.root.remove();
@@ -47547,15 +47673,26 @@ function discussionPage(ctx) {
           attempts,
           h("div", "ec-row", resume)
         );
-        view = { root, state, meta: meta3, text, message, resume, attempts };
+        view = { root, state, meta: meta3, text, message, resume, attempts, renderedAt: 0 };
         views.set(run.id, view);
-        results.prepend(root);
+        results.append(root);
       }
       const [label, tone] = STATUS[run.status];
       view.state.replaceChildren(badge(label, tone));
       view.meta.textContent = run.endpointName ? `${run.endpointName} \xB7 ${run.streaming ? "\u6D41\u5F0F" : "\u975E\u6D41\u5F0F"}` : "";
       view.message.textContent = run.message;
-      if (view.text.textContent !== run.text) view.text.textContent = run.text;
+      if (view.renderedText !== run.text) {
+        if (run.status === "generating" && view.renderedText !== void 0 && performance.now() - view.renderedAt < 120) {
+          markdownTimer ??= setTimeout(() => {
+            markdownTimer = void 0;
+            render();
+          }, 120);
+        } else {
+          view.renderedText = run.text;
+          view.renderedAt = performance.now();
+          void renderMarkdown(view.text, run.text);
+        }
+      }
       view.resume.hidden = run.status !== "decision_required" || !run.result?.decisionRequired?.nextEndpointId;
       view.resume.disabled = Boolean(running2);
       if (view.result !== run.result) {
@@ -47574,6 +47711,7 @@ function discussionPage(ctx) {
   ctx.signal.addEventListener("abort", () => {
     unsubscribe();
     if (frame !== void 0) cancelAnimationFrame(frame);
+    if (markdownTimer !== void 0) clearTimeout(markdownTimer);
   }, { once: true });
   results.append(idle);
   render();
@@ -47584,11 +47722,16 @@ function discussionPage(ctx) {
     h(
       "div",
       "ec-discussion",
-      card("\u63D0\u95EE", { description: group ? `\u7AEF\u70B9\u7EC4\uFF1A${group.name}` : void 0 }, presetHost, compose.node, h("div", "ec-row", send, stop)),
-      card("\u56DE\u590D", { actions: [iconButton("\u6E05\u7A7A\u8BA8\u8BBA\u56DE\u590D", "trash", async () => {
-        if (!await confirmAction({ title: "\u6E05\u7A7A\u8BA8\u8BBA\u56DE\u590D\uFF1F", message: "\u53EA\u6E05\u9664\u672C\u9875\u663E\u793A\u7684\u56DE\u590D\uFF0C\u4E0D\u5F71\u54CD\u804A\u5929\u548C\u8BB0\u5FC6\u3002", confirmLabel: "\u6E05\u7A7A" })) return;
-        discussionCoordinator.clear(ctx.chatId);
-      })] }, results)
+      card(
+        "\u63D0\u95EE",
+        { description: group ? `\u7AEF\u70B9\u7EC4\uFF1A${group.name}` : void 0 },
+        presetHost,
+        compose.node,
+        contextNote,
+        h("div", "ec-row", send, stop, reset),
+        h("p", "ec-muted", "\u65B0\u5EFA\u8BA8\u8BBA\u4F1A\u91CD\u65B0\u8BFB\u53D6\u5267\u60C5\u80CC\u666F\uFF1B\u5237\u65B0\u9875\u9762\u4F1A\u6E05\u9664\u672C\u9875\u95EE\u7B54\u3002\u56DE\u590D\u652F\u6301 Markdown\uFF0C\u590D\u5236\u4FDD\u7559\u539F\u6587\u3002")
+      ),
+      card("\u8BA8\u8BBA\u8BB0\u5F55", {}, results)
     )
   );
 }
