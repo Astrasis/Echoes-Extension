@@ -24406,7 +24406,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.2.2", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.2.3", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -37482,16 +37482,20 @@ async function buildSelection(state, mode, messages2) {
 }
 async function automaticExtractionBatch(state, limit, messages2 = currentExtractionMessages()) {
   const start = checkpointStart(state, messages2);
-  if (messages2.length - start < limit) return null;
-  const boundary = Math.min(messages2.length - 1, start + limit - 1);
+  const minimumEnd = start + limit - 1;
+  if (minimumEnd >= messages2.length) return null;
+  let confirmation = messages2.length - 1;
+  while (confirmation > minimumEnd && messages2[confirmation]?.role !== "user") confirmation -= 1;
   let end = -1;
-  for (let index = boundary; index >= start; index -= 1) {
+  for (let index = minimumEnd; index < confirmation; index += 1) {
     if (messages2[index]?.role !== "assistant") continue;
-    if (!messages2.slice(index + 1).some((message) => message.role === "user")) continue;
     end = index;
     break;
   }
   if (end < start) return null;
+  if (end - start + 1 > 500) {
+    throw new Error("\u8FBE\u5230\u9608\u503C\u540E\u7684\u9996\u4E2A\u5DF2\u786E\u8BA4 AI \u56DE\u590D\u8D85\u51FA\u5355\u6B21 500 \u6761\u6D88\u606F\u4E0A\u9650\uFF0C\u81EA\u52A8\u63D0\u53D6\u5DF2\u6682\u505C\u3002\u8BF7\u964D\u4F4E\u5355\u6279\u6D88\u606F\u6570\u6216\u5148\u624B\u52A8\u5206\u6279\u5904\u7406\u3002");
+  }
   return buildSelection(state, "auto", messages2.slice(start, end + 1));
 }
 async function manualExtractionBatch(state, limit, messages2 = currentExtractionMessages()) {
@@ -37560,7 +37564,7 @@ async function prepareExtraction(state, settings, mode = "manual", resumeAfterEn
   if (!selection) {
     throw new ExtractionBatchUnavailableError(
       mode,
-      mode === "auto" ? "\u5C1A\u672A\u8FBE\u5230\u81EA\u52A8\u63D0\u53D6\u9608\u503C\u6216\u6CA1\u6709\u5DF2\u786E\u8BA4\u7684\u52A9\u624B\u56DE\u590D\u3002" : "\u4E0B\u4E00\u6279\u4E2D\u6CA1\u6709\u53EF\u63D0\u4EA4\u7684\u7528\u6237\u6D88\u606F\u3002"
+      mode === "auto" ? "\u5C1A\u672A\u8FBE\u5230\u81EA\u52A8\u63D0\u53D6\u9608\u503C\uFF0C\u6216\u9608\u503C\u4E4B\u540E\u7684 AI \u56DE\u590D\u8FD8\u6CA1\u6709\u540E\u7EED\u7528\u6237\u6D88\u606F\u786E\u8BA4\u3002" : "\u4E0B\u4E00\u6279\u4E2D\u6CA1\u6709\u53EF\u63D0\u4EA4\u7684\u7528\u6237\u6D88\u606F\u3002"
     );
   }
   const prepared = await prepareSelectedExtraction(state, settings, selection, resumeAfterEndpointId);
@@ -44677,7 +44681,7 @@ async function structuredSettingsPage(ctx) {
       max: 500,
       value: settings.extractionMessageCount,
       required: true,
-      hint: "\u6BCF\u6B21\u63D0\u53D6\u5904\u7406\u7684\u6D88\u606F\u6761\u6570"
+      hint: "\u81EA\u52A8\u63D0\u53D6\u4EE5\u6B64\u4E3A\u4E0B\u9650\uFF0C\u5E76\u7B49\u5F85\u540E\u7EED\u7528\u6237\u6D88\u606F\u786E\u8BA4\u6279\u6B21\u672B\u5C3E\u7684 AI \u56DE\u590D\uFF1B\u624B\u52A8\u63D0\u53D6\u4EE5\u6B64\u4E3A\u7A97\u53E3\u4E0A\u9650\u3002\u5355\u6B21\u6700\u591A 500 \u6761"
     },
     {
       key: "fieldMax",
