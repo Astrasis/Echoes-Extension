@@ -24406,7 +24406,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.2.1", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.2.2", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -39265,6 +39265,58 @@ function invalidateStatusTasks() {
   revision += 1;
 }
 
+// src/extension/status/status-automation.ts
+var REPLY_GENERATION_TYPES = /* @__PURE__ */ new Set(["normal", "chat", "continue", "regenerate", "swipe"]);
+function latestAssistantIndex() {
+  const chat = SillyTavern.getContext().chat;
+  const index = (chat?.length ?? 0) - 1;
+  const message = chat?.[index];
+  if (!message || message.is_user === true || message.role !== void 0 && message.role !== "assistant" || !String(message.mes ?? message.message ?? "").trim()) return -1;
+  if (Array.isArray(message.swipes) && Number.isInteger(message.swipe_id) && !String(message.swipes[message.swipe_id] ?? "").trim()) return -1;
+  return index;
+}
+function isLatestAssistant(messageId) {
+  const index = latestAssistantIndex();
+  if (index < 0) return false;
+  const message = SillyTavern.getContext().chat[index];
+  return String(messageId) === String(index) || String(messageId) === String(message.message_id ?? message.id ?? index);
+}
+var StatusAutomation = class {
+  unfinished = /* @__PURE__ */ new Set();
+  isPreparingContext = () => false;
+  targetIndex() {
+    const chatId = SillyTavern.getContext().chatId;
+    if (!chatId || this.unfinished.has(chatId) || this.isPreparingContext()) return -1;
+    return latestAssistantIndex();
+  }
+  install(runAutomatic, isPreparingContext) {
+    this.isPreparingContext = isPreparingContext;
+    const events = SillyTavern.getContext().eventSource;
+    events?.on("generation_started", (type, _options, dryRun) => {
+      if (dryRun || isPreparingContext() || !REPLY_GENERATION_TYPES.has(type ?? "normal") && type !== "impersonate") return;
+      const chatId = SillyTavern.getContext().chatId;
+      if (chatId) this.unfinished.add(chatId);
+    });
+    events?.on("character_message_rendered", (messageId, type) => {
+      if (isPreparingContext() || !REPLY_GENERATION_TYPES.has(type ?? "normal") || !isLatestAssistant(messageId)) return;
+      const chatId = SillyTavern.getContext().chatId;
+      if (!chatId) return;
+      this.unfinished.delete(chatId);
+      void runAutomatic().catch((error62) => {
+        toastr.error(error62 instanceof Error ? error62.message : String(error62), "Echoes \u72B6\u6001\u66F4\u65B0\u5931\u8D25");
+      });
+    });
+    const changed = (messageId) => {
+      if (isPreparingContext() || !isLatestAssistant(messageId)) return;
+      const chatId = SillyTavern.getContext().chatId;
+      if (chatId) this.unfinished.add(chatId);
+    };
+    events?.on("message_edited", changed);
+    events?.on("message_swiped", changed);
+  }
+};
+var statusAutomation = new StatusAutomation();
+
 // src/extension/status/status-coordinator.ts
 var TERMINAL_STATES3 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
 var RECOMMENDED_STATUS_MAX_TOKENS = 1e4;
@@ -39382,7 +39434,7 @@ var StatusCoordinator = class {
   }
   runAutomatic() {
     const chatId = SillyTavern.getContext().chatId;
-    if (!chatId || isChatReset(chatId)) return Promise.resolve(null);
+    if (!chatId || isChatReset(chatId) || statusAutomation.targetIndex() < 0) return Promise.resolve(null);
     const existing = this.pending.get(chatId);
     if (existing) {
       if (!this.rerunOrigins.has(chatId)) this.rerunOrigins.set(chatId, "auto");
@@ -39852,7 +39904,7 @@ ${renderStatusYaml(before)}
       return skip("\u72B6\u6001\u8BB0\u5FC6\u672A\u542F\u7528\uFF1A\u8BF7\u5728\u672C\u9875\u6216\u201C\u72B6\u6001\u6CE8\u5165\u201D\u9875\u6253\u5F00\u201C\u72B6\u6001\u8BB0\u5FC6\u201D\u5F00\u5173\u540E\u91CD\u8BD5\u3002\u4EC5\u6253\u5F00\u201C\u81EA\u52A8\u66F4\u65B0\u72B6\u6001\u201D\u4E0D\u4F1A\u542F\u52A8\u540C\u6B65\u3002");
     }
     if (origin === "auto" && !state.catalog.autoUpdate) return skip("\u81EA\u52A8\u66F4\u65B0\u672A\u542F\u7528\uFF0C\u5DF2\u8DF3\u8FC7\u3002", false);
-    const targetIndex = lastAssistantIndex();
+    const targetIndex = origin === "auto" ? statusAutomation.targetIndex() : lastAssistantIndex();
     if (targetIndex < 0) return skip("\u5F53\u524D\u804A\u5929\u6CA1\u6709\u53EF\u7528\u4E8E\u627F\u8F7D\u72B6\u6001\u5FEB\u7167\u7684 AI \u56DE\u590D\u3002", origin === "manual");
     const target = SillyTavern.getContext().chat[targetIndex];
     const targetMessageId = statusMessageId(target, targetIndex);
@@ -39917,7 +39969,9 @@ ${renderStatusYaml(before)}
         ...resumeAfterEndpointId ? { resumeAfterEndpointId } : {}
       };
       const jobKey = [targetMessageId, targetSwipeId, prepared.sourceHash, baseStateHash, resumeAfterEndpointId ?? ""].join(":");
-      const job = await reusableJob("status", state.catalog.chatId, jobKey) ?? await echoesApi.startStatusUpdate(request);
+      const reused = await reusableJob("status", state.catalog.chatId, jobKey);
+      if (origin === "auto" && statusAutomation.targetIndex() !== targetIndex) return skip("\u7B49\u5F85 AI \u56DE\u590D\u751F\u6210\u5B8C\u6210\u540E\u66F4\u65B0\u72B6\u6001\u3002", false);
+      const job = reused ?? await echoesApi.startStatusUpdate(request);
       await rememberActiveJob("status", state.catalog.chatId, jobKey, job.id);
       try {
         result = (await waitForJob3(job, (current) => {
@@ -50768,33 +50822,7 @@ function initialize() {
   for (const name of ["generation_ended", "generation_stopped", "chat_changed", "chat_id_changed"])
     events?.on(name, clearPreferences);
   clearPreferences();
-  const automaticStatus = () => {
-    if (isPreparingDiscussionContext()) return;
-    void statusCoordinator.runAutomatic().catch((error62) => {
-      toastr.error(error62 instanceof Error ? error62.message : String(error62), "Echoes \u72B6\u6001\u66F4\u65B0\u5931\u8D25");
-    });
-  };
-  events?.on("generation_ended", automaticStatus);
-  events?.on("generation_stopped", automaticStatus);
-  const updateLatestStatus = (messageId) => {
-    if (isPreparingDiscussionContext()) return;
-    const chat = SillyTavern.getContext().chat;
-    let latestAssistant = -1;
-    for (let index = chat.length - 1; index >= 0; index -= 1) {
-      if (chat[index]?.is_user !== true && chat[index]?.role !== "user") {
-        latestAssistant = index;
-        break;
-      }
-    }
-    if (latestAssistant < 0) return;
-    const stableId2 = String(chat[latestAssistant]?.message_id ?? chat[latestAssistant]?.id ?? latestAssistant);
-    if (String(messageId) !== String(latestAssistant) && String(messageId) !== stableId2) return;
-    void statusCoordinator.runAutomatic().catch((error62) => {
-      toastr.error(error62 instanceof Error ? error62.message : String(error62), "Echoes \u72B6\u6001\u66F4\u65B0\u5931\u8D25");
-    });
-  };
-  events?.on("message_edited", updateLatestStatus);
-  events?.on("message_swiped", updateLatestStatus);
+  statusAutomation.install(() => statusCoordinator.runAutomatic(), isPreparingDiscussionContext);
   const summaryCheck = () => {
     if (!panel?.summary.compression.isWriting) void panel?.checkSummaryAutomation();
   };
