@@ -15799,10 +15799,10 @@ function _properties(shape, params) {
   });
 }
 // @__NO_SIDE_EFFECTS__
-function _mime(types, params) {
+function _mime(types2, params) {
   return new $ZodCheckMimeType({
     check: "mime_type",
-    mime: types,
+    mime: types2,
     ...normalizeParams(params)
   });
 }
@@ -16405,7 +16405,7 @@ function compactTypeUnion(schema4) {
   const options = schema4.anyOf;
   if (!Array.isArray(options) || options.length === 0 || schema4.type !== void 0)
     return;
-  const types = [];
+  const types2 = [];
   for (const option of options) {
     if (!option || typeof option !== "object")
       return;
@@ -16417,12 +16417,12 @@ function compactTypeUnion(schema4) {
     for (const member of Array.isArray(type) ? type : [type]) {
       if (typeof member !== "string")
         return;
-      if (!types.includes(member))
-        types.push(member);
+      if (!types2.includes(member))
+        types2.push(member);
     }
   }
   delete schema4.anyOf;
-  schema4.type = types.length === 1 ? types[0] : types;
+  schema4.type = types2.length === 1 ? types2[0] : types2;
 }
 function undeclaredConstraint(member) {
   const extra = member.additionalProperties;
@@ -16799,8 +16799,8 @@ function stringifyKeyNames(bySchema, json2, visited) {
     if (mapped.some((branch, i) => branch !== branches[i]))
       json2 = { ...json2, [keyword]: mapped };
   }
-  const types = Array.isArray(json2.type) ? json2.type : [json2.type];
-  const numericType = !types.includes("string") && types.some((t) => t === "number" || t === "integer");
+  const types2 = Array.isArray(json2.type) ? json2.type : [json2.type];
+  const numericType = !types2.includes("string") && types2.some((t) => t === "number" || t === "integer");
   const values = json2.enum ?? (json2.const !== void 0 ? [json2.const] : void 0);
   if (!numericType && !values?.some((v) => typeof v === "number"))
     return json2;
@@ -16813,7 +16813,7 @@ function stringifyKeyNames(bySchema, json2, visited) {
     return rest;
   rest.type = "string";
   if (!values)
-    rest.pattern = (types.includes("number") ? number : integer).source;
+    rest.pattern = (types2.includes("number") ? number : integer).source;
   return rest;
 }
 function rewriteKeyNames(ctx) {
@@ -19547,7 +19547,7 @@ var init_schemas2 = __esm({
       inst._zod.processJSONSchema = (ctx, json2, params) => fileProcessor(inst, ctx, json2, params);
       inst.min = (size, params) => inst.check(_minSize(size, params));
       inst.max = (size, params) => inst.check(_maxSize(size, params));
-      inst.mime = (types, params) => inst.check(_mime(Array.isArray(types) ? types : [types], params));
+      inst.mime = (types2, params) => inst.check(_mime(Array.isArray(types2) ? types2 : [types2], params));
     });
     ZodTransform = /* @__PURE__ */ $constructor("ZodTransform", (inst, def) => {
       _ensureDefaultMemoizer();
@@ -22750,12 +22750,14 @@ function overviewContentHash(content) {
   return (h2 >>> 0).toString(16).padStart(8, "0") + (h1 >>> 0).toString(16).padStart(8, "0");
 }
 function overviewMergeable(overview) {
-  return Boolean(overview && overview.state === "ready" && overview.content.trim() && batchOverviewHasCurrentSource(overview));
+  return Boolean(overview && overview.enabled && overview.state === "ready" && overview.content.trim() && batchOverviewHasCurrentSource(overview));
 }
 function stageInvalidReason(stage, overviews) {
+  if (!stage.enabled) return "\u9636\u6BB5\u5DF2\u5173\u95ED";
   for (const source of stage.sources) {
     const overview = overviews.get(source.batchId);
     if (!overview) return `\u6279\u6B21 ${source.batchNumber} \u5DF2\u5220\u9664`;
+    if (!overview.enabled) return `\u56E0\u6765\u6E90\u6279\u6B21 ${source.batchNumber} \u5173\u95ED\u5E38\u9A7B\u6CE8\u5165\u800C\u6682\u505C`;
     if (!overviewMergeable(overview)) return `\u6279\u6B21 ${source.batchNumber} \u7684\u6279\u6B21\u603B\u7ED3\u672A\u5C31\u7EEA\u6216\u539F\u6D88\u606F\u5DF2\u53D8\u5316`;
     if (overviewContentHash(overview.content) !== source.contentHash) return `\u6279\u6B21 ${source.batchNumber} \u7684\u6279\u6B21\u603B\u7ED3\u5DF2\u91CD\u5199`;
   }
@@ -23736,7 +23738,7 @@ function instantiateType(template2, name = template2.name) {
 }
 function createDefaultCatalog(chatId) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  const types = DEFAULT_CATALOG_TYPES.map(([id, template2]) => ({ ...instantiateType(template2), id }));
+  const types2 = DEFAULT_CATALOG_TYPES.map(([id, template2]) => ({ ...instantiateType(template2), id }));
   const promptPreset = {
     id: "default_prompt_preset",
     name: "\u9ED8\u8BA4\u589E\u91CF\u8BB0\u5FC6\u9884\u8BBE",
@@ -23755,7 +23757,7 @@ function createDefaultCatalog(chatId) {
   return {
     formatVersion: 2,
     chatId,
-    types,
+    types: types2,
     promptPreset,
     automation: { enabled: false },
     updatedAt: now
@@ -24066,31 +24068,57 @@ var init_request_error = __esm({
   }
 });
 
+// src/extension/api/task-request.ts
+function taskRequestConfiguration(path, input2, settings) {
+  const body = input2;
+  const requested = body.taskBudget;
+  const global = settings.taskBudget;
+  const budget = requested ? {
+    maxProviderCalls: Math.min(requested.maxProviderCalls || Infinity, global.maxProviderCalls || Infinity),
+    maxInputCharacters: Math.min(requested.maxInputCharacters || Infinity, global.maxInputCharacters || Infinity),
+    maxDurationMs: Math.min(requested.maxDurationMs || Infinity, global.maxDurationMs || Infinity)
+  } : { ...global };
+  for (const key2 of Object.keys(budget)) {
+    if (!Number.isFinite(budget[key2])) budget[key2] = 0;
+  }
+  const businessRegex2 = path.startsWith("/summaries/") || path === "/status/updates" || path === "/memory/extractions" ? body.businessRegex ?? settings.businessRegex : void 0;
+  return { ...body, ...businessRegex2 ? { businessRegex: businessRegex2 } : {}, taskBudget: budget };
+}
+function prepareTaskRequest(path, input2, settings = getSettings()) {
+  const result = JSON.parse(JSON.stringify(taskRequestConfiguration(path, input2, settings)));
+  const pending = [result];
+  while (pending.length) {
+    const current = pending.pop();
+    for (const value of Object.values(current)) if (value && typeof value === "object") pending.push(value);
+    Object.freeze(current);
+  }
+  prepared.add(result);
+  return result;
+}
+function isPreparedTaskRequest(input2) {
+  return prepared.has(input2);
+}
+var prepared;
+var init_task_request = __esm({
+  "src/extension/api/task-request.ts"() {
+    "use strict";
+    init_settings();
+    prepared = /* @__PURE__ */ new WeakSet();
+  }
+});
+
 // src/extension/api/client.ts
 var client_exports = {};
 __export(client_exports, {
   EchoesRequestError: () => EchoesRequestError,
   echoesApi: () => echoesApi
 });
-async function requestJson(path, init) {
+async function requestJson(path, init, prepared2 = false) {
   if (isChatReset() && init?.method === "POST" && /^(\/memory\/extractions|\/summaries\/|\/status\/updates|\/retrieval\/)/.test(path)) {
     throw new Error("\u5F53\u524D\u804A\u5929\u6570\u636E\u5DF2\u8FDB\u5165\u6E05\u7A7A\u6D41\u7A0B\uFF0C\u8BF7\u5B8C\u6210\u6E05\u7406\u540E\u5237\u65B0\u9875\u9762\u3002");
   }
-  if (init?.method === "POST" && typeof init.body === "string" && /^(\/memory\/extractions|\/summaries\/(?:generate|coverage|batch-overview)|\/status\/updates|\/retrieval\/|\/endpoints\/)/.test(path)) {
-    const body = JSON.parse(init.body);
-    const settings = getSettings();
-    const globalBudget = settings.taskBudget;
-    const requested = body.taskBudget;
-    const bounded = requested ? {
-      maxProviderCalls: Math.min(requested.maxProviderCalls || Infinity, globalBudget.maxProviderCalls || Infinity),
-      maxInputCharacters: Math.min(requested.maxInputCharacters || Infinity, globalBudget.maxInputCharacters || Infinity),
-      maxDurationMs: Math.min(requested.maxDurationMs || Infinity, globalBudget.maxDurationMs || Infinity)
-    } : globalBudget;
-    for (const key2 of Object.keys(bounded)) {
-      if (!Number.isFinite(bounded[key2])) bounded[key2] = 0;
-    }
-    const businessRegex2 = path.startsWith("/summaries/") || path === "/status/updates" || path === "/memory/extractions" ? body.businessRegex ?? settings.businessRegex : void 0;
-    init = { ...init, body: JSON.stringify({ ...body, ...businessRegex2 ? { businessRegex: businessRegex2 } : {}, taskBudget: bounded }) };
+  if (!prepared2 && init?.method === "POST" && typeof init.body === "string" && /^(\/memory\/extractions|\/summaries\/(?:generate|coverage|batch-overview)|\/status\/updates|\/retrieval\/|\/endpoints\/)/.test(path)) {
+    init = { ...init, body: JSON.stringify(taskRequestConfiguration(path, JSON.parse(init.body), getSettings())) };
   }
   const requestHeaders = SillyTavern.getContext().getRequestHeaders();
   const controller = new AbortController();
@@ -24141,6 +24169,7 @@ var init_client = __esm({
     init_settings();
     init_chat_reset_state();
     init_request_error();
+    init_task_request();
     API_ROOT = "/api/plugins/echoes-memory";
     REQUEST_TIMEOUT_MS = 6e4;
     echoesApi = {
@@ -24261,7 +24290,7 @@ var init_client = __esm({
         const result = await requestJson("/memory/extractions", {
           method: "POST",
           body: JSON.stringify(input2)
-        });
+        }, isPreparedTaskRequest(input2));
         return result.job;
       },
       async resetChatRetrieval(chatId) {
@@ -24314,7 +24343,7 @@ var init_client = __esm({
         const result = await requestJson("/status/updates", {
           method: "POST",
           body: JSON.stringify(input2)
-        });
+        }, isPreparedTaskRequest(input2));
         return result.job;
       },
       async upsertRetrievalDocuments(input2) {
@@ -24406,7 +24435,7 @@ var init_client = __esm({
 
 // src/shared/build-info.ts
 init_domain();
-var ECHOES_BUILD_INFO = { appVersion: "4.2.3", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
+var ECHOES_BUILD_INFO = { appVersion: "4.2.4", apiProtocolVersion: API_PROTOCOL_VERSION, service: "echoes-memory" };
 
 // src/extension/summary/summary-coordinator.ts
 init_summary_prompts();
@@ -24529,9 +24558,9 @@ function summarySuffix(slices, batchNumber, messages2) {
   });
 }
 
-// src/extension/worldbook/summary-worldbook.ts
-init_adaptive_batches();
+// src/extension/summary/stage-overviews.ts
 init_batch_overview();
+init_schemas3();
 
 // src/shared/source-hash.ts
 init_crypto_compat();
@@ -24539,6 +24568,98 @@ async function sourceMessagesHash(messages2) {
   const value = JSON.stringify(messages2.map(({ id, role: role2, content }) => ({ id, role: role2, content })));
   return sha256Hex(value);
 }
+
+// src/extension/summary/stage-overviews.ts
+function orderedBatches(state, messages2) {
+  const batches = /* @__PURE__ */ new Map();
+  for (const slice of state.slices) {
+    if (slice.batch.purpose !== "supplement" && !batches.has(slice.batch.id)) batches.set(slice.batch.id, slice.batch);
+  }
+  const { compare: compare3 } = createBatchOrder(messages2);
+  return [...batches.values()].sort((left, right) => compare3(left, right) || left.batchNumber - right.batchNumber || left.id.localeCompare(right.id));
+}
+function planStageMerge(state, messages2, threshold, mergeCount) {
+  const overviews = new Map(state.batchOverviews?.map((overview) => [overview.batch.id, overview]));
+  const stages = (state.stageOverviews ?? []).map((stage) => ({ stage, invalid: stageInvalidReason(stage, overviews) }));
+  const covered = new Set(stages.flatMap(({ stage, invalid }) => invalid ? [] : stage.sources.map((source) => source.batchId)));
+  const batches = orderedBatches(state, messages2);
+  const uncovered = batches.filter((batch) => !covered.has(batch.id) && overviews.get(batch.id)?.enabled !== false).length;
+  const plan = { uncovered, threshold, mergeCount, next: null, stages };
+  if (threshold <= 0 || uncovered <= threshold) return plan;
+  let run = [];
+  for (const batch of batches) {
+    if (covered.has(batch.id)) {
+      run = [];
+      continue;
+    }
+    const overview = overviews.get(batch.id);
+    if (overview?.enabled === false) {
+      run = [];
+      continue;
+    }
+    if (!overviewMergeable(overview)) {
+      return { ...plan, blocked: `\u6279\u6B21 ${batch.batchNumber} \u7684\u6279\u6B21\u603B\u7ED3\u5C1A\u672A\u5C31\u7EEA\uFF0C\u9636\u6BB5\u5408\u5E76\u505C\u5728\u8FD9\u91CC\u3002\u8BF7\u5148\u8865\u751F\u6210\u8FD9\u4E00\u6279\u7684\u6279\u6B21\u603B\u7ED3\u3002` };
+    }
+    run.push(overview);
+    if (run.length === mergeCount) return { ...plan, next: run };
+  }
+  return { ...plan, blocked: `\u6CA1\u6709\u8FDE\u7EED ${mergeCount} \u4E2A\u53EF\u5408\u5E76\u7684\u6279\u6B21\u603B\u7ED3\u3002` };
+}
+function assertStageSources(state, sources2, messages2 = []) {
+  const ids = sources2.map((source) => source.batch.id);
+  const order = orderedBatches(state, messages2).map((batch) => batch.id);
+  const start = order.indexOf(ids[0] ?? "");
+  if (sources2.length < 2 || new Set(ids).size !== ids.length || start < 0 || order.slice(start, start + ids.length).join("\0") !== ids.join("\0")) {
+    throw new Error("\u9636\u6BB5\u6765\u6E90\u5FC5\u987B\u662F\u8FDE\u7EED\u4E14\u4E0D\u91CD\u590D\u7684\u6279\u6B21\uFF0C\u4E0D\u80FD\u8DE8\u8FC7\u5DF2\u5173\u95ED\u7684\u6765\u6E90\u3002");
+  }
+  const current = new Map(state.batchOverviews?.map((overview) => [overview.batch.id, overview]));
+  for (const source of sources2) {
+    const fresh = current.get(source.batch.id);
+    if (!overviewMergeable(source) || !overviewMergeable(fresh) || fresh.revision !== source.revision || fresh.content !== source.content || fresh.batch.sourceHash !== source.batch.sourceHash) {
+      throw new Error(`\u6279\u6B21 ${source.batch.batchNumber} \u5DF2\u5173\u95ED\u3001\u6765\u6E90\u53D8\u5316\u6216\u6279\u6B21\u603B\u7ED3\u672A\u5C31\u7EEA\uFF0C\u9636\u6BB5\u5408\u5E76\u5DF2\u505C\u6B62\u3002`);
+    }
+  }
+}
+async function stageOverviewRequest(state, sources2, settings, messages2 = []) {
+  assertStageSources(state, sources2, messages2);
+  const workflow = settings.generationWorkflows.summary;
+  const group = settings.generationGroups.find((candidate) => candidate.id === workflow.groupId);
+  if (!group) throw new Error("\u8BF7\u5148\u914D\u7F6E\u603B\u7ED3\u751F\u6210\u7AEF\u70B9\u7EC4\u3002");
+  const sourceMessages = sources2.map((source) => ({ id: source.batch.id, role: "user", content: source.content }));
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const batch = summaryBatchMetadataSchema.parse({
+    id: "summary_stage_request",
+    batchNumber: sources2[0].batch.batchNumber,
+    startMessageId: sourceMessages[0].id,
+    endMessageId: sourceMessages.at(-1).id,
+    messageIds: sourceMessages.map((message) => message.id),
+    sourceHash: await sourceMessagesHash(sourceMessages),
+    state: "pending",
+    revision: 1,
+    createdAt: now,
+    updatedAt: now
+  });
+  const prompt = renderBatchOverviewPrompt(
+    STAGE_OVERVIEW_PROMPT,
+    stageOverviewMaxCharacters(settings.summary.batchOverviewMaxCharacters)
+  );
+  const body = sources2.map((source) => `[\u6279\u6B21 ${source.batch.batchNumber}]
+${source.content.trim()}`).join("\n\n");
+  return batchOverviewRequestSchema.parse({
+    chatId: state.catalog.chatId,
+    batch,
+    messages: sourceMessages,
+    promptMessages: [{ role: "system", content: prompt }, { role: "user", content: `<batch_overviews>
+${body}
+</batch_overviews>` }],
+    generationGroup: group,
+    failoverPolicy: workflow.failoverPolicy
+  });
+}
+
+// src/extension/worldbook/summary-worldbook.ts
+init_adaptive_batches();
+init_batch_overview();
 
 // src/extension/worldbook/batch-overview.ts
 init_batch_overview();
@@ -25427,6 +25548,7 @@ var SummaryWorldbookStore = class {
         if (!current || current.catalog.namespaceId !== expected.catalog.namespaceId || current.catalog.chatId !== SillyTavern.getContext().chatId || helper().getChatWorldbookName("current") !== expected.worldbookName) {
           throw new Error("\u804A\u5929\u6216\u603B\u7ED3\u76EE\u5F55\u5DF2\u53D8\u5316\uFF0C\u672A\u4FDD\u5B58\u9636\u6BB5\u603B\u7ED3\u3002");
         }
+        assertStageSources(current, sources2, chatMessages());
         const overviews = new Map(current.batchOverviews?.map((overview) => [overview.batch.id, overview]));
         for (const source of sources2) {
           const now2 = overviews.get(source.batch.id);
@@ -32338,8 +32460,8 @@ async function groupActivatedTables({ activated: { entries } }) {
     const stored2 = book.find((item) => item.uid === entry.uid);
     const metadata3 = stored2?.extra?.echoes;
     if (metadata3?.kind !== "row" || !entry.content.trim()) continue;
-    const types = book.find((item) => item.extra?.echoes?.kind === "catalog")?.extra?.echoes?.catalog?.types ?? [];
-    const type = types.find((item) => item.id === metadata3.typeId);
+    const types2 = book.find((item) => item.extra?.echoes?.kind === "catalog")?.extra?.echoes?.catalog?.types ?? [];
+    const type = types2.find((item) => item.id === metadata3.typeId);
     if (!type || !stored2) continue;
     const groupKey = JSON.stringify([entry.world, type.id, entry.position, entry.role, entry.depth, entry.outletName]);
     const group = groups.get(groupKey) ?? { type, rows: [] };
@@ -32423,7 +32545,7 @@ async function activatedWorldbookContent(scanText, worldbookName, excludeKind = 
   let content = String(result.worldInfoString ?? "").trim();
   if (content && worldbookName) {
     const entries = await window.TavernHelper.getWorldbook(worldbookName);
-    const types = entries.find((item) => item.extra?.echoes?.kind === "catalog")?.extra?.echoes?.catalog?.types ?? [];
+    const types2 = entries.find((item) => item.extra?.echoes?.kind === "catalog")?.extra?.echoes?.catalog?.types ?? [];
     let removedRows = false;
     for (const entry of entries) {
       const kind = entry.extra?.echoes?.kind;
@@ -32433,7 +32555,7 @@ async function activatedWorldbookContent(scanText, worldbookName, excludeKind = 
       }
     }
     if (removedRows && excludeKind("row")) {
-      for (const type of types) content = content.replaceAll(memoryTableHeader(type), "");
+      for (const type of types2) content = content.replaceAll(memoryTableHeader(type), "");
     }
     content = content.replace(/\n{3,}/g, "\n\n");
   }
@@ -32640,7 +32762,7 @@ async function prepareSummarySubRequests(options) {
   const cleaned = await preprocessSummaryMessages(options.messages, options.settings.summary.preprocessRules);
   const parts = splitSummaryMessages(cleaned, options.settings.summary.batching);
   if (parts.length === 1 && options.messages.length <= 500) return [await prepareSummaryRequest({ ...options, cleanedMessages: cleaned })];
-  const prepared = [];
+  const prepared2 = [];
   for (const [index, part] of parts.entries()) {
     const batch = {
       ...options.batch,
@@ -32657,9 +32779,9 @@ async function prepareSummarySubRequests(options) {
     };
     request.promptMessages.unshift(guide);
     request.ranges = part.ranges;
-    prepared.push(request);
+    prepared2.push(request);
   }
-  return prepared;
+  return prepared2;
 }
 async function staleSummaryBatches(state, messages2, signal) {
   const byId = new Map(messages2.map((message) => [message.id, message]));
@@ -33293,8 +33415,8 @@ init_business_regex();
 
 // src/shared/extraction-context.ts
 init_business_regex();
-function declaredAliases(row, types, rules = {}) {
-  const type = types.find((item) => item.id === row.typeId);
+function declaredAliases(row, types2, rules = {}) {
+  const type = types2.find((item) => item.id === row.typeId);
   const columns = type?.columns.filter((column) => businessRegex("aliasName", rules).test(column.name) || businessRegex("aliasId", rules).test(column.id)) ?? [];
   return [.../* @__PURE__ */ new Set([...row.aliases ?? [], ...columns.flatMap((column) => {
     const value = row.values[column.id];
@@ -33302,13 +33424,13 @@ function declaredAliases(row, types, rules = {}) {
     return typeof value === "string" ? splitBusinessText(value, "aliasSeparator", rules).map((item) => item.trim()) : [];
   }).filter(Boolean)])];
 }
-function selectExtractionRows(rows, types, query, policy, aliases) {
+function selectExtractionRows(rows, types2, query, policy, aliases) {
   if (!policy?.enabled) return { rows, omitted: [], detailCharacters: JSON.stringify(rows).length };
   const text = query.toLocaleLowerCase();
   const scored = rows.map((row, index) => ({
     row,
     index,
-    score: [row.dataName, ...aliases?.[row.id] ?? declaredAliases(row, types)].some((name) => name.length > 1 && text.includes(name.toLocaleLowerCase())) ? 100 : row.keywords.filter((word) => word.length > 1 && text.includes(word.toLocaleLowerCase())).length
+    score: [row.dataName, ...aliases?.[row.id] ?? declaredAliases(row, types2)].some((name) => name.length > 1 && text.includes(name.toLocaleLowerCase())) ? 100 : row.keywords.filter((word) => word.length > 1 && text.includes(word.toLocaleLowerCase())).length
   })).filter((item) => item.score > 0).sort((a, b) => b.score - a.score || a.index - b.index);
   const selected = [];
   const ids = /* @__PURE__ */ new Set();
@@ -33604,7 +33726,7 @@ function compareSummaryCandidates(candidates, existing, rules = {}) {
 
 // src/shared/business-regex-tasks.ts
 var businessTasks = {
-  aliases: (rows, types, rules) => Object.fromEntries(rows.map((row) => [row.id, declaredAliases(row, types, rules)])),
+  aliases: (rows, types2, rules) => Object.fromEntries(rows.map((row) => [row.id, declaredAliases(row, types2, rules)])),
   provider: parseProviderJsonObject,
   triggers: statusTriggerQueries,
   variants: supplementQueryVariants,
@@ -33681,76 +33803,6 @@ function runBusinessTask(request, signal) {
 
 // src/extension/summary/summary-coordinator.ts
 init_batch_overview();
-
-// src/extension/summary/stage-overviews.ts
-init_batch_overview();
-init_schemas3();
-function orderedBatches(state, messages2) {
-  const batches = /* @__PURE__ */ new Map();
-  for (const slice of state.slices) {
-    if (slice.batch.purpose !== "supplement" && !batches.has(slice.batch.id)) batches.set(slice.batch.id, slice.batch);
-  }
-  const { compare: compare3 } = createBatchOrder(messages2);
-  return [...batches.values()].sort((left, right) => compare3(left, right) || left.batchNumber - right.batchNumber || left.id.localeCompare(right.id));
-}
-function planStageMerge(state, messages2, threshold, mergeCount) {
-  const overviews = new Map(state.batchOverviews?.map((overview) => [overview.batch.id, overview]));
-  const stages = (state.stageOverviews ?? []).map((stage) => ({ stage, invalid: stageInvalidReason(stage, overviews) }));
-  const covered = new Set(stages.flatMap(({ stage, invalid }) => invalid ? [] : stage.sources.map((source) => source.batchId)));
-  const batches = orderedBatches(state, messages2);
-  const uncovered = batches.filter((batch) => !covered.has(batch.id)).length;
-  const plan = { uncovered, threshold, mergeCount, next: null, stages };
-  if (threshold <= 0 || uncovered <= threshold) return plan;
-  let run = [];
-  for (const batch of batches) {
-    if (covered.has(batch.id)) {
-      run = [];
-      continue;
-    }
-    const overview = overviews.get(batch.id);
-    if (!overviewMergeable(overview)) {
-      return { ...plan, blocked: `\u6279\u6B21 ${batch.batchNumber} \u7684\u6279\u6B21\u603B\u7ED3\u5C1A\u672A\u5C31\u7EEA\uFF0C\u9636\u6BB5\u5408\u5E76\u505C\u5728\u8FD9\u91CC\u3002\u8BF7\u5148\u8865\u751F\u6210\u8FD9\u4E00\u6279\u7684\u6279\u6B21\u603B\u7ED3\u3002` };
-    }
-    run.push(overview);
-    if (run.length === mergeCount) return { ...plan, next: run };
-  }
-  return { ...plan, blocked: `\u6CA1\u6709\u8FDE\u7EED ${mergeCount} \u4E2A\u53EF\u5408\u5E76\u7684\u6279\u6B21\u603B\u7ED3\u3002` };
-}
-async function stageOverviewRequest(state, sources2, settings) {
-  const workflow = settings.generationWorkflows.summary;
-  const group = settings.generationGroups.find((candidate) => candidate.id === workflow.groupId);
-  if (!group) throw new Error("\u8BF7\u5148\u914D\u7F6E\u603B\u7ED3\u751F\u6210\u7AEF\u70B9\u7EC4\u3002");
-  const messages2 = sources2.map((source) => ({ id: source.batch.id, role: "user", content: source.content }));
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  const batch = summaryBatchMetadataSchema.parse({
-    id: "summary_stage_request",
-    batchNumber: sources2[0].batch.batchNumber,
-    startMessageId: messages2[0].id,
-    endMessageId: messages2.at(-1).id,
-    messageIds: messages2.map((message) => message.id),
-    sourceHash: await sourceMessagesHash(messages2),
-    state: "pending",
-    revision: 1,
-    createdAt: now,
-    updatedAt: now
-  });
-  const prompt = renderBatchOverviewPrompt(
-    STAGE_OVERVIEW_PROMPT,
-    stageOverviewMaxCharacters(settings.summary.batchOverviewMaxCharacters)
-  );
-  const body = sources2.map((source) => `[\u6279\u6B21 ${source.batch.batchNumber}]
-${source.content.trim()}`).join("\n\n");
-  return batchOverviewRequestSchema.parse({
-    chatId: state.catalog.chatId,
-    batch,
-    messages: messages2,
-    promptMessages: [{ role: "system", content: prompt }, { role: "user", content: `<batch_overviews>
-${body}
-</batch_overviews>` }],
-    generationGroup: group,
-    failoverPolicy: workflow.failoverPolicy
-  });
-}
 
 // src/extension/summary/summary-draft.ts
 init_crypto_compat();
@@ -34294,6 +34346,138 @@ init_client();
 init_request_error();
 init_settings();
 init_chat_reset_state();
+
+// src/extension/tasks/job-recovery.ts
+init_crypto_compat();
+init_client();
+init_request_error();
+var JobRecoveryError = class extends Error {
+  constructor(message, category, reason, options) {
+    super(message, options);
+    this.category = category;
+    this.reason = reason;
+    this.name = "JobRecoveryError";
+  }
+  category;
+  reason;
+};
+var keyFor = (kind, chatId) => `task-active-job:${kind}:${chatId}`;
+var types = { extraction: "structured-memory-extraction", status: "status-update", summary: "summary-generation" };
+var reservations = /* @__PURE__ */ new WeakMap();
+function stable(value) {
+  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
+  if (value && typeof value === "object") {
+    const record3 = value;
+    return `{${Object.keys(record3).sort().map((key2) => `${JSON.stringify(key2)}:${stable(record3[key2])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+async function createJobIdentity(kind, chatId, worldbookName, request, writeContext) {
+  const scope2 = { version: 2, kind, chatId, worldbookName };
+  const fingerprint = await sha256Hex(stable(JSON.parse(JSON.stringify({ ...scope2, request, writeContext }))));
+  return Object.freeze({ ...scope2, fingerprint });
+}
+function same(record3, identity) {
+  const old = record3.identity;
+  return record3.version === 2 && old?.version === 2 && old.kind === identity.kind && old.chatId === identity.chatId && old.worldbookName === identity.worldbookName && old.fingerprint === identity.fingerprint;
+}
+function unchanged(current, expected) {
+  return Boolean(current && current.jobId === expected.jobId && current.createdAt === expected.createdAt && current.key === expected.key && current.identity?.fingerprint === expected.identity?.fingerprint && current.replacement?.token === expected.replacement?.token);
+}
+async function read(kind, chatId) {
+  try {
+    const record3 = await readLocalRecord(keyFor(kind, chatId));
+    if (record3 !== void 0 && (!record3 || typeof record3.jobId !== "string" || !record3.jobId)) {
+      throw new Error("\u4EFB\u52A1\u8BB0\u5F55\u683C\u5F0F\u65E0\u6548");
+    }
+    return record3;
+  } catch (cause) {
+    throw new JobRecoveryError("\u672C\u5730\u4EFB\u52A1\u8BB0\u5F55\u6682\u4E0D\u53EF\u7528\uFF0C\u5DF2\u6682\u505C\u63D0\u4EA4\u3002\u8BF7\u6062\u590D\u672C\u5730\u5B58\u50A8\u540E\u91CD\u8BD5\u3002", "manual", "storage", { cause });
+  }
+}
+async function hasActiveJob(kind, chatId) {
+  return Boolean(await read(kind, chatId));
+}
+function assertJobIdentity(job, kind, jobId = job.id) {
+  if (job.id !== jobId || job.type !== types[kind]) {
+    throw new JobRecoveryError("\u540E\u7AEF\u8FD4\u56DE\u7684\u4EFB\u52A1 ID \u6216\u7C7B\u578B\u4E0E\u6062\u590D\u8BB0\u5F55\u4E0D\u4E00\u81F4\uFF0C\u672A\u4F7F\u7528\u8BE5\u7ED3\u679C\u3002", "manual", "identity");
+  }
+}
+async function reusableJob(kind, chatId, identity, options = {}) {
+  options = { ...options, replace: options.replace === true && !options.automatic };
+  const record3 = await read(kind, chatId);
+  options.signal?.throwIfAborted();
+  if (!record3) return null;
+  if (record3.replacement && !(options.replace && !options.automatic)) {
+    throw new JobRecoveryError("\u4E0A\u6B21\u91CD\u53D1\u5DF2\u83B7\u51C6\uFF0C\u4F46\u63D0\u4EA4\u7ED3\u679C\u5C1A\u4E0D\u786E\u5B9A\uFF1B\u8BF7\u68C0\u67E5\u540E\u53F0\u4EFB\u52A1\u540E\u660E\u786E\u91CD\u8BD5\u3002", "manual", "reserved");
+  }
+  let job;
+  let lost = false;
+  try {
+    job = await getJobWithRetry(record3.jobId, options.signal, Date.now() + 6e4);
+    assertJobIdentity(job, kind, record3.jobId);
+  } catch (cause) {
+    options.signal?.throwIfAborted();
+    if (cause instanceof JobRecoveryError) throw cause;
+    if (cause instanceof EchoesRequestError && cause.details.status === 404) lost = true;
+    else {
+      const permission = cause instanceof EchoesRequestError && [401, 403].includes(cause.details.status ?? 0);
+      const retryable = cause instanceof EchoesRequestError && (cause.details.network || cause.details.timedOut || cause.details.status === 429 || (cause.details.status ?? 0) >= 500);
+      throw new JobRecoveryError(
+        permission ? "\u67E5\u8BE2\u539F\u4EFB\u52A1\u7684\u8BA4\u8BC1\u6216\u6743\u9650\u4E0D\u8DB3\uFF0C\u5DF2\u4FDD\u7559\u4EFB\u52A1\u8BB0\u5F55\u3002" : "\u6682\u65F6\u65E0\u6CD5\u67E5\u8BE2\u539F\u4EFB\u52A1\uFF0C\u5DF2\u4FDD\u7559\u4EFB\u52A1 ID\uFF1B\u6062\u590D\u65F6\u53EA\u7EE7\u7EED\u67E5\u8BE2\uFF0C\u4E0D\u91CD\u65B0\u63D0\u4EA4\u6A21\u578B\u8BF7\u6C42\u3002",
+        retryable ? "safe" : "manual",
+        permission ? "permission" : "lookup",
+        { cause }
+      );
+    }
+  }
+  options.signal?.throwIfAborted();
+  const matches = same(record3, identity);
+  if (!matches && !(options.replace && !options.automatic)) {
+    throw new JobRecoveryError("\u65E7\u4EFB\u52A1\u4E0A\u4E0B\u6587\u65E0\u6CD5\u6838\u9A8C\u6216\u5DF2\u53D8\u5316\uFF0C\u672A\u5957\u7528\u65E7\u7ED3\u679C\u3002\u8BF7\u68C0\u67E5\u540E\u4F7F\u7528\u660E\u786E\u91CD\u8BD5\u5165\u53E3\u653E\u5F03\u65E7\u4EFB\u52A1\u3002", "manual", "identity");
+  }
+  if (job && ["queued", "running"].includes(job.status)) {
+    if (matches && !options.replace) return job;
+    const cancelled = await echoesApi.cancelJob(record3.jobId);
+    options.signal?.throwIfAborted();
+    if (!cancelled.cancelled) throw new JobRecoveryError("\u539F\u4EFB\u52A1\u5C1A\u672A\u786E\u8BA4\u505C\u6B62\uFF0C\u5DF2\u4FDD\u7559\u8BB0\u5F55\uFF0C\u672A\u91CD\u65B0\u63D0\u4EA4\u3002", "manual", "identity");
+  } else if (job?.status === "succeeded" && job.result != null && matches && !options.replace) return job;
+  const category = lost || job?.status === "succeeded" && job.result == null ? "ambiguous" : job ? classifyTaskFailure(new JobFailedError(job)) : "manual";
+  if ((!options.allowResend || options.automatic && category === "ambiguous" && !options.allowAmbiguousResend) && !options.replace) {
+    if (category === "ambiguous") throw new JobRecoveryError("\u539F\u4EFB\u52A1\u53EF\u80FD\u5DF2\u5B8C\u6210\u5E76\u8BA1\u8D39\uFF0C\u4F46\u7ED3\u679C\u4E0D\u53EF\u7528\uFF1B\u5DF2\u4FDD\u7559\u8BB0\u5F55\uFF0C\u7B49\u5F85\u91CD\u8BD5\u7B56\u7565\u6216\u660E\u786E\u786E\u8BA4\u3002", category, "lost");
+    if (job) throw new JobFailedError(job);
+    throw new JobRecoveryError("\u539F\u4EFB\u52A1\u72B6\u6001\u4E0D\u660E\uFF0C\u672A\u91CD\u65B0\u63D0\u4EA4\u3002", "manual", "lost");
+  }
+  if (options.automatic && (category === "manual" || category === "ambiguous" && (record3.ambiguousRetries ?? 0) >= 1)) {
+    throw new JobRecoveryError("\u539F\u4EFB\u52A1\u9700\u8981\u660E\u786E\u786E\u8BA4\uFF0C\u6216\u53EF\u80FD\u5DF2\u8BA1\u8D39\u7684\u81EA\u52A8\u91CD\u8BD5\u6B21\u6570\u5DF2\u7528\u5B8C\u3002", "manual", "lost");
+  }
+  const token = randomUuid();
+  await updateLocalRecord(keyFor(kind, chatId), (current) => {
+    if (!unchanged(current, record3)) throw new JobRecoveryError("\u6062\u590D\u8BB0\u5F55\u5DF2\u53D8\u5316\uFF0C\u672A\u91CD\u65B0\u63D0\u4EA4\u3002", "manual", "reserved");
+    return {
+      ...record3,
+      ambiguousRetries: (record3.ambiguousRetries ?? 0) + (category === "ambiguous" ? 1 : 0),
+      replacement: { fingerprint: identity.fingerprint, token }
+    };
+  });
+  reservations.set(identity, token);
+  return null;
+}
+async function rememberActiveJob(kind, chatId, identity, jobId) {
+  await updateLocalRecord(keyFor(kind, chatId), (current) => {
+    if (current?.jobId === jobId && same(current, identity) && !current.replacement) return current;
+    if (current && (current.replacement?.token !== reservations.get(identity) || current.replacement?.fingerprint !== identity.fingerprint)) {
+      throw new JobRecoveryError("\u539F\u4EFB\u52A1\u8BB0\u5F55\u5DF2\u53D8\u5316\uFF0C\u65B0\u4EFB\u52A1 ID \u672A\u8986\u76D6\u8F83\u65B0\u7684\u6062\u590D\u8BB0\u5F55\uFF1B\u8BF7\u5728\u540E\u53F0\u4EFB\u52A1\u4E2D\u68C0\u67E5\u3002", "manual", "reserved");
+    }
+    return { version: 2, identity, jobId, createdAt: (/* @__PURE__ */ new Date()).toISOString(), ambiguousRetries: current?.ambiguousRetries ?? 0 };
+  });
+  reservations.delete(identity);
+}
+async function forgetActiveJob(kind, chatId, identity, jobId) {
+  await updateLocalRecord(keyFor(kind, chatId), (current) => current && current.jobId === jobId && same(current, identity) && !current.replacement ? void 0 : current);
+}
+
+// src/extension/tasks/task-health.ts
 var TASK_LABELS = { summary: "\u81EA\u52A8\u603B\u7ED3", extraction: "\u7ED3\u6784\u5316\u8BB0\u5FC6", status: "\u72B6\u6001\u8BB0\u5FC6" };
 var TASK_ROUTES = {
   summary: "summary/generation",
@@ -34331,9 +34515,10 @@ function worstCategory(categories) {
   return categories.reduce((worst, item) => RANK[item] > RANK[worst] ? item : worst, "safe");
 }
 function classifyTaskFailure(error62, depth = 0) {
+  if (error62 instanceof JobRecoveryError) return error62.category;
   if (error62 instanceof TaskFailureError) return error62.category;
   if (error62 instanceof JobFailedError) {
-    if (error62.status === "ambiguous") return "ambiguous";
+    if (error62.status === "ambiguous" || error62.code === "SERVER_RESTARTED_AFTER_COMPLETION") return "ambiguous";
     if (error62.status === "cancelled") return "manual";
     return error62.retryable || SAFE_JOB_CODES.has(error62.code) || /^PROVIDER_HTTP_(5\d\d|429)$/.test(error62.code) ? "safe" : "manual";
   }
@@ -34377,37 +34562,6 @@ async function getJobWithRetry(jobId, signal, deadline = Date.now() + 2 * 60 * 6
       await sleep(delay, signal);
       delay = Math.min(delay * 2, 3e4);
     }
-  }
-}
-var activeJobKey = (kind, chatId) => `task-active-job:${kind}:${chatId}`;
-async function reusableJob(kind, chatId, key2) {
-  let record3;
-  try {
-    record3 = await readLocalRecord(activeJobKey(kind, chatId));
-  } catch {
-    return null;
-  }
-  if (!record3 || record3.key !== key2) return null;
-  try {
-    const job = await getJobWithRetry(record3.jobId, void 0, Date.now() + 6e4);
-    if (["queued", "running", "succeeded"].includes(job.status)) return job;
-  } catch (error62) {
-    console.warn("[Echoes] Previous job could not be reused.", error62);
-  }
-  await forgetActiveJob(kind, chatId);
-  return null;
-}
-async function rememberActiveJob(kind, chatId, key2, jobId) {
-  try {
-    await writeLocalRecord(activeJobKey(kind, chatId), { jobId, key: key2, createdAt: (/* @__PURE__ */ new Date()).toISOString() });
-  } catch (error62) {
-    console.warn("[Echoes] Could not remember the active job.", error62);
-  }
-}
-async function forgetActiveJob(kind, chatId) {
-  try {
-    await writeLocalRecord(activeJobKey(kind, chatId), void 0);
-  } catch {
   }
 }
 var SAFE_DELAYS = [3e4, 12e4, 6e5];
@@ -34505,16 +34659,25 @@ var TaskHealthMonitor = class {
     const record3 = this.items.get(key2);
     if (automatic && (!record3 || !this.canRetry(record3))) return;
     this.clearTimer(key2);
-    if (record3) {
-      record3.retries = [...record3.retries.filter((time3) => Date.now() - Date.parse(time3) < HOUR), (/* @__PURE__ */ new Date()).toISOString()];
-      if (record3.category === "ambiguous") record3.ambiguousRetried = true;
-      await this.persist(record3);
-    }
     const allowResend = !record3 || record3.category === "safe" || record3.category === "ambiguous" && (!automatic || getSettings().taskHealth.retryAmbiguous);
+    const onResend = async () => {
+      if (isChatReset(chatId) || SillyTavern.getContext().chatId !== chatId) throw new Error("\u804A\u5929\u5DF2\u53D8\u5316\uFF0C\u672A\u91CD\u53D1\u8BF7\u6C42\u3002");
+      if (record3?.category !== "ambiguous") return;
+      const current = this.items.get(key2) ?? record3;
+      const next = { ...current, ambiguousRetried: true };
+      await this.persist(next, true);
+      record3.ambiguousRetried = true;
+      this.items.set(key2, next);
+    };
     this.retrying.add(key2);
     this.emit();
     try {
-      await handler({ automatic, allowResend });
+      if (record3) {
+        record3.retries = [...record3.retries.filter((time3) => Date.now() - Date.parse(time3) < HOUR), (/* @__PURE__ */ new Date()).toISOString()];
+        await this.persist(record3);
+        if (kind === "summary") await onResend();
+      }
+      await handler({ automatic, allowResend, allowAmbiguousResend: record3?.category === "ambiguous" && allowResend, onResend });
     } catch (error62) {
       if (!automatic) throw error62;
       console.warn(`[Echoes] Automatic ${kind} retry failed.`, error62);
@@ -34628,10 +34791,11 @@ var TaskHealthMonitor = class {
     if (!this.retrying.has(key2)) this.schedule(record3);
     this.emit();
   }
-  async persist(record3) {
+  async persist(record3, required2 = false) {
     try {
       await writeLocalRecord(recordKey(record3.kind, record3.chatId), record3);
     } catch (error62) {
+      if (required2) throw new TaskFailureError("\u672A\u80FD\u4FDD\u5B58\u53EF\u80FD\u5DF2\u8BA1\u8D39\u7684\u91CD\u8BD5\u51B3\u5B9A\uFF0C\u672A\u91CD\u65B0\u53D1\u9001\u8BF7\u6C42\u3002", "manual", { cause: error62 });
       console.warn("[Echoes] Could not save task health.", error62);
     }
   }
@@ -35396,12 +35560,12 @@ ${failures.join("\n")}`,
       if (!group) throw new Error("\u8BF7\u5148\u914D\u7F6E\u603B\u7ED3\u751F\u6210\u7AEF\u70B9\u7EC4\u3002");
       const range = messageRangeByFloor(startFloor, endFloor);
       const selected = await manualSummaryBatch(currentChatMessages(), state.catalog, range.startIndex, range.endIndex);
-      const prepared = await prepareSummarySubRequests({ ...selected, state, settings });
+      const prepared2 = await prepareSummarySubRequests({ ...selected, state, settings });
       const ids = new Set(selected.batch.messageIds);
       const existingSlices = state.slices.filter((slice) => slice.batch.state !== "stale" && slice.batch.source?.kind !== "imported" && slice.batch.messageIds.some((id) => ids.has(id))).map(({ timestamp: timestamp2, title, content, tags }) => ({ timestamp: timestamp2, title, content, tags }));
       const backgroundIds = new Set(settings.summary.promptPreset.items.filter((item) => ["character", "worldbook", "persona"].includes(item.kind)).map((item) => item.id));
       const requests = [];
-      for (const part of prepared) {
+      for (const part of prepared2) {
         const messages2 = part.cleanedMessages;
         requests.push(summaryCoverageRequestSchema.parse({
           chatId,
@@ -35445,7 +35609,7 @@ ${failures.join("\n")}`,
         for (const finding of result.findings) {
           const message = initial.messages[finding.region - 1];
           if (!message) throw new Error("\u8986\u76D6\u68C0\u67E5\u8FD4\u56DE\u4E86\u4E0D\u5B58\u5728\u7684\u5185\u5BB9\u533A\u57DF\u3002");
-          const partRange = prepared[index].ranges?.[finding.region - 1];
+          const partRange = prepared2[index].ranges?.[finding.region - 1];
           review.findings.push({
             messageId: message.id,
             start: partRange?.start ?? 0,
@@ -35914,18 +36078,32 @@ ${failures.join("\n")}`,
     return { state, merged };
   }
   async generateStageOverview(state, sources2, decide, signal) {
-    const initialRequest = await stageOverviewRequest(state, sources2, getSettings());
+    const assertCurrent = async () => {
+      signal.throwIfAborted();
+      if (SillyTavern.getContext().chatId !== state.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) {
+        throw new Error("\u804A\u5929\u6216\u4E16\u754C\u4E66\u5DF2\u53D8\u5316\uFF0C\u9636\u6BB5\u5408\u5E76\u5DF2\u505C\u6B62\u3002");
+      }
+      const fresh = await this.store.inspect(state.worldbookName);
+      if (fresh.catalog.namespaceId !== state.catalog.namespaceId) throw new Error("\u603B\u7ED3\u76EE\u5F55\u5DF2\u53D8\u5316\uFF0C\u9636\u6BB5\u5408\u5E76\u5DF2\u505C\u6B62\u3002");
+      assertStageSources(fresh, sources2, currentChatMessages());
+      for (const source of sources2) await this.assertCurrentSourceUnchanged(fresh, source.batch);
+      signal.throwIfAborted();
+    };
+    const initialRequest = await stageOverviewRequest(state, sources2, getSettings(), currentChatMessages());
     let request = initialRequest;
     let result;
     while (true) {
       signal.throwIfAborted();
+      await assertCurrent();
       result = (await this.trackedJob(state.catalog.chatId, () => echoesApi.startBatchOverview(request), signal)).result;
+      await assertCurrent();
       if (!result.decisionRequired) break;
       if (!await abortable(decide(result.decisionRequired), signal)) throw new DOMException("\u9636\u6BB5\u603B\u7ED3\u5DF2\u505C\u6B62\u3002", "AbortError");
       request = { ...initialRequest, resumeAfterEndpointId: result.decisionRequired.failedEndpointId };
     }
     if (result.outcome !== "completed" || !result.content?.trim()) throw new Error("\u9636\u6BB5\u603B\u7ED3\u672A\u8FD4\u56DE\u6B63\u6587\u3002");
     signal.throwIfAborted();
+    await assertCurrent();
     const updated = await this.store.saveStageOverview(state, sources2, result.content.trim(), signal);
     this.emitProgress(updated);
     return updated;
@@ -36000,8 +36178,8 @@ ${failures.join("\n")}`,
     const workflow = settings.generationWorkflows.summary;
     const group = settings.generationGroups.find((candidate) => candidate.id === workflow.groupId);
     if (!group) throw new Error("\u8BF7\u5148\u914D\u7F6E\u603B\u7ED3\u751F\u6210\u7AEF\u70B9\u7EC4\u3002");
-    const prepared = await prepareSummarySubRequests({ batch, messages: messages2, state, settings });
-    const requests = prepared.map((part) => {
+    const prepared2 = await prepareSummarySubRequests({ batch, messages: messages2, state, settings });
+    const requests = prepared2.map((part) => {
       const request = {
         chatId: state.catalog.chatId,
         batch: part.batch,
@@ -36377,9 +36555,9 @@ async function sha2562(value) {
 function structuredExtractionMessageHash(messages2) {
   return sha2562(messages2.map(({ id, role: role2, content }) => ({ id, role: role2, content })));
 }
-function structuredExtractionContextHash(types, rows) {
+function structuredExtractionContextHash(types2, rows) {
   return sha2562({
-    types: [...types].sort((left, right) => left.id.localeCompare(right.id)).map((type) => ({
+    types: [...types2].sort((left, right) => left.id.localeCompare(right.id)).map((type) => ({
       id: type.id,
       templateId: type.templateId,
       name: type.name,
@@ -37116,10 +37294,10 @@ var WorldbookMemoryStore = class {
           throw new Error("The structured-memory checkpoint changed while extraction was running.");
         }
         const state = this.stateFromEntries(options.worldbookName, entries);
-        const types = state.catalog.types.filter((type) => type.enabled);
-        const typeIds = new Set(types.map((type) => type.id));
+        const types2 = state.catalog.types.filter((type) => type.enabled);
+        const typeIds = new Set(types2.map((type) => type.id));
         const rows = state.rows.filter((row) => typeIds.has(row.typeId));
-        if (await structuredExtractionContextHash(types, rows) !== options.batch.contextHash) {
+        if (await structuredExtractionContextHash(types2, rows) !== options.batch.contextHash) {
           throw new Error("Structured-memory types or rows changed while extraction was running.");
         }
         options.signal?.throwIfAborted();
@@ -37272,10 +37450,10 @@ var WorldbookMemoryStore = class {
     }, { render: "debounced" });
     return summary;
   }
-  availableTypeName(types, desired) {
+  availableTypeName(types2, desired) {
     let candidate = desired;
     let suffix = 2;
-    while (types.some((type) => type.name.toLocaleLowerCase() === candidate.toLocaleLowerCase())) {
+    while (types2.some((type) => type.name.toLocaleLowerCase() === candidate.toLocaleLowerCase())) {
       const ending = ` ${suffix}`;
       candidate = desired.slice(0, 120 - ending.length) + ending;
       suffix += 1;
@@ -37438,10 +37616,10 @@ async function prepareCleaningExtraction(state, settings, options) {
   if (options.instructions.length > 2e4) throw new Error("\u8865\u5145\u8981\u6C42\u6700\u591A 20000 \u5B57\u7B26\u3002");
   const { messages: messages2 } = messageRangeByFloor(options.startFloor, options.endFloor);
   const selection = await buildSelection(state, "cleaning", messages2);
-  const prepared = await prepareSelectedExtraction(state, settings, selection);
-  prepared.request.backgroundMessages = await extractionBackground(selection.messages, state.worldbookName);
-  prepared.request.additionalInstructions = options.instructions.trim();
-  return prepared;
+  const prepared2 = await prepareSelectedExtraction(state, settings, selection);
+  prepared2.request.backgroundMessages = await extractionBackground(selection.messages, state.worldbookName);
+  prepared2.request.additionalInstructions = options.instructions.trim();
+  return prepared2;
 }
 function checkpointStart(state, messages2) {
   const checkpoint = state.catalog.lastProcessedMessageId;
@@ -37454,17 +37632,17 @@ function extractionPendingMessageCount(state, messages2 = currentExtractionMessa
   return Math.max(0, messages2.length - checkpointStart(state, messages2));
 }
 function extractionContext(state) {
-  const types = state.catalog.types.filter((type) => type.enabled);
-  const typeIds = new Set(types.map((type) => type.id));
+  const types2 = state.catalog.types.filter((type) => type.enabled);
+  const typeIds = new Set(types2.map((type) => type.id));
   return {
-    types,
+    types: types2,
     rows: state.rows.filter((row) => typeIds.has(row.typeId))
   };
 }
 async function buildSelection(state, mode, messages2) {
-  const { types, rows } = extractionContext(state);
+  const { types: types2, rows } = extractionContext(state);
   const sourceHash = await structuredExtractionMessageHash(messages2);
-  const contextHash = await structuredExtractionContextHash(types, rows);
+  const contextHash = await structuredExtractionContextHash(types2, rows);
   const batch = {
     id: `extraction_${sourceHash.slice(0, 48)}`,
     mode,
@@ -37524,17 +37702,17 @@ function resolvePromptBlocks(state) {
   });
 }
 async function prepareSelectedExtraction(state, settings, selection, resumeAfterEndpointId) {
-  const { types, rows } = extractionContext(state);
-  if (types.length === 0) throw new Error("\u5F53\u524D\u5BF9\u8BDD\u6CA1\u6709\u6FC0\u6D3B\u7684\u8BB0\u5FC6\u7C7B\u578B\u3002");
+  const { types: types2, rows } = extractionContext(state);
+  if (types2.length === 0) throw new Error("\u5F53\u524D\u5BF9\u8BDD\u6CA1\u6709\u6FC0\u6D3B\u7684\u8BB0\u5FC6\u7C7B\u578B\u3002");
   const promptBlocks = resolvePromptBlocks(state);
   const promptMessages = promptBlocks.map(({ role: role2, content }) => ({ role: role2, content }));
   const workflow = settings.generationWorkflows.extraction;
   const generationGroup = settings.generationGroups.find((group) => group.id === workflow.groupId);
   if (!generationGroup) throw new Error("\u8BF7\u5148\u4E3A\u7ED3\u6784\u5316\u8BB0\u5FC6\u914D\u7F6E\u751F\u6210\u7AEF\u70B9\u7EC4\u3002");
-  const aliases = await runBusinessTask({ task: "aliases", args: [rows, types, settings.businessRegex] });
+  const aliases = await runBusinessTask({ task: "aliases", args: [rows, types2, settings.businessRegex] });
   const runtimePreview = JSON.stringify({
     batch: selection.batch,
-    ...extractionRuntimeInput({ types, rows, batch: selection.batch, messages: selection.messages, contextPolicy: settings.extractionContext }, aliases)
+    ...extractionRuntimeInput({ types: types2, rows, batch: selection.batch, messages: selection.messages, contextPolicy: settings.extractionContext }, aliases)
   }, null, 2);
   return {
     request: {
@@ -37543,7 +37721,7 @@ async function prepareSelectedExtraction(state, settings, selection, resumeAfter
       contextPolicy: settings.extractionContext,
       chatId: state.catalog.chatId,
       batch: selection.batch,
-      types,
+      types: types2,
       rows,
       promptMessages,
       backgroundMessages: [],
@@ -37567,12 +37745,13 @@ async function prepareExtraction(state, settings, mode = "manual", resumeAfterEn
       mode === "auto" ? "\u5C1A\u672A\u8FBE\u5230\u81EA\u52A8\u63D0\u53D6\u9608\u503C\uFF0C\u6216\u9608\u503C\u4E4B\u540E\u7684 AI \u56DE\u590D\u8FD8\u6CA1\u6709\u540E\u7EED\u7528\u6237\u6D88\u606F\u786E\u8BA4\u3002" : "\u4E0B\u4E00\u6279\u4E2D\u6CA1\u6709\u53EF\u63D0\u4EA4\u7684\u7528\u6237\u6D88\u606F\u3002"
     );
   }
-  const prepared = await prepareSelectedExtraction(state, settings, selection, resumeAfterEndpointId);
-  prepared.request.backgroundMessages = await extractionBackground(selection.messages, state.worldbookName);
-  return prepared;
+  const prepared2 = await prepareSelectedExtraction(state, settings, selection, resumeAfterEndpointId);
+  prepared2.request.backgroundMessages = await extractionBackground(selection.messages, state.worldbookName);
+  return prepared2;
 }
 
 // src/extension/memory/extraction-coordinator.ts
+init_task_request();
 var TERMINAL_STATES2 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
 function sleep2(durationMs) {
   return new Promise((resolve) => setTimeout(resolve, durationMs));
@@ -37599,10 +37778,10 @@ async function waitForJob2(initial, onUpdate, signal) {
   if (job.status !== "succeeded" || !job.result) throw new JobFailedError(job);
   return job;
 }
-function currentBatchMessages(prepared) {
-  if (SillyTavern.getContext().chatId !== prepared.request.chatId) return null;
+function currentBatchMessages(prepared2) {
+  if (SillyTavern.getContext().chatId !== prepared2.request.chatId) return null;
   const byId = new Map(currentExtractionMessages().map((message) => [message.id, message]));
-  const messages2 = prepared.batch.messageIds.map((id) => byId.get(id));
+  const messages2 = prepared2.batch.messageIds.map((id) => byId.get(id));
   if (messages2.some((message) => !message)) return [];
   return messages2;
 }
@@ -37667,11 +37846,18 @@ var ExtractionCoordinator = class {
   async retryCurrent() {
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) return;
+    const replace = await hasActiveJob("extraction", chatId);
+    if (replace && !await confirmAction({
+      title: "\u653E\u5F03\u65E7\u7ED3\u679C\u5E76\u91CD\u65B0\u63D0\u53D6\uFF1F",
+      cost: true,
+      message: "\u65E7\u4EFB\u52A1\u5C06\u5148\u88AB\u67E5\u8BE2\uFF1B\u4ECD\u5728\u8FD0\u884C\u65F6\u4F1A\u8BF7\u6C42\u505C\u6B62\u3002\u5DF2\u5B8C\u6210\u6216\u65E0\u6CD5\u6838\u9A8C\u7684\u7ED3\u679C\u5C06\u88AB\u653E\u5F03\uFF0C\u91CD\u65B0\u63D0\u4EA4\u53EF\u80FD\u518D\u6B21\u8BA1\u8D39\u3002",
+      confirmLabel: "\u91CD\u65B0\u63D0\u53D6"
+    })) return;
     const mode = this.reviews.get(chatId)?.prepared.batch.mode ?? this.traces.get(chatId)?.batch?.mode ?? "manual";
     this.reviews.delete(chatId);
     this.pauses.delete(chatId);
     this.emit(true);
-    await this.start(mode, true);
+    await this.start(mode, true, { replace, allowResend: replace });
   }
   /** Retry entry used by task health. Automatic retries still respect the automation switch. */
   async recoverAutomatic(options) {
@@ -37679,7 +37865,7 @@ var ExtractionCoordinator = class {
     if (!chatId || this.isRunning(chatId) || this.reviews.has(chatId)) return;
     if (!options.automatic) return this.retryCurrent();
     this.pauses.delete(chatId);
-    await this.start("auto");
+    await this.start("auto", false, options);
   }
   prepareChatReset(chatId) {
     this.rerunAutomatic.delete(chatId);
@@ -37712,7 +37898,6 @@ var ExtractionCoordinator = class {
     this.controls.get(chatId)?.abort(new DOMException("Extraction stopped.", "AbortError"));
     updateStoppedState();
     await taskHealth.succeed("extraction", chatId);
-    await forgetActiveJob("extraction", chatId);
     if (!jobId) return;
     try {
       const result = await echoesApi.cancelJob(jobId);
@@ -37743,6 +37928,7 @@ var ExtractionCoordinator = class {
       operations,
       jobId: review.jobId
     });
+    await forgetActiveJob("extraction", chatId, review.jobIdentity, review.jobId);
     this.reviews.delete(chatId);
     this.pauses.delete(chatId);
     await taskHealth.succeed("extraction", chatId);
@@ -37793,7 +37979,7 @@ var ExtractionCoordinator = class {
       this.emit(true);
     }
   }
-  start(mode, userInitiated = false) {
+  start(mode, userInitiated = false, recovery = {}) {
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId || isChatReset(chatId)) return Promise.resolve();
     if (this.checkpointUpdates.has(chatId)) {
@@ -37810,7 +37996,7 @@ var ExtractionCoordinator = class {
     const control = new AbortController();
     this.controls.set(chatId, control);
     this.activeModes.set(chatId, mode);
-    const operation = this.run(mode, userInitiated, control.signal).finally(() => {
+    const operation = this.run(mode, userInitiated, control.signal, recovery).finally(() => {
       if (this.active.get(chatId) === operation) this.active.delete(chatId);
       const shouldRerun = this.rerunAutomatic.delete(chatId);
       this.activeJobIds.delete(chatId);
@@ -37827,7 +38013,7 @@ var ExtractionCoordinator = class {
     this.emit();
     return operation;
   }
-  async run(mode, userInitiated, signal) {
+  async run(mode, userInitiated, signal, recovery) {
     const lockedChatId = SillyTavern.getContext().chatId;
     const continueAutomatically = mode === "auto";
     let firstBatch = true;
@@ -37840,8 +38026,8 @@ var ExtractionCoordinator = class {
         if (state.catalog.chatId !== lockedChatId) throw new Error("\u7ED3\u6784\u5316\u8BB0\u5FC6\u4E16\u754C\u4E66\u4E0E\u5F53\u524D\u804A\u5929\u4E0D\u5339\u914D\u3002");
         const cleaning = this.cleaningOptions.get(lockedChatId);
         if (mode === "cleaning" && !cleaning) throw new Error("\u6E05\u6D17\u8303\u56F4\u5DF2\u4E0D\u5B58\u5728\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9\u697C\u5C42\u3002");
-        const prepared = mode === "cleaning" ? await prepareCleaningExtraction(state, getSettings(), cleaning) : await prepareExtraction(state, getSettings(), mode);
-        const outcome = await this.executePrepared(state, prepared, signal);
+        const prepared2 = mode === "cleaning" ? await prepareCleaningExtraction(state, getSettings(), cleaning) : await prepareExtraction(state, getSettings(), mode);
+        const outcome = await this.executePrepared(state, prepared2, signal, firstBatch ? recovery : {});
         if (outcome !== "committed") return;
         firstBatch = false;
       } catch (error62) {
@@ -37873,15 +38059,15 @@ var ExtractionCoordinator = class {
       mode = "auto";
     }
   }
-  async executePrepared(state, prepared, signal) {
+  async executePrepared(state, prepared2, signal, recovery = {}) {
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
     let attempts = [];
-    let request = structuredClone(prepared.request);
-    this.traces.set(prepared.request.chatId, {
-      chatId: prepared.request.chatId,
+    let request = structuredClone(prepared2.request);
+    this.traces.set(prepared2.request.chatId, {
+      chatId: prepared2.request.chatId,
       worldbookName: state.worldbookName,
       state: "running",
-      batch: prepared.batch,
+      batch: prepared2.batch,
       startedAt,
       applied: 0,
       rejected: 0,
@@ -37891,27 +38077,40 @@ var ExtractionCoordinator = class {
     this.emit();
     while (true) {
       signal.throwIfAborted();
-      const chatId = prepared.request.chatId;
-      const jobKey = `${prepared.batch.id}:${request.resumeAfterEndpointId ?? ""}`;
-      const reused = prepared.batch.mode === "cleaning" ? null : await reusableJob("extraction", chatId, jobKey);
-      const accepted = (reused ? Promise.resolve(reused) : echoesApi.startExtraction(request)).then(async (initial2) => {
-        if (prepared.batch.mode !== "cleaning") await rememberActiveJob("extraction", chatId, jobKey, initial2.id);
+      const chatId = prepared2.request.chatId;
+      const frozen = prepareTaskRequest("/memory/extractions", request);
+      const identity = await createJobIdentity(
+        "extraction",
+        chatId,
+        state.worldbookName,
+        frozen,
+        { expectedCheckpoint: prepared2.expectedCheckpoint, contextHash: prepared2.batch.contextHash }
+      );
+      const reused = await reusableJob("extraction", chatId, identity, { ...recovery, signal });
+      if (!reused) await recovery.onResend?.();
+      signal.throwIfAborted();
+      if (SillyTavern.getContext().chatId !== chatId || window.TavernHelper?.getChatWorldbookName("current") !== state.worldbookName) {
+        throw new Error("\u804A\u5929\u6216\u4E16\u754C\u4E66\u5DF2\u53D8\u5316\uFF0C\u672A\u63D0\u4EA4\u7ED3\u6784\u5316\u8BB0\u5FC6\u8BF7\u6C42\u3002");
+      }
+      const accepted = (reused ? Promise.resolve(reused) : echoesApi.startExtraction(frozen)).then(async (initial2) => {
+        assertJobIdentity(initial2, "extraction");
+        await rememberActiveJob("extraction", chatId, identity, initial2.id);
         if (signal.aborted) {
           void echoesApi.cancelJob(initial2.id).catch((error62) => console.error("[Echoes] Failed to cancel late structured-memory job.", error62));
         } else {
-          this.activeJobIds.set(prepared.request.chatId, initial2.id);
+          this.activeJobIds.set(prepared2.request.chatId, initial2.id);
         }
         return initial2;
       });
       const initial = await abortable2(accepted, signal);
       const job = await waitForJob2(initial, (current) => {
-        if (TERMINAL_STATES2.has(current.status)) void forgetActiveJob("extraction", chatId);
-        this.activeJobIds.set(prepared.request.chatId, current.id);
-        this.traces.set(prepared.request.chatId, {
-          chatId: prepared.request.chatId,
+        assertJobIdentity(current, "extraction", initial.id);
+        this.activeJobIds.set(prepared2.request.chatId, current.id);
+        this.traces.set(prepared2.request.chatId, {
+          chatId: prepared2.request.chatId,
           worldbookName: state.worldbookName,
           state: "running",
-          batch: prepared.batch,
+          batch: prepared2.batch,
           startedAt,
           applied: 0,
           rejected: 0,
@@ -37936,12 +38135,12 @@ var ExtractionCoordinator = class {
         });
         if (!proceed) {
           const reason = "\u7528\u6237\u505C\u6B62\u4E86\u4E0D\u786E\u5B9A\u7ED3\u679C\u7EED\u63A5\uFF1B\u672C\u9875\u9762\u4F1A\u8BDD\u5185\u4E0D\u4F1A\u81EA\u52A8\u91CD\u8BD5\u3002";
-          this.pauses.set(prepared.request.chatId, reason);
-          this.traces.set(prepared.request.chatId, {
-            chatId: prepared.request.chatId,
+          this.pauses.set(prepared2.request.chatId, reason);
+          this.traces.set(prepared2.request.chatId, {
+            chatId: prepared2.request.chatId,
             worldbookName: state.worldbookName,
             state: "paused",
-            batch: prepared.batch,
+            batch: prepared2.batch,
             startedAt,
             completedAt: (/* @__PURE__ */ new Date()).toISOString(),
             applied: 0,
@@ -37952,6 +38151,7 @@ var ExtractionCoordinator = class {
           this.emit(true);
           return "paused";
         }
+        await forgetActiveJob("extraction", chatId, identity, job.id);
         request = {
           ...request,
           resumeAfterEndpointId: decision.failedEndpointId
@@ -37960,26 +38160,27 @@ var ExtractionCoordinator = class {
       }
       signal.throwIfAborted();
       const reviewItems = result.reviewItems;
-      if (prepared.batch.mode === "cleaning" || reviewItems.some((item) => item.state === "rejected")) {
-        const cleaningHasRejections = prepared.batch.mode === "cleaning" && reviewItems.some((item) => item.state === "rejected");
+      if (prepared2.batch.mode === "cleaning" || reviewItems.some((item) => item.state === "rejected")) {
+        const cleaningHasRejections = prepared2.batch.mode === "cleaning" && reviewItems.some((item) => item.state === "rejected");
         const review = {
-          chatId: prepared.request.chatId,
+          chatId: prepared2.request.chatId,
           worldbookName: state.worldbookName,
-          prepared: structuredClone(prepared),
+          prepared: structuredClone(prepared2),
           result: structuredClone(result),
           jobId: job.id,
+          jobIdentity: identity,
           selectedIndexes: cleaningHasRejections ? [] : reviewItems.filter((item) => item.state === "valid").map((item) => item.index),
           createdAt: (/* @__PURE__ */ new Date()).toISOString()
         };
-        this.reviews.set(prepared.request.chatId, review);
-        const reviewMessage = prepared.batch.mode === "cleaning" ? reviewItems.length === 0 ? "\u6A21\u578B\u672A\u63D0\u51FA\u4EFB\u4F55\u6E05\u6D17\u64CD\u4F5C\uFF0C\u73B0\u6709\u8BB0\u5FC6\u4FDD\u6301\u4E0D\u53D8\u3002" : cleaningHasRejections ? "\u6E05\u6D17\u5305\u542B\u65E0\u6548\u64CD\u4F5C\uFF0C\u672A\u81EA\u52A8\u52FE\u9009\u4EFB\u4F55\u64CD\u4F5C\uFF1B\u8BF7\u6838\u5BF9\u6574\u5408\u5185\u5BB9\u548C\u5BF9\u5E94\u5220\u9664\u9879\u3002" : "\u8BB0\u5FC6\u6E05\u6D17\u7ED3\u679C\u7B49\u5F85\u5BA1\u6838\uFF1B\u63D0\u4EA4\u540E\u4E0D\u4F1A\u79FB\u52A8\u6B63\u5E38\u63D0\u53D6\u68C0\u67E5\u70B9\u3002" : "\u6279\u6B21\u5305\u542B\u65E0\u6548\u64CD\u4F5C\uFF0C\u7B49\u5F85\u4EBA\u5DE5\u5BA1\u6838\u3002";
-        this.pauses.set(prepared.request.chatId, reviewMessage);
-        if (prepared.batch.mode !== "cleaning") await taskHealth.pause("extraction", prepared.request.chatId, reviewMessage);
-        this.traces.set(prepared.request.chatId, {
-          chatId: prepared.request.chatId,
+        this.reviews.set(prepared2.request.chatId, review);
+        const reviewMessage = prepared2.batch.mode === "cleaning" ? reviewItems.length === 0 ? "\u6A21\u578B\u672A\u63D0\u51FA\u4EFB\u4F55\u6E05\u6D17\u64CD\u4F5C\uFF0C\u73B0\u6709\u8BB0\u5FC6\u4FDD\u6301\u4E0D\u53D8\u3002" : cleaningHasRejections ? "\u6E05\u6D17\u5305\u542B\u65E0\u6548\u64CD\u4F5C\uFF0C\u672A\u81EA\u52A8\u52FE\u9009\u4EFB\u4F55\u64CD\u4F5C\uFF1B\u8BF7\u6838\u5BF9\u6574\u5408\u5185\u5BB9\u548C\u5BF9\u5E94\u5220\u9664\u9879\u3002" : "\u8BB0\u5FC6\u6E05\u6D17\u7ED3\u679C\u7B49\u5F85\u5BA1\u6838\uFF1B\u63D0\u4EA4\u540E\u4E0D\u4F1A\u79FB\u52A8\u6B63\u5E38\u63D0\u53D6\u68C0\u67E5\u70B9\u3002" : "\u6279\u6B21\u5305\u542B\u65E0\u6548\u64CD\u4F5C\uFF0C\u7B49\u5F85\u4EBA\u5DE5\u5BA1\u6838\u3002";
+        this.pauses.set(prepared2.request.chatId, reviewMessage);
+        if (prepared2.batch.mode !== "cleaning") await taskHealth.pause("extraction", prepared2.request.chatId, reviewMessage);
+        this.traces.set(prepared2.request.chatId, {
+          chatId: prepared2.request.chatId,
           worldbookName: state.worldbookName,
           state: "review_required",
-          batch: prepared.batch,
+          batch: prepared2.batch,
           startedAt,
           completedAt: (/* @__PURE__ */ new Date()).toISOString(),
           applied: 0,
@@ -37991,23 +38192,24 @@ var ExtractionCoordinator = class {
         return "review";
       }
       signal.throwIfAborted();
-      await this.verifyCurrentMessages(prepared);
+      await this.verifyCurrentMessages(prepared2);
       const summary = await this.store.commitExtractionBatch({
         worldbookName: state.worldbookName,
-        chatId: prepared.request.chatId,
-        batch: prepared.batch,
-        expectedCheckpoint: prepared.expectedCheckpoint,
+        chatId: prepared2.request.chatId,
+        batch: prepared2.batch,
+        expectedCheckpoint: prepared2.expectedCheckpoint,
         operations: result.operations,
         jobId: job.id,
         signal
       });
-      this.pauses.delete(prepared.request.chatId);
-      await taskHealth.succeed("extraction", prepared.request.chatId);
-      this.traces.set(prepared.request.chatId, {
-        chatId: prepared.request.chatId,
+      await forgetActiveJob("extraction", chatId, identity, job.id);
+      this.pauses.delete(prepared2.request.chatId);
+      await taskHealth.succeed("extraction", prepared2.request.chatId);
+      this.traces.set(prepared2.request.chatId, {
+        chatId: prepared2.request.chatId,
         worldbookName: state.worldbookName,
         state: "completed",
-        batch: prepared.batch,
+        batch: prepared2.batch,
         startedAt,
         completedAt: (/* @__PURE__ */ new Date()).toISOString(),
         applied: result.operations.length,
@@ -38019,10 +38221,10 @@ var ExtractionCoordinator = class {
       return "committed";
     }
   }
-  async verifyCurrentMessages(prepared) {
-    const messages2 = currentBatchMessages(prepared);
+  async verifyCurrentMessages(prepared2) {
+    const messages2 = currentBatchMessages(prepared2);
     if (messages2 === null) return;
-    if (messages2.length !== prepared.batch.messageIds.length || await structuredExtractionMessageHash(messages2) !== prepared.batch.sourceHash) {
+    if (messages2.length !== prepared2.batch.messageIds.length || await structuredExtractionMessageHash(messages2) !== prepared2.batch.sourceHash) {
       throw new Error("\u672A\u63D0\u4EA4\u6279\u6B21\u7684\u804A\u5929\u6D88\u606F\u5728\u4EFB\u52A1\u671F\u95F4\u53D1\u751F\u53D8\u5316\uFF0C\u7ED3\u679C\u5DF2\u4E22\u5F03\u3002");
     }
   }
@@ -38110,8 +38312,8 @@ function prepareRecallQuery(input2) {
   const chatMessages2 = messages(input2.chat);
   const blocks = input2.preset.items.flatMap((item) => {
     if (!item.enabled) return [];
-    const prepared = itemContent(item, chatMessages2, input2);
-    return prepared.content ? [{ id: item.id, title: item.title, ...prepared, sourceLength: prepared.content.length }] : [];
+    const prepared2 = itemContent(item, chatMessages2, input2);
+    return prepared2.content ? [{ id: item.id, title: item.title, ...prepared2, sourceLength: prepared2.content.length }] : [];
   });
   const maximum = input2.preset.maxCharacters ?? 12e3;
   const selected = blocks.slice(0, input2.preset.mode === "multi" ? input2.preset.maxQueries ?? 4 : blocks.length);
@@ -39322,6 +39524,7 @@ var StatusAutomation = class {
 var statusAutomation = new StatusAutomation();
 
 // src/extension/status/status-coordinator.ts
+init_task_request();
 var TERMINAL_STATES3 = /* @__PURE__ */ new Set(["succeeded", "failed", "cancelled", "ambiguous"]);
 var RECOMMENDED_STATUS_MAX_TOKENS = 1e4;
 function tidyUndoKey(chatId, namespaceId) {
@@ -39338,6 +39541,7 @@ async function waitForJob3(job, onProgress) {
   while (!TERMINAL_STATES3.has(current.status) && Date.now() < deadline) {
     await sleep3(600);
     current = await getJobWithRetry(current.id, void 0, deadline);
+    assertJobIdentity(current, "status", job.id);
     onProgress(current);
   }
   if (!TERMINAL_STATES3.has(current.status)) throw new Error("Waiting for the status task timed out.");
@@ -39436,7 +39640,7 @@ var StatusCoordinator = class {
     this.traces.delete(chatId);
     this.progress.delete(chatId);
   }
-  runAutomatic() {
+  runAutomatic(recovery = {}) {
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId || isChatReset(chatId) || statusAutomation.targetIndex() < 0) return Promise.resolve(null);
     const existing = this.pending.get(chatId);
@@ -39444,9 +39648,9 @@ var StatusCoordinator = class {
       if (!this.rerunOrigins.has(chatId)) this.rerunOrigins.set(chatId, "auto");
       return existing;
     }
-    return this.startUpdate("auto", chatId);
+    return this.startUpdate("auto", chatId, false, recovery);
   }
-  async synchronize() {
+  async synchronize(recovery = {}) {
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) return null;
     const existing = this.pending.get(chatId);
@@ -39454,7 +39658,7 @@ var StatusCoordinator = class {
       this.rerunOrigins.set(chatId, "manual");
       return existing;
     }
-    return this.startUpdate("manual", chatId);
+    return this.startUpdate("manual", chatId, false, recovery);
   }
   recompute() {
     const chatId = SillyTavern.getContext().chatId;
@@ -39646,9 +39850,9 @@ var StatusCoordinator = class {
       if (this.lastInjection === ownership) this.lastInjection = null;
     }));
   }
-  startUpdate(origin, chatId, force = false) {
+  startUpdate(origin, chatId, force = false, recovery = {}) {
     const revision2 = statusTaskRevision();
-    const operation = this.updateLatest(origin, chatId, force).finally(() => {
+    const operation = this.updateLatest(origin, chatId, force, recovery).finally(() => {
       if (this.pending.get(chatId) !== operation) return;
       this.finishTask(chatId, revision2);
     });
@@ -39838,7 +40042,7 @@ ${renderStatusYaml(before)}
     this.emit();
     return snapshot;
   }
-  async updateLatest(origin, lockedChatId, force) {
+  async updateLatest(origin, lockedChatId, force, recovery = {}) {
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
     const traceContext = {
       chatId: lockedChatId,
@@ -39849,7 +40053,7 @@ ${renderStatusYaml(before)}
     };
     try {
       if (SillyTavern.getContext().chatId !== lockedChatId) return null;
-      const snapshot = await this.performUpdateLatest(origin, startedAt, traceContext, force);
+      const snapshot = await this.performUpdateLatest(origin, startedAt, traceContext, force, recovery);
       await taskHealth.succeed("status", lockedChatId);
       return snapshot;
     } catch (error62) {
@@ -39881,9 +40085,22 @@ ${renderStatusYaml(before)}
   }
   /** Retry entry used by task health. Automatic retries still respect the auto-update switch. */
   async recoverAutomatic(options) {
-    await (options.automatic ? this.runAutomatic() : this.synchronize());
+    if (options.automatic) {
+      await this.runAutomatic(options);
+      return;
+    }
+    const chatId = SillyTavern.getContext().chatId;
+    if (!chatId || this.pending.has(chatId)) return;
+    const replace = await hasActiveJob("status", chatId);
+    if (replace && !await confirmAction({
+      title: "\u653E\u5F03\u65E7\u7ED3\u679C\u5E76\u91CD\u65B0\u66F4\u65B0\u72B6\u6001\uFF1F",
+      cost: true,
+      message: "\u65E7\u4EFB\u52A1\u5C06\u5148\u88AB\u67E5\u8BE2\uFF1B\u4ECD\u5728\u8FD0\u884C\u65F6\u4F1A\u8BF7\u6C42\u505C\u6B62\u3002\u5DF2\u5B8C\u6210\u6216\u65E0\u6CD5\u6838\u9A8C\u7684\u7ED3\u679C\u5C06\u88AB\u653E\u5F03\uFF0C\u91CD\u65B0\u63D0\u4EA4\u53EF\u80FD\u518D\u6B21\u8BA1\u8D39\u3002",
+      confirmLabel: "\u91CD\u65B0\u66F4\u65B0"
+    })) return;
+    await this.synchronize({ replace, allowResend: replace });
   }
-  async performUpdateLatest(origin, startedAt, traceContext, force) {
+  async performUpdateLatest(origin, startedAt, traceContext, force, recovery) {
     const revision2 = statusTaskRevision();
     const state = await this.load();
     const protection = this.writeProtection(state, revision2);
@@ -39921,13 +40138,13 @@ ${renderStatusYaml(before)}
     const previous = await this.verifiedSnapshot(previousRecord);
     const baseState = previous?.state ?? state.catalog.profile.initialState;
     const baseStateHash = await statusStateHash(baseState);
-    const prepared = await prepareStatusRequest({
+    const prepared2 = await prepareStatusRequest({
       catalog: state.catalog,
       baseSnapshot: previous,
       targetMessageIndex: targetIndex
     });
-    traceContext.sourceMessageIds = prepared.originalMessages.map((message) => message.id);
-    const matchingSource = existing?.sourceHash === prepared.sourceHash && existing.targetMessageId === targetMessageId && existing.targetSwipeId === targetSwipeId;
+    traceContext.sourceMessageIds = prepared2.originalMessages.map((message) => message.id);
+    const matchingSource = existing?.sourceHash === prepared2.sourceHash && existing.targetMessageId === targetMessageId && existing.targetSwipeId === targetSwipeId;
     const matchingBase = existing?.parentSnapshotId === previous?.snapshotId && existing?.baseStateHash === baseStateHash;
     const manualOverride = existing && (existing.manualOverride ?? existing.origin !== "auto");
     if (!force && matchingSource && (matchingBase || manualOverride)) {
@@ -39936,7 +40153,7 @@ ${renderStatusYaml(before)}
         namespaceId: state.catalog.namespaceId,
         targetMessageId,
         targetSwipeId,
-        sourceMessageIds: prepared.originalMessages.map((message) => message.id),
+        sourceMessageIds: prepared2.originalMessages.map((message) => message.id),
         startedAt,
         completedAt: (/* @__PURE__ */ new Date()).toISOString(),
         outcome: "unchanged",
@@ -39947,15 +40164,16 @@ ${renderStatusYaml(before)}
       return existing;
     }
     const settings = getSettings();
-    if (prepared.rangeNotice) {
-      toastr.warning(prepared.rangeNotice, "Echoes \u72B6\u6001\u66F4\u65B0\u8303\u56F4");
-      console.warn("[Echoes] Status update range limited.", prepared.rangeNotice);
+    if (prepared2.rangeNotice) {
+      toastr.warning(prepared2.rangeNotice, "Echoes \u72B6\u6001\u66F4\u65B0\u8303\u56F4");
+      console.warn("[Echoes] Status update range limited.", prepared2.rangeNotice);
     }
     const workflow = settings.generationWorkflows.status;
     const group = settings.generationGroups.find((candidate) => candidate.id === workflow.groupId);
     if (!group) throw new Error("\u8BF7\u5148\u914D\u7F6E\u72B6\u6001\u66F4\u65B0\u4F7F\u7528\u7684\u751F\u6210\u7AEF\u70B9\u7EC4\u3002");
     let resumeAfterEndpointId;
     let result;
+    let completedJob;
     while (true) {
       protection.guard();
       const request = {
@@ -39965,28 +40183,36 @@ ${renderStatusYaml(before)}
         targetSwipeId,
         baseState,
         baseStateHash,
-        promptMessages: prepared.promptMessages,
-        messages: prepared.originalMessages,
+        promptMessages: prepared2.promptMessages,
+        messages: prepared2.originalMessages,
         validation: serverStatusValidation(state.catalog.profile.validation),
         generationGroup: group,
         failoverPolicy: workflow.failoverPolicy,
         ...resumeAfterEndpointId ? { resumeAfterEndpointId } : {}
       };
-      const jobKey = [targetMessageId, targetSwipeId, prepared.sourceHash, baseStateHash, resumeAfterEndpointId ?? ""].join(":");
-      const reused = await reusableJob("status", state.catalog.chatId, jobKey);
+      const frozen = prepareTaskRequest("/status/updates", request, settings);
+      const identity = await createJobIdentity("status", state.catalog.chatId, state.worldbookName, frozen, {
+        profile: state.catalog.profile,
+        customVariables: state.catalog.customVariables,
+        expectedRawSnapshot,
+        expectedParent: previousRecord?.snapshot.snapshotId ?? null
+      });
+      const reused = await reusableJob("status", state.catalog.chatId, identity, recovery);
+      protection.guard();
       if (origin === "auto" && statusAutomation.targetIndex() !== targetIndex) return skip("\u7B49\u5F85 AI \u56DE\u590D\u751F\u6210\u5B8C\u6210\u540E\u66F4\u65B0\u72B6\u6001\u3002", false);
-      const job = reused ?? await echoesApi.startStatusUpdate(request);
-      await rememberActiveJob("status", state.catalog.chatId, jobKey, job.id);
-      try {
-        result = (await waitForJob3(job, (current) => {
-          this.progress.set(state.catalog.chatId, current.message);
-          this.emit();
-        })).result;
-      } catch (error62) {
-        if (error62 instanceof JobFailedError) await forgetActiveJob("status", state.catalog.chatId);
-        throw error62;
-      }
-      await forgetActiveJob("status", state.catalog.chatId);
+      await protection.validateBeforeWrite();
+      if (origin === "auto" && statusAutomation.targetIndex() !== targetIndex) return skip("\u7B49\u5F85 AI \u56DE\u590D\u751F\u6210\u5B8C\u6210\u540E\u66F4\u65B0\u72B6\u6001\u3002", false);
+      if (!reused) await recovery.onResend?.();
+      protection.guard();
+      if (origin === "auto" && statusAutomation.targetIndex() !== targetIndex) return skip("\u7B49\u5F85 AI \u56DE\u590D\u751F\u6210\u5B8C\u6210\u540E\u66F4\u65B0\u72B6\u6001\u3002", false);
+      const job = reused ?? await echoesApi.startStatusUpdate(frozen);
+      assertJobIdentity(job, "status");
+      await rememberActiveJob("status", state.catalog.chatId, identity, job.id);
+      result = (await waitForJob3(job, (current) => {
+        this.progress.set(state.catalog.chatId, current.message);
+        this.emit();
+      })).result;
+      completedJob = { identity, id: job.id };
       protection.guard();
       if (!result.decisionRequired) break;
       if (!await decideAmbiguous(result.decisionRequired)) {
@@ -39995,7 +40221,7 @@ ${renderStatusYaml(before)}
           namespaceId: state.catalog.namespaceId,
           targetMessageId,
           targetSwipeId,
-          sourceMessageIds: prepared.originalMessages.map((message) => message.id),
+          sourceMessageIds: prepared2.originalMessages.map((message) => message.id),
           startedAt,
           completedAt: (/* @__PURE__ */ new Date()).toISOString(),
           outcome: "decision_required",
@@ -40005,6 +40231,8 @@ ${renderStatusYaml(before)}
         });
         return null;
       }
+      await protection.validateBeforeWrite();
+      await forgetActiveJob("status", state.catalog.chatId, identity, job.id);
       resumeAfterEndpointId = result.decisionRequired.failedEndpointId;
     }
     if (result.outcome !== "completed" || !result.state || !result.stateHash) {
@@ -40014,7 +40242,7 @@ ${renderStatusYaml(before)}
     const recomputed = applyStatusOperations({
       baseState,
       operations: result.operations,
-      evidenceMessageIds: prepared.originalMessages.map((message) => message.id),
+      evidenceMessageIds: prepared2.originalMessages.map((message) => message.id),
       validation: state.catalog.profile.validation
     });
     const recomputedHash = await statusStateHash(recomputed);
@@ -40027,7 +40255,7 @@ ${renderStatusYaml(before)}
         namespaceId: state.catalog.namespaceId,
         targetMessageId,
         targetSwipeId,
-        sourceMessageIds: prepared.originalMessages.map((message) => message.id),
+        sourceMessageIds: prepared2.originalMessages.map((message) => message.id),
         startedAt,
         completedAt: (/* @__PURE__ */ new Date()).toISOString(),
         outcome: "discarded",
@@ -40051,7 +40279,7 @@ ${renderStatusYaml(before)}
         recheckError = error62 instanceof Error ? error62.message : String(error62);
       }
     }
-    const sourceChanged = !currentTarget || statusMessageId(currentTarget, targetIndex) !== targetMessageId || statusSwipeId(currentTarget) !== targetSwipeId || currentSourceHash !== prepared.sourceHash;
+    const sourceChanged = !currentTarget || statusMessageId(currentTarget, targetIndex) !== targetMessageId || statusSwipeId(currentTarget) !== targetSwipeId || currentSourceHash !== prepared2.sourceHash;
     if (sourceChanged) {
       if (origin === "manual" || !this.rerunOrigins.has(state.catalog.chatId)) {
         this.rerunOrigins.set(state.catalog.chatId, origin);
@@ -40061,7 +40289,7 @@ ${renderStatusYaml(before)}
         namespaceId: state.catalog.namespaceId,
         targetMessageId,
         targetSwipeId,
-        sourceMessageIds: prepared.originalMessages.map((message) => message.id),
+        sourceMessageIds: prepared2.originalMessages.map((message) => message.id),
         startedAt,
         completedAt: (/* @__PURE__ */ new Date()).toISOString(),
         outcome: "discarded",
@@ -40080,8 +40308,8 @@ ${renderStatusYaml(before)}
       targetSwipeId,
       ...previous ? { parentSnapshotId: previous.snapshotId } : {},
       baseStateHash,
-      sourceMessageIds: prepared.originalMessages.map((message) => message.id),
-      sourceHash: prepared.sourceHash,
+      sourceMessageIds: prepared2.originalMessages.map((message) => message.id),
+      sourceHash: prepared2.sourceHash,
       state: recomputed,
       stateHash: recomputedHash,
       revision: (existing?.revision ?? 0) + 1,
@@ -40107,7 +40335,7 @@ ${renderStatusYaml(before)}
           baseSnapshot: previous,
           targetMessageIndex: targetIndex
         });
-        if (current.sourceHash !== prepared.sourceHash) throw new StatusSnapshotConflictError();
+        if (current.sourceHash !== prepared2.sourceHash) throw new StatusSnapshotConflictError();
       }
     });
     this.setTrace({
@@ -40121,8 +40349,9 @@ ${renderStatusYaml(before)}
       outcome: "completed",
       operationCount: result.operations.length,
       attempts: result.attempts,
-      ...prepared.rangeNotice ? { message: prepared.rangeNotice } : {}
+      ...prepared2.rangeNotice ? { message: prepared2.rangeNotice } : {}
     });
+    await forgetActiveJob("status", state.catalog.chatId, completedJob.identity, completedJob.id);
     this.pruneAfterWrite(state);
     return snapshot;
   }
@@ -40738,7 +40967,7 @@ var RecallCoordinator = class {
     const remember = (state) => {
       sourceSnapshots.set(state.worldbookName, recallSourceFingerprint(state));
     };
-    const finalize2 = (options) => this.finalizeRecall({ ...options, floorKey, queryBlocks: prepared.blocks, abort, assertFresh });
+    const finalize2 = (options) => this.finalizeRecall({ ...options, floorKey, queryBlocks: prepared2.blocks, abort, assertFresh });
     const settings = getSettings();
     const recall = settings.retrieval.recall;
     const continuity = settings.continuity;
@@ -40762,7 +40991,7 @@ var RecallCoordinator = class {
       const state = await statusCoordinator.worldbook.find(current.worldbookName);
       queryState = state ? await statusCoordinator.generationState(state, generationType) : void 0;
     }
-    const prepared = prepareRecallQuery({
+    const prepared2 = prepareRecallQuery({
       state: queryState,
       chat,
       preset: queryOverride === void 0 ? recall.queryPreset : {
@@ -40773,15 +41002,15 @@ var RecallCoordinator = class {
       ...generationIdentity()
     });
     if (!queryOverride && continuity.triggers.enabled) {
-      const triggers = (await runBusinessTask({ task: "triggers", args: [queryState, continuity.triggers.nearDays, settings.businessRegex] })).filter((trigger) => !prepared.queries.some((query) => query.text.includes(trigger.text))).slice(0, Math.min(continuity.triggers.maxQueries, 8 - prepared.queries.length));
-      prepared.queries.push(...triggers);
+      const triggers = (await runBusinessTask({ task: "triggers", args: [queryState, continuity.triggers.nearDays, settings.businessRegex] })).filter((trigger) => !prepared2.queries.some((query) => query.text.includes(trigger.text))).slice(0, Math.min(continuity.triggers.maxQueries, 8 - prepared2.queries.length));
+      prepared2.queries.push(...triggers);
       const budget = recall.queryPreset.maxCharacters ?? 12e3;
-      const perQuery = Math.max(1, Math.floor((budget - Math.max(0, prepared.queries.length - 1) * 2) / Math.max(1, prepared.queries.length)));
-      prepared.queries = prepared.queries.map((query) => ({ ...query, text: balancedQueryText(query.text, perQuery) }));
-      prepared.query = prepared.queries.map((query) => query.text).join("\n\n");
+      const perQuery = Math.max(1, Math.floor((budget - Math.max(0, prepared2.queries.length - 1) * 2) / Math.max(1, prepared2.queries.length)));
+      prepared2.queries = prepared2.queries.map((query) => ({ ...query, text: balancedQueryText(query.text, perQuery) }));
+      prepared2.query = prepared2.queries.map((query) => query.text).join("\n\n");
       if (triggers.length) {
-        prepared.messageIds = [];
-        prepared.blocks = prepared.queries.map((query) => ({ id: query.id, title: query.id.startsWith("trigger_") ? "\u72B6\u6001\u89E6\u53D1" : "\u67E5\u8BE2", content: query.text }));
+        prepared2.messageIds = [];
+        prepared2.blocks = prepared2.queries.map((query) => ({ id: query.id, title: query.id.startsWith("trigger_") ? "\u72B6\u6001\u89E6\u53D1" : "\u67E5\u8BE2", content: query.text }));
       }
     }
     const compressionActive = current.catalog.recallEnabled && current.catalog.compression.enabled;
@@ -40793,14 +41022,14 @@ var RecallCoordinator = class {
       new Set(indexedMessages.filter((entry) => entry.hidden).map((entry) => entry.message.id))
     ) : [];
     const recentSlices = recentBatches.flatMap((coverage) => coverage.slices).filter((slice) => slice.continuity?.validity !== "superseded");
-    if (!current.catalog.recallEnabled || !prepared.query) {
+    if (!current.catalog.recallEnabled || !prepared2.query) {
       return finalize2({
         current,
         sequence: sequence2,
         inject,
         generationType,
         startedAt,
-        query: prepared.query,
+        query: prepared2.query,
         sources: [],
         branches: DISABLED_BRANCHES,
         rawReturned: 0,
@@ -40826,7 +41055,7 @@ var RecallCoordinator = class {
         inject,
         generationType,
         startedAt,
-        query: prepared.query,
+        query: prepared2.query,
         sources: [],
         branches: {
           vector: { state: "failed", durationMs: 0, attempts: [], message },
@@ -40855,7 +41084,7 @@ var RecallCoordinator = class {
         inject,
         generationType,
         startedAt,
-        query: prepared.query,
+        query: prepared2.query,
         sources: resolved.traces,
         branches: DISABLED_BRANCHES,
         rawReturned: 0,
@@ -40869,7 +41098,7 @@ var RecallCoordinator = class {
     for (const source of resolved.active) remember(source.state);
     await assertFresh();
     const visibleIds = visibleRecallMessageIds(chat);
-    const recentIds = new Set(prepared.messageIds.filter((id) => visibleIds.has(id)));
+    const recentIds = new Set(prepared2.messageIds.filter((id) => visibleIds.has(id)));
     const excludeSourceIds = excludedRecallSources(current, resolved.active.map((source) => source.state), recentIds);
     const vectorEnabled = recall.vectorEnabled && Boolean(group) && vectorCollectionIds.length > 0;
     if (!vectorEnabled && !recall.bm25Enabled) {
@@ -40879,7 +41108,7 @@ var RecallCoordinator = class {
         inject,
         generationType,
         startedAt,
-        query: prepared.query,
+        query: prepared2.query,
         sources: resolved.traces,
         branches: DISABLED_BRANCHES,
         rawReturned: 0,
@@ -40896,7 +41125,7 @@ var RecallCoordinator = class {
         inject,
         generationType,
         startedAt,
-        query: prepared.query,
+        query: prepared2.query,
         sources: resolved.traces,
         branches: DISABLED_BRANCHES,
         rawReturned: 0,
@@ -40939,8 +41168,8 @@ var RecallCoordinator = class {
         fallbackMinimumRelevance: recall.relevanceProfiles?.rrf ?? recall.minimumRelevance,
         flagRules: recall.flagRules,
         flagAssignments: resolved.active.flatMap((source) => source.state.slices.filter((slice) => (slice.recallFlags?.length ?? 0) > 0 && !excludeSourceIds.has(slice.id)).map((slice) => ({ collectionId: source.collectionId, sourceId: slice.id, flags: slice.recallFlags }))),
-        query: prepared.query,
-        queries: prepared.queries,
+        query: prepared2.query,
+        queries: prepared2.queries,
         vectorEnabled,
         bm25Enabled: recall.bm25Enabled,
         rerankEnabled: recall.rerankEnabled,
@@ -40971,7 +41200,7 @@ var RecallCoordinator = class {
         inject,
         generationType,
         startedAt,
-        query: prepared.query,
+        query: prepared2.query,
         sources: resolved.traces,
         branches: {
           vector: { state: "failed", durationMs: 0, attempts: [], message },
@@ -41000,7 +41229,7 @@ var RecallCoordinator = class {
         inject: inject && decision !== "abort",
         generationType,
         startedAt,
-        query: prepared.query,
+        query: prepared2.query,
         sources: resolved.traces,
         branches: {
           vector: { state: "failed", durationMs: 0, attempts: [], message: "Retrieval timed out." },
@@ -41031,7 +41260,7 @@ var RecallCoordinator = class {
           inject: false,
           generationType,
           startedAt,
-          query: prepared.query,
+          query: prepared2.query,
           sources: resolved.traces,
           branches: result.branches,
           diagnostics: result.diagnostics,
@@ -41083,7 +41312,7 @@ var RecallCoordinator = class {
         inject: inject && decision !== "abort",
         generationType,
         startedAt,
-        query: prepared.query,
+        query: prepared2.query,
         sources: resolved.traces,
         branches: result.branches,
         diagnostics: result.diagnostics,
@@ -41108,7 +41337,7 @@ var RecallCoordinator = class {
     if (continuity.supplement.auto && authoritative.hits.length < continuity.supplement.minimumHits && !result.decisionRequired) {
       const supplemental = await boundedSupplement({
         request: { ...queryRequest, excludeSourceIds: [...excludeSourceIds, ...authoritative.hits.map((hit) => hit.document.sourceId)] },
-        queries: await runBusinessTask({ task: "variants", args: [prepared.queries.map((query) => query.text), settings.businessRegex] }),
+        queries: await runBusinessTask({ task: "variants", args: [prepared2.queries.map((query) => query.text), settings.businessRegex] }),
         config: continuity.supplement,
         guard: () => {
           if (isSuperseded() || SillyTavern.getContext().chatId !== current.catalog.chatId || window.TavernHelper?.getChatWorldbookName("current") !== lockedWorldbookName) throw new RecallRunSupersededError();
@@ -41141,7 +41370,7 @@ var RecallCoordinator = class {
       inject,
       generationType,
       startedAt,
-      query: prepared.query,
+      query: prepared2.query,
       sources: resolved.traces,
       branches: result.branches,
       rawReturned: result.hits.length,
@@ -42108,7 +42337,7 @@ async function loadWorldbookOverview(signal) {
   const chatId = SillyTavern.getContext().chatId;
   const api = window.TavernHelper;
   if (!chatId || !api) throw new Error("Open a chat with TavernHelper before reading the memory overview.");
-  const read = async () => {
+  const read2 = async () => {
     signal.throwIfAborted();
     const worldbookName = api.getChatWorldbookName("current");
     if (!worldbookName) return null;
@@ -42149,12 +42378,12 @@ async function loadWorldbookOverview(signal) {
       };
     });
   };
-  const existing = await read();
+  const existing = await read2();
   if (existing) return existing;
   await new WorldbookMemoryStore().load(signal);
   await new SummaryWorldbookStore().load(signal);
   await new StatusWorldbookStore().load(signal);
-  const initialized2 = await read();
+  const initialized2 = await read2();
   if (!initialized2) throw new Error("Failed to initialize the Echoes memory catalogs.");
   return initialized2;
 }
@@ -42701,7 +42930,7 @@ function recordLine(ctx, record3) {
   const retrying = taskHealth.isRetrying(record3.kind, record3.chatId);
   const category = record3.category === "ambiguous" && record3.ambiguousRetried ? "\u81EA\u52A8\u91CD\u8BD5\u5DF2\u7528\u5B8C\uFF0C\u9700\u8981\u4F60\u786E\u8BA4" : CATEGORY_TEXT[record3.category];
   const retry = async () => {
-    if (record3.category === "ambiguous" && !await confirmAction({
+    if (record3.kind === "summary" && record3.category === "ambiguous" && !await confirmAction({
       title: `\u91CD\u65B0\u53D1\u9001${TASK_LABELS[record3.kind]}\u8BF7\u6C42\uFF1F`,
       cost: true,
       confirmLabel: "\u91CD\u65B0\u53D1\u9001",
@@ -43175,9 +43404,9 @@ function upgradeFromTemplate(current, rowCount, guard, done) {
     await done();
   }, { size: "large", after: preview2, saveLabel: "\u66F4\u65B0\u8868\u7ED3\u6784" });
 }
-function reclassifyRow(types, row, guard, done) {
-  const source = types.find((type) => type.id === row.typeId);
-  const targets = types.filter((type) => type.id !== row.typeId);
+function reclassifyRow(types2, row, guard, done) {
+  const source = types2.find((type) => type.id === row.typeId);
+  const targets = types2.filter((type) => type.id !== row.typeId);
   if (!targets.length) throw new Error("\u8BF7\u5148\u521B\u5EFA\u76EE\u6807\u8868\u3002");
   const drafts = /* @__PURE__ */ new Map();
   const target = form([
@@ -43221,10 +43450,10 @@ function reclassifyRow(types, row, guard, done) {
 
 // src/extension/ui/pages/structured/row-detail.ts
 var SOURCE = { manual: "\u624B\u52A8", extraction: "\u6A21\u578B\u63D0\u53D6", migration: "\u5BFC\u5165\u6216\u8FC1\u79FB" };
-function showRow(ctx, pane, types, type, row, editing = false) {
+function showRow(ctx, pane, types2, type, row, editing = false) {
   const done = () => ctx.refresh();
   const actions = [
-    editing ? null : button("\u7F16\u8F91", () => showRow(ctx, pane, types, type, row, true), { icon: "pen", small: true }),
+    editing ? null : button("\u7F16\u8F91", () => showRow(ctx, pane, types2, type, row, true), { icon: "pen", small: true }),
     menu(`${row.dataName} \u7684\u66F4\u591A\u64CD\u4F5C`, [
       { label: "\u7F16\u8F91 YAML", icon: "code", onSelect: () => yamlModal(type, row, ctx.guard, done) },
       { label: "\u65F6\u95F4\u4E0E\u8BA4\u77E5", icon: "clock", onSelect: () => editContinuity(
@@ -43236,7 +43465,7 @@ function showRow(ctx, pane, types, type, row, editing = false) {
           await done();
         }
       ) },
-      { label: "\u91CD\u65B0\u5206\u7C7B\u5230\u5176\u4ED6\u8868", icon: "arrow-right-arrow-left", onSelect: () => reclassifyRow(types, row, ctx.guard, done) },
+      { label: "\u91CD\u65B0\u5206\u7C7B\u5230\u5176\u4ED6\u8868", icon: "arrow-right-arrow-left", onSelect: () => reclassifyRow(types2, row, ctx.guard, done) },
       { label: "\u5220\u9664\u6761\u76EE", icon: "trash", danger: true, onSelect: async () => {
         if (!await confirmAction({
           title: `\u5220\u9664\u6761\u76EE\u300C${row.dataName}\u300D\uFF1F`,
@@ -43253,10 +43482,10 @@ function showRow(ctx, pane, types, type, row, editing = false) {
   ];
   if (editing) {
     const target = rowForm(type, row);
-    target.node.addEventListener("ec-reset", () => void showRow(ctx, pane, types, type, row));
+    target.node.addEventListener("ec-reset", () => void showRow(ctx, pane, types2, type, row));
     const cancel = button(
       "\u53D6\u6D88\u7F16\u8F91",
-      () => target.dirty() ? target.reset() : showRow(ctx, pane, types, type, row),
+      () => target.dirty() ? target.reset() : showRow(ctx, pane, types2, type, row),
       { variant: "ghost", small: true }
     );
     return pane.open(row.id, row.dataName, [target.node, h("div", "ec-row", cancel), saveBar(target, async (values) => {
@@ -43662,7 +43891,7 @@ function compare(record3) {
 async function historyPage(ctx) {
   const state = await memoryStore.load();
   const records2 = await readMemoryHistory(state.worldbookName);
-  const types = new Map(state.catalog.types.map((type) => [type.id, type.name]));
+  const types2 = new Map(state.catalog.types.map((type) => [type.id, type.name]));
   const ui = ctx.memo("structured-history", () => ({ query: "", page: 0 }));
   const pane = drawer("\u53D8\u66F4\u5BF9\u7167");
   const host = h("div", "ec-stack");
@@ -43671,7 +43900,7 @@ async function historyPage(ctx) {
       "div",
       "ec-row",
       badge(KINDS2[record3.kind] ?? record3.kind),
-      badge(types.get(record3.typeId) ?? "\u5DF2\u5220\u9664\u7684\u8868"),
+      badge(types2.get(record3.typeId) ?? "\u5DF2\u5220\u9664\u7684\u8868"),
       h("span", "ec-muted", formatTime(record3.recordedAt))
     ),
     compare(record3),
@@ -43693,7 +43922,7 @@ async function historyPage(ctx) {
         key: record3.id,
         selected: pane.current() === record3.id,
         title: record3.after?.name ?? record3.before?.name ?? record3.rowId,
-        meta: `${formatTime(record3.recordedAt)} \xB7 ${types.get(record3.typeId) ?? "\u5DF2\u5220\u9664\u7684\u8868"}`,
+        meta: `${formatTime(record3.recordedAt)} \xB7 ${types2.get(record3.typeId) ?? "\u5DF2\u5220\u9664\u7684\u8868"}`,
         trailing: badge(KINDS2[record3.kind] ?? record3.kind, record3.kind === "deleted" ? "danger" : "neutral"),
         onOpen: () => open3(record3)
       })), query ? "\u6CA1\u6709\u5339\u914D\u7684\u53D8\u66F4" : "\u8FD8\u6CA1\u6709\u53D8\u66F4\u8BB0\u5F55"),
@@ -43711,8 +43940,8 @@ init_settings();
 
 // src/extension/ui/pages/structured/review.ts
 var ACTION = { add: ["\u65B0\u589E", "success"], update: ["\u66F4\u65B0", "accent"], delete: ["\u5220\u9664", "danger"] };
-function operationDetail(operation, types, previous) {
-  const type = types.find((item) => item.id === operation?.typeId);
+function operationDetail(operation, types2, previous) {
+  const type = types2.find((item) => item.id === operation?.typeId);
   const values = operation?.action === "add" ? operation.values : operation?.changes?.values;
   const column = (id) => type?.columns.find((item) => item.id === id)?.name ?? id;
   return h(
@@ -43728,7 +43957,7 @@ function operationDetail(operation, types, previous) {
     h("details", "ec-disclosure", h("summary", "", "\u5B8C\u6574\u64CD\u4F5C JSON"), code(JSON.stringify(operation, null, 2)))
   );
 }
-function reviewCard(ctx, review, types, rows) {
+function reviewCard(ctx, review, types2, rows) {
   const items = review.result.reviewItems;
   const selected = new Set(review.selectedIndexes.filter((index) => items.some((item) => item.index === index && item.state === "valid")));
   const valid = items.filter((item) => item.state === "valid").length;
@@ -43775,7 +44004,7 @@ function reviewCard(ctx, review, types, rows) {
       { label: "", cell: (item) => button("\u67E5\u770B", () => {
         const operation = item.operation;
         const previous = operation?.rowId ? rows.find((row) => row.id === operation.rowId) : void 0;
-        modal(`\u64CD\u4F5C ${item.index + 1}`, [item.reason ? callout("danger", item.reason) : null, operationDetail(operation, types, previous)], { size: "large" });
+        modal(`\u64CD\u4F5C ${item.index + 1}`, [item.reason ? callout("danger", item.reason) : null, operationDetail(operation, types2, previous)], { size: "large" });
       }, { variant: "ghost", small: true }) }
     ], items),
     h(
@@ -43846,8 +44075,8 @@ async function extractionPage(ctx) {
           await ctx.refresh();
         }, { icon: "rotate", disabled: running2 }) : null,
         button("\u9884\u89C8\u8BF7\u6C42", async () => {
-          const prepared = await prepareExtraction(await memoryStore.load(), getSettings(), "manual");
-          requestModal("\u7ED3\u6784\u5316\u63D0\u53D6\u8BF7\u6C42\u9884\u89C8", extractionProviderMessages(prepared.request));
+          const prepared2 = await prepareExtraction(await memoryStore.load(), getSettings(), "manual");
+          requestModal("\u7ED3\u6784\u5316\u63D0\u53D6\u8BF7\u6C42\u9884\u89C8", extractionProviderMessages(prepared2.request));
         }, { variant: "ghost", icon: "eye" })
       ),
       trace?.attempts.length ? lazy2("\u7AEF\u70B9\u5C1D\u8BD5\u8BB0\u5F55", () => attemptsTable(trace.attempts)) : null
@@ -43902,8 +44131,8 @@ async function extractionPage(ctx) {
         "ec-row ec-card-foot",
         button("\u9884\u89C8\u6E05\u6D17\u8BF7\u6C42", async () => {
           ctx.guard();
-          const prepared = await extractionCoordinator.previewCleaning(cleaningOptions());
-          requestModal("\u8D44\u6599\u6E05\u6D17\u8BF7\u6C42\u9884\u89C8", extractionProviderMessages(prepared.request));
+          const prepared2 = await extractionCoordinator.previewCleaning(cleaningOptions());
+          requestModal("\u8D44\u6599\u6E05\u6D17\u8BF7\u6C42\u9884\u89C8", extractionProviderMessages(prepared2.request));
         }, { variant: "ghost", icon: "eye" }),
         button("\u5F00\u59CB\u6E05\u6D17", async () => {
           const options = cleaningOptions();
@@ -44197,12 +44426,12 @@ function serializeMemoryTemplates(templates) {
     templates: templates.map(({ id, name, description, columns, guide, defaultStatus }) => ({ id, name, description, columns, guide, defaultStatus }))
   }, null, 2);
 }
-function serializeMemoryTables(types, rows, includeRows) {
+function serializeMemoryTables(types2, rows, includeRows) {
   return JSON.stringify({
     format: "echoes-memory-tables",
     version: 1,
     exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    tables: types.map(({ id, templateId, name, description, columns, guide, defaultStatus, enabled }) => ({
+    tables: types2.map(({ id, templateId, name, description, columns, guide, defaultStatus, enabled }) => ({
       type: { id, templateId, name, description, columns, guide, defaultStatus, enabled },
       ...includeRows ? { rows: rows.filter((row) => row.typeId === id).map(({ dataName, keywords, status, values, aliases, continuity }) => ({ dataName, keywords, status, values, aliases, continuity })) } : {}
     }))
@@ -44229,16 +44458,16 @@ async function importTemplates(done) {
     } }
   ], templates), after: muted("\u4E0E\u5185\u7F6E\u6A21\u677F\u540C ID \u65F6\u603B\u662F\u521B\u5EFA\u526F\u672C\uFF0C\u4E0D\u53D7\u6240\u9009\u7B56\u7565\u5F71\u54CD\u3002") });
 }
-function exportTables(types, rows, guard) {
-  const chosen = new Set(types.map((type) => type.id));
+function exportTables(types2, rows, guard) {
+  const chosen = new Set(types2.map((type) => type.id));
   const target = form([{ key: "rows", label: "\u540C\u65F6\u5BFC\u51FA\u6761\u76EE", type: "switch", value: true }], { className: "is-single" });
   formModal("\u5BFC\u51FA\u8D44\u6599\u8868", target, (values) => {
     guard();
     if (!chosen.size) throw new Error("\u81F3\u5C11\u9009\u62E9\u4E00\u5F20\u8868\u3002");
-    download("echoes-memory-tables.json", serializeMemoryTables(types.filter((type) => chosen.has(type.id)), rows, values.rows));
+    download("echoes-memory-tables.json", serializeMemoryTables(types2.filter((type) => chosen.has(type.id)), rows, values.rows));
   }, {
     saveLabel: "\u5BFC\u51FA",
-    before: h("div", "ec-check-list", ...types.map((type) => h(
+    before: h("div", "ec-check-list", ...types2.map((type) => h(
       "label",
       "ec-check-row",
       checkbox(type.name, true, (value) => value ? chosen.add(type.id) : chosen.delete(type.id)),
@@ -44669,8 +44898,8 @@ async function structuredSettingsPage(ctx) {
   const state = await memoryStore.load();
   const settings = getSettings();
   const preview2 = () => button("\u9884\u89C8\u6700\u7EC8\u8BF7\u6C42", async () => {
-    const prepared = await prepareExtraction(await memoryStore.load(), getSettings(), "manual");
-    modal("\u7ED3\u6784\u5316\u63D0\u53D6\u8BF7\u6C42", extractionProviderMessages(prepared.request).map((message, index) => lazy2(`${index + 1} \xB7 ${message.role} \xB7 ${message.content.length} \u5B57`, () => code(message.content))), { size: "large" });
+    const prepared2 = await prepareExtraction(await memoryStore.load(), getSettings(), "manual");
+    modal("\u7ED3\u6784\u5316\u63D0\u53D6\u8BF7\u6C42", extractionProviderMessages(prepared2.request).map((message, index) => lazy2(`${index + 1} \xB7 ${message.role} \xB7 ${message.content.length} \u5B57`, () => code(message.content))), { size: "large" });
   }, { variant: "ghost", small: true, icon: "eye" });
   const rules = form([
     {
@@ -44862,6 +45091,7 @@ function openBatchOverview(ctx, state, batch) {
       await ctx.summary.store.saveBatchOverview(state, batch.id, { enabled });
       await ctx.refresh();
     }) : null),
+    overview ? muted("\u5173\u95ED\u5E38\u9A7B\u6CE8\u5165\u4F1A\u540C\u65F6\u6682\u505C\u5305\u542B\u672C\u6279\u6B21\u7684\u9636\u6BB5\u603B\u7ED3\uFF1B\u5176\u4ED6\u4ECD\u5F00\u542F\u7684\u6765\u6E90\u6279\u6B21\u6062\u590D\u5404\u81EA\u6CE8\u5165\u3002\u91CD\u65B0\u5F00\u542F\u4E14\u6765\u6E90\u672A\u53D8\u65F6\u81EA\u52A8\u6062\u590D\u9636\u6BB5\uFF0C\u65E0\u9700\u91CD\u65B0\u751F\u6210\u3002") : null,
     overview?.error ? callout("danger", overview.error) : null,
     overview?.state === "pending" && !ctx.summary.isRunning() ? callout("warning", "\u4E0A\u6B21\u751F\u6210\u5728\u5B8C\u6210\u524D\u4E2D\u65AD\uFF08\u4F8B\u5982\u5237\u65B0\u9875\u9762\u6216\u65AD\u7F51\uFF09\u3002\u4E0B\u4E00\u6B21\u81EA\u52A8\u603B\u7ED3\u4F1A\u5148\u8865\u9F50\u5B83\uFF1B\u4E5F\u53EF\u4EE5\u70B9\u51FB\u201C\u91CD\u65B0\u751F\u6210\u201D\u3002") : null,
     stale ? callout("warning", "\u6B63\u6587\u6765\u6E90\u5DF2\u53D8\u5316\u6216\u65E0\u6CD5\u786E\u8BA4\uFF0C\u5DF2\u6682\u505C\u6CE8\u5165\uFF1B\u65E7\u6B63\u6587\u548C\u5E38\u9A7B\u5F00\u5173\u4ECD\u4FDD\u7559\u3002\u8BF7\u6838\u5BF9\u539F\u6D88\u606F\u5E76\u91CD\u5EFA\u6279\u6B21\uFF0C\u518D\u751F\u6210\u6216\u7F16\u8F91\u6279\u6B21\u603B\u7ED3\u3002") : null,
@@ -45131,9 +45361,10 @@ function stageOverviewCard(ctx, state) {
   ].filter(Boolean);
   const items = plan.stages.map(({ stage, invalid }) => {
     const tokens = estimateInjectionTokens(stage.content);
+    const paused = !stage.enabled || stage.sources.some((source) => overviews.get(source.batchId)?.enabled === false);
     const sourcesReady = stage.sources.every((source) => overviewMergeable(overviews.get(source.batchId)));
     const view = () => modal(`\u9636\u6BB5\u603B\u7ED3 \xB7 ${stageRangeLabel(stage)}`, [
-      invalid ? callout("warning", `\u5DF2\u505C\u6B62\u6CE8\u5165\uFF0C\u539F\u6279\u6B21\u603B\u7ED3\u5DF2\u6062\u590D\u6CE8\u5165\uFF1A${invalid}\u3002`) : null,
+      invalid ? callout("warning", `\u5DF2\u505C\u6B62\u9636\u6BB5\u6CE8\u5165\uFF0C\u4ECD\u5F00\u542F\u4E14\u6709\u6548\u7684\u539F\u6279\u6B21\u603B\u7ED3\u6062\u590D\u6CE8\u5165\uFF1A${invalid}\u3002`) : null,
       kv([
         ["\u6765\u6E90", stage.sources.map((source) => `\u6279\u6B21 ${source.batchNumber}`).join("\u3001")],
         ["\u4F30\u7B97", `\u7EA6 ${tokens} Token`],
@@ -45148,7 +45379,7 @@ function stageOverviewCard(ctx, state) {
       trailing: h(
         "span",
         "ec-row",
-        badge(invalid ? "\u9700\u91CD\u65B0\u5408\u5E76" : "\u751F\u6548\u4E2D", invalid ? "warning" : "success"),
+        badge(invalid ? paused ? "\u6682\u505C\u6CE8\u5165" : "\u9700\u91CD\u65B0\u5408\u5E76" : "\u751F\u6548\u4E2D", invalid ? "warning" : "success"),
         invalid && sourcesReady ? button("\u91CD\u65B0\u5408\u5E76", () => merge3(
           `\u91CD\u65B0\u5408\u5E76${stageRangeLabel(stage)}`,
           { batchIds: stage.sources.map((source) => source.batchId) },
@@ -45965,7 +46196,7 @@ function editRule(item, done, drafts) {
   target.control("type").addEventListener("change", sync);
   target.control("extractionMode").addEventListener("change", sync);
   sync();
-  const read = () => {
+  const read2 = () => {
     const values = target.values();
     new RegExp(values.pattern, values.flags);
     return summaryPreprocessRuleSchema.parse({
@@ -45985,9 +46216,9 @@ function editRule(item, done, drafts) {
       order: item?.order ?? 0
     });
   };
-  formModal(item ? `\u7F16\u8F91\u6E05\u6D17\u89C4\u5219 \xB7 ${item.name}` : "\u6DFB\u52A0\u6E05\u6D17\u89C4\u5219", target, () => done(read()), { size: "large", extra: [
+  formModal(item ? `\u7F16\u8F91\u6E05\u6D17\u89C4\u5219 \xB7 ${item.name}` : "\u6DFB\u52A0\u6E05\u6D17\u89C4\u5219", target, () => done(read2()), { size: "large", extra: [
     button("\u9884\u89C8\u6548\u679C", () => {
-      const draft = read();
+      const draft = read2();
       const next = structuredClone(drafts);
       const index = item ? next.findIndex((rule) => rule.id === item.id) : -1;
       if (index < 0) next.push(draft);
