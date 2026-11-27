@@ -25,6 +25,7 @@ var init_package = __esm({
 var MEMORY_COLUMN_TYPES, MEMORY_ENTRY_STATUSES, PROMPT_ROLES, FAILOVER_POLICIES, VECTOR_STATES, SUMMARY_PROMPT_KINDS, SUMMARY_PREPROCESS_RULE_TYPES, SUMMARY_DELETION_POLICIES, STATUS_PROMPT_KINDS, STATUS_VALIDATION_TYPES, RETRIEVAL_QUERY_PRESET_KINDS, RETRIEVAL_INJECTION_POSITIONS, JOB_STATUSES, API_PROTOCOL_VERSION, REPAIR_KINDS;
 var init_domain = __esm({
   "src/shared/domain.ts"() {
+    "use strict";
     init_package();
     MEMORY_COLUMN_TYPES = [
       "text",
@@ -124,6 +125,7 @@ function summarySupplementGuide(instructions) {
 var DEFAULT_SUMMARY_TASK_PROMPT, SUMMARY_COVERAGE_BACKGROUND_NOTE;
 var init_summary_prompts = __esm({
   "src/shared/summary-prompts.ts"() {
+    "use strict";
     DEFAULT_SUMMARY_TASK_PROMPT = `\u4F60\u8D1F\u8D23\u4E3A\u4E00\u573A\u957F\u671F\u89D2\u8272\u626E\u6F14\u6574\u7406\u5267\u60C5\u8BB0\u5FC6\u3002\u6BCF\u6B21\u8BF7\u6C42\u63D0\u4F9B\u4E00\u6279\u65B0\u5267\u60C5\uFF0C\u4F60\u8981\u628A\u5176\u4E2D\u53D1\u751F\u7684\u7ECF\u5386\u5199\u6210\u80FD\u5355\u72EC\u53EC\u56DE\u7684\u8BB0\u5F55\uFF0C\u4F9B\u4E4B\u540E\u7684\u53D9\u4E8B\u67E5\u9605\u3002
 
 ## \u53C2\u4E0E\u8005
@@ -184,7 +186,7 @@ var init_summary_prompts = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/@noble/hashes/_u64.js
+// node_modules/@noble/hashes/_u64.js
 function setU64FromNum(view, byteOffset, n, isLE) {
   const h2 = fromNumH(n);
   const l = fromNumL(n);
@@ -193,13 +195,13 @@ function setU64FromNum(view, byteOffset, n, isLE) {
 }
 var fromNumH, fromNumL;
 var init_u64 = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/@noble/hashes/_u64.js"() {
+  "node_modules/@noble/hashes/_u64.js"() {
     fromNumH = (n) => n / 2 ** 32 | 0;
     fromNumL = (n) => n >>> 0;
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/@noble/hashes/utils.js
+// node_modules/@noble/hashes/utils.js
 function isBytes(a) {
   return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array" && "BYTES_PER_ELEMENT" in a && a.BYTES_PER_ELEMENT === 1;
 }
@@ -269,7 +271,7 @@ function createHasher(hashCons, info = {}) {
 }
 var atitle, aobject, aopts, oidNist;
 var init_utils = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/@noble/hashes/utils.js"() {
+  "node_modules/@noble/hashes/utils.js"() {
     atitle = (title) => title ? `"${title}" ` : "";
     aobject = (value, label) => {
       if (value === null || typeof value !== "object" || Array.isArray(value))
@@ -291,7 +293,7 @@ var init_utils = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/@noble/hashes/_md.js
+// node_modules/@noble/hashes/_md.js
 function Chi(a, b, c) {
   return a & b ^ ~a & c;
 }
@@ -300,7 +302,7 @@ function Maj(a, b, c) {
 }
 var HashMD, SHA256_IV;
 var init_md = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/@noble/hashes/_md.js"() {
+  "node_modules/@noble/hashes/_md.js"() {
     init_u64();
     init_utils();
     HashMD = class {
@@ -411,10 +413,10 @@ var init_md = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/@noble/hashes/sha2.js
+// node_modules/@noble/hashes/sha2.js
 var SHA256_K, SHA256_W, SHA2_32B, _SHA256, sha256;
 var init_sha2 = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/@noble/hashes/sha2.js"() {
+  "node_modules/@noble/hashes/sha2.js"() {
     init_md();
     init_utils();
     SHA256_K = /* @__PURE__ */ Uint32Array.from([
@@ -600,6 +602,7 @@ async function sha256Hex(value) {
 }
 var init_crypto_compat = __esm({
   "src/shared/crypto-compat.ts"() {
+    "use strict";
     init_sha2();
   }
 });
@@ -638,13 +641,14 @@ function chatWriteGuard() {
 var blocked, revisions, running;
 var init_chat_reset_state = __esm({
   "src/extension/state/chat-reset-state.ts"() {
+    "use strict";
     blocked = /* @__PURE__ */ new Set();
     revisions = /* @__PURE__ */ new Map();
     running = false;
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/util.js
+// node_modules/zod/v4/core/util.js
 var util_exports = {};
 __export(util_exports, {
   BIGINT_FORMAT_RANGES: () => BIGINT_FORMAT_RANGES,
@@ -1390,7 +1394,7 @@ function constantCatch(value) {
 }
 var Cached, EVALUATING, captureStackTrace, allowsEval, getParsedType, propertyKeyTypes, primitiveTypes, NUMBER_FORMAT_RANGES, BIGINT_FORMAT_RANGES, highSurrogate, Class, installing, broke, breaker, CONSTANT_CATCH;
 var init_util = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/util.js"() {
+  "node_modules/zod/v4/core/util.js"() {
     init_core();
     Cached = class {
       constructor(getter) {
@@ -1505,7 +1509,7 @@ var init_util = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/core.js
+// node_modules/zod/v4/core/core.js
 function newError(Definition) {
   const E = _E;
   if (E) {
@@ -1608,7 +1612,7 @@ function config(newConfig) {
 }
 var _a, NEVER, _zodDesc, _E, $brand, $ZodAsyncError, $ZodEncodeError, globalConfig;
 var init_core = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/core.js"() {
+  "node_modules/zod/v4/core/core.js"() {
     init_util();
     NEVER = /* @__PURE__ */ Object.freeze({
       status: "aborted"
@@ -1632,7 +1636,7 @@ var init_core = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/errors.js
+// node_modules/zod/v4/core/errors.js
 function _getMessage() {
   const internals = this._zod;
   internals.message ?? (internals.message = JSON.stringify(internals.def, jsonStringifyReplacer, 2));
@@ -1790,7 +1794,7 @@ function prettifyError(error62) {
 }
 var _messageDesc, _issuesDesc, _installedToString, initializer, $ZodError, $ZodRealError;
 var init_errors = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/errors.js"() {
+  "node_modules/zod/v4/core/errors.js"() {
     init_core();
     init_util();
     _messageDesc = {
@@ -1831,7 +1835,7 @@ var init_errors = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/parse.js
+// node_modules/zod/v4/core/parse.js
 function finalizeParams(callee, params) {
   return { callee: params?.callee ?? callee, Err: params?.Err };
 }
@@ -1871,7 +1875,7 @@ function validateFallback(schema4, value, _ctx) {
 }
 var _parse, parse, _parseAsync, parseAsync, _safeParse, safeParse, _safeParseAsync, safeParseAsync, COMPILE_INVALID, COMPILE_FALLBACK, validate, validateAsync, _encode, encode, _decode, decode, _encodeAsync, encodeAsync, _decodeAsync, decodeAsync, _safeEncode, safeEncode, _safeDecode, safeDecode, _safeEncodeAsync, safeEncodeAsync, _safeDecodeAsync, safeDecodeAsync;
 var init_parse = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/parse.js"() {
+  "node_modules/zod/v4/core/parse.js"() {
     init_core();
     init_errors();
     init_util();
@@ -1999,7 +2003,7 @@ var init_parse = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/regexes.js
+// node_modules/zod/v4/core/regexes.js
 var regexes_exports = {};
 __export(regexes_exports, {
   anyString: () => anyString,
@@ -2100,7 +2104,7 @@ function fixedBase64url(length) {
 }
 var cuid, cuid2, ulid, xid, ksuid, nanoid, duration, extendedDuration, guid, uuid, uuid4, uuid6, uuid7, email, html5Email, rfc5322Email, unicodeEmail, idnEmail, browserEmail, _emoji, ipv4, ipv6, mac, cidrv4, cidrv6, base64, base64url, hostname, domain, httpProtocol, e164, creditCard, currencyCode, iban, dateSource, date, anyString, string, bigint, integer, number, boolean, _null, _undefined, lowercase, uppercase, hex, md5_hex, md5_base64, md5_base64url, sha1_hex, sha1_base64, sha1_base64url, sha256_hex, sha256_base64, sha256_base64url, sha384_hex, sha384_base64, sha384_base64url, sha512_hex, sha512_base64, sha512_base64url;
 var init_regexes = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/regexes.js"() {
+  "node_modules/zod/v4/core/regexes.js"() {
     init_util();
     cuid = /^[cC][0-9a-z]{6,}$/;
     cuid2 = /^[0-9a-z]+$/;
@@ -2177,7 +2181,7 @@ var init_regexes = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/checks.js
+// node_modules/zod/v4/core/checks.js
 function handleCheckPropertyResult(result, payload, property) {
   if (result.issues.length) {
     payload.issues.push(...prefixIssues(property, result.issues));
@@ -2185,7 +2189,7 @@ function handleCheckPropertyResult(result, payload, property) {
 }
 var $ZodCheck, _whenHasSize, _whenHasLength, numericOriginMap, $ZodCheckLessThan, $ZodCheckGreaterThan, $ZodCheckMultipleOf, $ZodCheckNumberFormat, $ZodCheckBigIntFormat, $ZodCheckMaxSize, $ZodCheckMinSize, $ZodCheckSizeEquals, $ZodCheckMaxLength, $ZodCheckMinLength, $ZodCheckLengthEquals, $ZodCheckStringFormat, $ZodCheckRegex, $ZodCheckLowerCase, $ZodCheckUpperCase, $ZodCheckIncludes, $ZodCheckStartsWith, $ZodCheckEndsWith, $ZodCheckProperty, $ZodCheckProperties, $ZodCheckMimeType, $ZodCheckOverwrite;
 var init_checks = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/checks.js"() {
+  "node_modules/zod/v4/core/checks.js"() {
     init_core();
     init_regexes();
     init_util();
@@ -2661,10 +2665,10 @@ var init_checks = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/doc.js
+// node_modules/zod/v4/core/doc.js
 var Doc;
 var init_doc = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/doc.js"() {
+  "node_modules/zod/v4/core/doc.js"() {
     Doc = class {
       constructor(args = [], closed = {}) {
         this.content = [];
@@ -2707,10 +2711,10 @@ ${content.join("\n")}
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/versions.js
+// node_modules/zod/v4/core/versions.js
 var version;
 var init_versions = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/versions.js"() {
+  "node_modules/zod/v4/core/versions.js"() {
     version = {
       major: 4,
       minor: 6,
@@ -2719,7 +2723,7 @@ var init_versions = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/schemas.js
+// node_modules/zod/v4/core/schemas.js
 async function validateAsync2(inst, value) {
   const ctx = { async: true };
   return toStandardResult(await inst._zod.run({ value, issues: [] }, ctx), ctx);
@@ -3400,7 +3404,7 @@ function handleRefineResult(result, payload, input2, inst) {
 }
 var $ZodType, toStandardResult, $ZodString, $ZodStringFormat, $ZodGUID, $ZodUUID, $ZodEmail, URL_BAD_FORMAT, URL_UNPARSEABLE, asciiTabOrNewline, $ZodURL, $ZodEmoji, $ZodNanoID, $ZodCUID, $ZodCUID2, $ZodULID, $ZodXID, $ZodKSUID, $ZodISODateTime, $ZodISODate, $ZodISOTime, $ZodISODuration, $ZodIPv4, ipv6Alphabet, $ZodIPv6, $ZodMAC, $ZodCIDRv4, $ZodCIDRv6, base64Charset, $ZodBase64, base64urlCharset, $ZodBase64URL, $ZodE164, CC_SANITIZE, $ZodCreditCard, $ZodIBAN, $ZodJWT, $ZodCustomStringFormat, $ZodNumber, $ZodNumberFormat, $ZodBoolean, $ZodBigInt, $ZodBigIntFormat, $ZodSymbol, $ZodUndefined, $ZodNull, $ZodAny, $ZodUnknown, $ZodNever, $ZodVoid, $ZodDate, arraySize, mapSize, setSize, $ZodArray, NO_SYMBOL_KEYS, $ZodObject, $ZodObjectJIT, $ZodUnion, $ZodXor, $ZodDiscriminatedUnion, $ZodIntersection, $ZodTuple, $ZodRecord, $ZodMap, $ZodSet, $ZodEnum, $ZodLiteral, $ZodFile, $ZodTransform, $ZodOptional, $ZodExactOptional, $ZodNullable, $ZodDefault, $ZodPrefault, $ZodNonOptional, $ZodSuccess, $ZodCatch, $ZodNaN, $ZodPipe, $ZodCodec, $ZodPreprocess, $ZodReadonly, $ZodTemplateLiteral, $ZodFunction, $ZodPromise, $ZodLazy, $ZodCustom;
 var init_schemas = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/schemas.js"() {
+  "node_modules/zod/v4/core/schemas.js"() {
     init_checks();
     init_core();
     init_doc();
@@ -5174,7 +5178,7 @@ var init_schemas = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/memoizer.js
+// node_modules/zod/v4/core/memoizer.js
 function isRef(value) {
   return value !== null && typeof value === "object";
 }
@@ -5338,7 +5342,7 @@ function isBackEdge(ctx, value) {
 }
 var $ZodCyclicError, STATE, NO_ISSUES, recursive, NONE, ASSUMED, PROVEN, handoff, open, memo;
 var init_memoizer = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/memoizer.js"() {
+  "node_modules/zod/v4/core/memoizer.js"() {
     init_util();
     $ZodCyclicError = class extends Error {
       constructor() {
@@ -5456,7 +5460,7 @@ var init_memoizer = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ar.js
+// node_modules/zod/v4/locales/ar.js
 function ar_default() {
   return {
     localeError: error()
@@ -5464,7 +5468,7 @@ function ar_default() {
 }
 var error;
 var init_ar = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ar.js"() {
+  "node_modules/zod/v4/locales/ar.js"() {
     init_util();
     error = () => {
       const Sizable = {
@@ -5574,7 +5578,7 @@ var init_ar = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/az.js
+// node_modules/zod/v4/locales/az.js
 function az_default() {
   return {
     localeError: error2()
@@ -5582,7 +5586,7 @@ function az_default() {
 }
 var error2;
 var init_az = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/az.js"() {
+  "node_modules/zod/v4/locales/az.js"() {
     init_util();
     error2 = () => {
       const Sizable = {
@@ -5691,7 +5695,7 @@ var init_az = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/be.js
+// node_modules/zod/v4/locales/be.js
 function getBelarusianPlural(count, one, few, many) {
   const absCount = Math.abs(count);
   const lastDigit = absCount % 10;
@@ -5714,7 +5718,7 @@ function be_default() {
 }
 var error3;
 var init_be = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/be.js"() {
+  "node_modules/zod/v4/locales/be.js"() {
     init_util();
     error3 = () => {
       const Sizable = {
@@ -5866,7 +5870,7 @@ var init_be = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/bg.js
+// node_modules/zod/v4/locales/bg.js
 function bg_default() {
   return {
     localeError: error4()
@@ -5874,7 +5878,7 @@ function bg_default() {
 }
 var error4;
 var init_bg = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/bg.js"() {
+  "node_modules/zod/v4/locales/bg.js"() {
     init_util();
     error4 = () => {
       const Sizable = {
@@ -5998,7 +6002,7 @@ var init_bg = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/bn.js
+// node_modules/zod/v4/locales/bn.js
 function bn_default() {
   return {
     localeError: error5()
@@ -6006,7 +6010,7 @@ function bn_default() {
 }
 var error5;
 var init_bn = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/bn.js"() {
+  "node_modules/zod/v4/locales/bn.js"() {
     init_util();
     error5 = () => {
       const Sizable = {
@@ -6118,7 +6122,7 @@ var init_bn = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ca.js
+// node_modules/zod/v4/locales/ca.js
 function ca_default() {
   return {
     localeError: error6()
@@ -6126,7 +6130,7 @@ function ca_default() {
 }
 var error6;
 var init_ca = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ca.js"() {
+  "node_modules/zod/v4/locales/ca.js"() {
     init_util();
     error6 = () => {
       const Sizable = {
@@ -6238,7 +6242,7 @@ var init_ca = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ckb.js
+// node_modules/zod/v4/locales/ckb.js
 function ckb_default() {
   return {
     localeError: error7()
@@ -6246,7 +6250,7 @@ function ckb_default() {
 }
 var error7;
 var init_ckb = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ckb.js"() {
+  "node_modules/zod/v4/locales/ckb.js"() {
     init_util();
     error7 = () => {
       const Sizable = {
@@ -6377,7 +6381,7 @@ var init_ckb = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/cs.js
+// node_modules/zod/v4/locales/cs.js
 function cs_default() {
   return {
     localeError: error8()
@@ -6385,7 +6389,7 @@ function cs_default() {
 }
 var error8;
 var init_cs = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/cs.js"() {
+  "node_modules/zod/v4/locales/cs.js"() {
     init_util();
     error8 = () => {
       const Sizable = {
@@ -6500,7 +6504,7 @@ var init_cs = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/da.js
+// node_modules/zod/v4/locales/da.js
 function da_default() {
   return {
     localeError: error9()
@@ -6508,7 +6512,7 @@ function da_default() {
 }
 var error9;
 var init_da = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/da.js"() {
+  "node_modules/zod/v4/locales/da.js"() {
     init_util();
     error9 = () => {
       const Sizable = {
@@ -6627,7 +6631,7 @@ var init_da = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/de.js
+// node_modules/zod/v4/locales/de.js
 function de_default() {
   return {
     localeError: error10()
@@ -6635,7 +6639,7 @@ function de_default() {
 }
 var error10;
 var init_de = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/de.js"() {
+  "node_modules/zod/v4/locales/de.js"() {
     init_util();
     error10 = () => {
       const Sizable = {
@@ -6747,7 +6751,7 @@ var init_de = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/el.js
+// node_modules/zod/v4/locales/el.js
 function el_default() {
   return {
     localeError: error11()
@@ -6755,7 +6759,7 @@ function el_default() {
 }
 var error11;
 var init_el = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/el.js"() {
+  "node_modules/zod/v4/locales/el.js"() {
     init_util();
     error11 = () => {
       const Sizable = {
@@ -6866,7 +6870,7 @@ var init_el = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/en.js
+// node_modules/zod/v4/locales/en.js
 function en_default() {
   return {
     localeError: error12()
@@ -6874,7 +6878,7 @@ function en_default() {
 }
 var error12;
 var init_en = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/en.js"() {
+  "node_modules/zod/v4/locales/en.js"() {
     init_util();
     error12 = () => {
       const Sizable = {
@@ -6997,7 +7001,7 @@ var init_en = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/eo.js
+// node_modules/zod/v4/locales/eo.js
 function eo_default() {
   return {
     localeError: error13()
@@ -7005,7 +7009,7 @@ function eo_default() {
 }
 var error13;
 var init_eo = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/eo.js"() {
+  "node_modules/zod/v4/locales/eo.js"() {
     init_util();
     error13 = () => {
       const Sizable = {
@@ -7118,7 +7122,7 @@ var init_eo = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/es.js
+// node_modules/zod/v4/locales/es.js
 function es_default() {
   return {
     localeError: error14()
@@ -7126,7 +7130,7 @@ function es_default() {
 }
 var error14;
 var init_es = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/es.js"() {
+  "node_modules/zod/v4/locales/es.js"() {
     init_util();
     error14 = () => {
       const Sizable = {
@@ -7261,7 +7265,7 @@ var init_es = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/fa.js
+// node_modules/zod/v4/locales/fa.js
 function fa_default() {
   return {
     localeError: error15()
@@ -7269,7 +7273,7 @@ function fa_default() {
 }
 var error15;
 var init_fa = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/fa.js"() {
+  "node_modules/zod/v4/locales/fa.js"() {
     init_util();
     error15 = () => {
       const Sizable = {
@@ -7387,7 +7391,7 @@ var init_fa = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/fi.js
+// node_modules/zod/v4/locales/fi.js
 function fi_default() {
   return {
     localeError: error16()
@@ -7395,7 +7399,7 @@ function fi_default() {
 }
 var error16;
 var init_fi = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/fi.js"() {
+  "node_modules/zod/v4/locales/fi.js"() {
     init_util();
     error16 = () => {
       const Sizable = {
@@ -7511,7 +7515,7 @@ var init_fi = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/fr.js
+// node_modules/zod/v4/locales/fr.js
 function fr_default() {
   return {
     localeError: error17()
@@ -7519,7 +7523,7 @@ function fr_default() {
 }
 var error17;
 var init_fr = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/fr.js"() {
+  "node_modules/zod/v4/locales/fr.js"() {
     init_util();
     error17 = () => {
       const Sizable = {
@@ -7647,7 +7651,7 @@ var init_fr = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/fr-CA.js
+// node_modules/zod/v4/locales/fr-CA.js
 function fr_CA_default() {
   return {
     localeError: error18()
@@ -7655,7 +7659,7 @@ function fr_CA_default() {
 }
 var error18;
 var init_fr_CA = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/fr-CA.js"() {
+  "node_modules/zod/v4/locales/fr-CA.js"() {
     init_util();
     error18 = () => {
       const Sizable = {
@@ -7766,7 +7770,7 @@ var init_fr_CA = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/gu.js
+// node_modules/zod/v4/locales/gu.js
 function gu_default() {
   return {
     localeError: error19()
@@ -7774,7 +7778,7 @@ function gu_default() {
 }
 var error19;
 var init_gu = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/gu.js"() {
+  "node_modules/zod/v4/locales/gu.js"() {
     init_util();
     error19 = () => {
       const Sizable = {
@@ -7886,7 +7890,7 @@ var init_gu = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/he.js
+// node_modules/zod/v4/locales/he.js
 function he_default() {
   return {
     localeError: error20()
@@ -7894,7 +7898,7 @@ function he_default() {
 }
 var error20;
 var init_he = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/he.js"() {
+  "node_modules/zod/v4/locales/he.js"() {
     init_util();
     error20 = () => {
       const TypeNames = {
@@ -8094,7 +8098,7 @@ var init_he = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/hi.js
+// node_modules/zod/v4/locales/hi.js
 function hi_default() {
   return {
     localeError: error21()
@@ -8102,7 +8106,7 @@ function hi_default() {
 }
 var error21;
 var init_hi = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/hi.js"() {
+  "node_modules/zod/v4/locales/hi.js"() {
     init_util();
     error21 = () => {
       const Sizable = {
@@ -8212,7 +8216,7 @@ var init_hi = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/hr.js
+// node_modules/zod/v4/locales/hr.js
 function hr_default() {
   return {
     localeError: error22()
@@ -8220,7 +8224,7 @@ function hr_default() {
 }
 var error22;
 var init_hr = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/hr.js"() {
+  "node_modules/zod/v4/locales/hr.js"() {
     init_util();
     error22 = () => {
       const Sizable = {
@@ -8345,7 +8349,7 @@ var init_hr = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/hu.js
+// node_modules/zod/v4/locales/hu.js
 function hu_default() {
   return {
     localeError: error23()
@@ -8353,7 +8357,7 @@ function hu_default() {
 }
 var error23;
 var init_hu = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/hu.js"() {
+  "node_modules/zod/v4/locales/hu.js"() {
     init_util();
     error23 = () => {
       const Sizable = {
@@ -8465,7 +8469,7 @@ var init_hu = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/hy.js
+// node_modules/zod/v4/locales/hy.js
 function getArmenianPlural(count, one, many) {
   return Math.abs(count) === 1 ? one : many;
 }
@@ -8483,7 +8487,7 @@ function hy_default() {
 }
 var error24;
 var init_hy = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/hy.js"() {
+  "node_modules/zod/v4/locales/hy.js"() {
     init_util();
     error24 = () => {
       const Sizable = {
@@ -8630,7 +8634,7 @@ var init_hy = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/id.js
+// node_modules/zod/v4/locales/id.js
 function id_default() {
   return {
     localeError: error25()
@@ -8638,7 +8642,7 @@ function id_default() {
 }
 var error25;
 var init_id = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/id.js"() {
+  "node_modules/zod/v4/locales/id.js"() {
     init_util();
     error25 = () => {
       const Sizable = {
@@ -8748,7 +8752,7 @@ var init_id = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/is.js
+// node_modules/zod/v4/locales/is.js
 function is_default() {
   return {
     localeError: error26()
@@ -8756,7 +8760,7 @@ function is_default() {
 }
 var error26;
 var init_is = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/is.js"() {
+  "node_modules/zod/v4/locales/is.js"() {
     init_util();
     error26 = () => {
       const Sizable = {
@@ -8869,7 +8873,7 @@ var init_is = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/it.js
+// node_modules/zod/v4/locales/it.js
 function it_default() {
   return {
     localeError: error27()
@@ -8877,7 +8881,7 @@ function it_default() {
 }
 var error27;
 var init_it = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/it.js"() {
+  "node_modules/zod/v4/locales/it.js"() {
     init_util();
     error27 = () => {
       const Sizable = {
@@ -8989,7 +8993,7 @@ var init_it = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ja.js
+// node_modules/zod/v4/locales/ja.js
 function ja_default() {
   return {
     localeError: error28()
@@ -8997,7 +9001,7 @@ function ja_default() {
 }
 var error28;
 var init_ja = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ja.js"() {
+  "node_modules/zod/v4/locales/ja.js"() {
     init_util();
     error28 = () => {
       const Sizable = {
@@ -9108,7 +9112,7 @@ var init_ja = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ka.js
+// node_modules/zod/v4/locales/ka.js
 function ka_default() {
   return {
     localeError: error29()
@@ -9116,7 +9120,7 @@ function ka_default() {
 }
 var error29;
 var init_ka = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ka.js"() {
+  "node_modules/zod/v4/locales/ka.js"() {
     init_util();
     error29 = () => {
       const Sizable = {
@@ -9232,7 +9236,7 @@ var init_ka = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/km.js
+// node_modules/zod/v4/locales/km.js
 function km_default() {
   return {
     localeError: error30()
@@ -9240,7 +9244,7 @@ function km_default() {
 }
 var error30;
 var init_km = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/km.js"() {
+  "node_modules/zod/v4/locales/km.js"() {
     init_util();
     error30 = () => {
       const Sizable = {
@@ -9354,17 +9358,17 @@ var init_km = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/kh.js
+// node_modules/zod/v4/locales/kh.js
 function kh_default() {
   return km_default();
 }
 var init_kh = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/kh.js"() {
+  "node_modules/zod/v4/locales/kh.js"() {
     init_km();
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/kn.js
+// node_modules/zod/v4/locales/kn.js
 function kn_default() {
   return {
     localeError: error31()
@@ -9372,7 +9376,7 @@ function kn_default() {
 }
 var error31;
 var init_kn = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/kn.js"() {
+  "node_modules/zod/v4/locales/kn.js"() {
     init_util();
     error31 = () => {
       const Sizable = {
@@ -9486,7 +9490,7 @@ var init_kn = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ko.js
+// node_modules/zod/v4/locales/ko.js
 function ko_default() {
   return {
     localeError: error32()
@@ -9494,7 +9498,7 @@ function ko_default() {
 }
 var error32;
 var init_ko = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ko.js"() {
+  "node_modules/zod/v4/locales/ko.js"() {
     init_util();
     error32 = () => {
       const Sizable = {
@@ -9609,7 +9613,7 @@ var init_ko = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/lt.js
+// node_modules/zod/v4/locales/lt.js
 function getUnitTypeFromNumber(number4) {
   const abs = Math.abs(number4);
   const last = abs % 10;
@@ -9627,7 +9631,7 @@ function lt_default() {
 }
 var capitalizeFirstCharacter, error33;
 var init_lt = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/lt.js"() {
+  "node_modules/zod/v4/locales/lt.js"() {
     init_util();
     capitalizeFirstCharacter = (text) => {
       return text.charAt(0).toUpperCase() + text.slice(1);
@@ -9823,7 +9827,7 @@ var init_lt = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/mk.js
+// node_modules/zod/v4/locales/mk.js
 function mk_default() {
   return {
     localeError: error34()
@@ -9831,7 +9835,7 @@ function mk_default() {
 }
 var error34;
 var init_mk = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/mk.js"() {
+  "node_modules/zod/v4/locales/mk.js"() {
     init_util();
     error34 = () => {
       const Sizable = {
@@ -9944,7 +9948,7 @@ var init_mk = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ms.js
+// node_modules/zod/v4/locales/ms.js
 function ms_default() {
   return {
     localeError: error35()
@@ -9952,7 +9956,7 @@ function ms_default() {
 }
 var error35;
 var init_ms = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ms.js"() {
+  "node_modules/zod/v4/locales/ms.js"() {
     init_util();
     error35 = () => {
       const Sizable = {
@@ -10063,7 +10067,7 @@ var init_ms = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ne.js
+// node_modules/zod/v4/locales/ne.js
 function ne_default() {
   return {
     localeError: error36()
@@ -10071,7 +10075,7 @@ function ne_default() {
 }
 var error36;
 var init_ne = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ne.js"() {
+  "node_modules/zod/v4/locales/ne.js"() {
     init_util();
     error36 = () => {
       const Sizable = {
@@ -10181,7 +10185,7 @@ var init_ne = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/nl.js
+// node_modules/zod/v4/locales/nl.js
 function nl_default() {
   return {
     localeError: error37()
@@ -10189,7 +10193,7 @@ function nl_default() {
 }
 var error37;
 var init_nl = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/nl.js"() {
+  "node_modules/zod/v4/locales/nl.js"() {
     init_util();
     error37 = () => {
       const Sizable = {
@@ -10303,7 +10307,7 @@ var init_nl = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/nn.js
+// node_modules/zod/v4/locales/nn.js
 function nn_default() {
   return {
     localeError: error38()
@@ -10311,7 +10315,7 @@ function nn_default() {
 }
 var error38;
 var init_nn = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/nn.js"() {
+  "node_modules/zod/v4/locales/nn.js"() {
     init_util();
     error38 = () => {
       const Sizable = {
@@ -10423,7 +10427,7 @@ var init_nn = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/no.js
+// node_modules/zod/v4/locales/no.js
 function no_default() {
   return {
     localeError: error39()
@@ -10431,7 +10435,7 @@ function no_default() {
 }
 var error39;
 var init_no = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/no.js"() {
+  "node_modules/zod/v4/locales/no.js"() {
     init_util();
     error39 = () => {
       const Sizable = {
@@ -10543,7 +10547,7 @@ var init_no = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ota.js
+// node_modules/zod/v4/locales/ota.js
 function ota_default() {
   return {
     localeError: error40()
@@ -10551,7 +10555,7 @@ function ota_default() {
 }
 var error40;
 var init_ota = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ota.js"() {
+  "node_modules/zod/v4/locales/ota.js"() {
     init_util();
     error40 = () => {
       const Sizable = {
@@ -10664,7 +10668,7 @@ var init_ota = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ps.js
+// node_modules/zod/v4/locales/ps.js
 function ps_default() {
   return {
     localeError: error41()
@@ -10672,7 +10676,7 @@ function ps_default() {
 }
 var error41;
 var init_ps = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ps.js"() {
+  "node_modules/zod/v4/locales/ps.js"() {
     init_util();
     error41 = () => {
       const Sizable = {
@@ -10790,7 +10794,7 @@ var init_ps = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/pl.js
+// node_modules/zod/v4/locales/pl.js
 function pl_default() {
   return {
     localeError: error42()
@@ -10798,7 +10802,7 @@ function pl_default() {
 }
 var error42;
 var init_pl = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/pl.js"() {
+  "node_modules/zod/v4/locales/pl.js"() {
     init_util();
     error42 = () => {
       const Sizable = {
@@ -10911,7 +10915,7 @@ var init_pl = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/pt.js
+// node_modules/zod/v4/locales/pt.js
 function pt_default() {
   return {
     localeError: error43()
@@ -10919,7 +10923,7 @@ function pt_default() {
 }
 var error43;
 var init_pt = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/pt.js"() {
+  "node_modules/zod/v4/locales/pt.js"() {
     init_util();
     error43 = () => {
       const Sizable = {
@@ -11061,7 +11065,7 @@ var init_pt = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/pt-BR.js
+// node_modules/zod/v4/locales/pt-BR.js
 function pt_BR_default() {
   return {
     localeError: error44()
@@ -11069,7 +11073,7 @@ function pt_BR_default() {
 }
 var error44;
 var init_pt_BR = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/pt-BR.js"() {
+  "node_modules/zod/v4/locales/pt-BR.js"() {
     init_util();
     error44 = () => {
       const Sizable = {
@@ -11212,7 +11216,7 @@ var init_pt_BR = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ro.js
+// node_modules/zod/v4/locales/ro.js
 function ro_default() {
   return {
     localeError: error45()
@@ -11220,7 +11224,7 @@ function ro_default() {
 }
 var error45;
 var init_ro = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ro.js"() {
+  "node_modules/zod/v4/locales/ro.js"() {
     init_util();
     error45 = () => {
       const Sizable = {
@@ -11341,7 +11345,7 @@ var init_ro = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ru.js
+// node_modules/zod/v4/locales/ru.js
 function getRussianPlural(count, one, few, many) {
   const absCount = Math.abs(count);
   const lastDigit = absCount % 10;
@@ -11364,7 +11368,7 @@ function ru_default() {
 }
 var error46;
 var init_ru = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ru.js"() {
+  "node_modules/zod/v4/locales/ru.js"() {
     init_util();
     error46 = () => {
       const Sizable = {
@@ -11516,7 +11520,7 @@ var init_ru = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/sk.js
+// node_modules/zod/v4/locales/sk.js
 function sk_default() {
   return {
     localeError: error47()
@@ -11524,7 +11528,7 @@ function sk_default() {
 }
 var error47;
 var init_sk = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/sk.js"() {
+  "node_modules/zod/v4/locales/sk.js"() {
     init_util();
     error47 = () => {
       const Sizable = {
@@ -11639,7 +11643,7 @@ var init_sk = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/sl.js
+// node_modules/zod/v4/locales/sl.js
 function sl_default() {
   return {
     localeError: error48()
@@ -11647,7 +11651,7 @@ function sl_default() {
 }
 var error48;
 var init_sl = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/sl.js"() {
+  "node_modules/zod/v4/locales/sl.js"() {
     init_util();
     error48 = () => {
       const Sizable = {
@@ -11760,7 +11764,7 @@ var init_sl = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/sv.js
+// node_modules/zod/v4/locales/sv.js
 function sv_default() {
   return {
     localeError: error49()
@@ -11768,7 +11772,7 @@ function sv_default() {
 }
 var error49;
 var init_sv = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/sv.js"() {
+  "node_modules/zod/v4/locales/sv.js"() {
     init_util();
     error49 = () => {
       const Sizable = {
@@ -11882,7 +11886,7 @@ var init_sv = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ta.js
+// node_modules/zod/v4/locales/ta.js
 function ta_default() {
   return {
     localeError: error50()
@@ -11890,7 +11894,7 @@ function ta_default() {
 }
 var error50;
 var init_ta = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ta.js"() {
+  "node_modules/zod/v4/locales/ta.js"() {
     init_util();
     error50 = () => {
       const Sizable = {
@@ -12004,7 +12008,7 @@ var init_ta = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/tg.js
+// node_modules/zod/v4/locales/tg.js
 function tg_default() {
   return {
     localeError: error51()
@@ -12012,7 +12016,7 @@ function tg_default() {
 }
 var error51;
 var init_tg = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/tg.js"() {
+  "node_modules/zod/v4/locales/tg.js"() {
     init_util();
     error51 = () => {
       const Sizable = {
@@ -12127,7 +12131,7 @@ var init_tg = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/th.js
+// node_modules/zod/v4/locales/th.js
 function th_default() {
   return {
     localeError: error52()
@@ -12135,7 +12139,7 @@ function th_default() {
 }
 var error52;
 var init_th = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/th.js"() {
+  "node_modules/zod/v4/locales/th.js"() {
     init_util();
     error52 = () => {
       const Sizable = {
@@ -12249,7 +12253,7 @@ var init_th = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/tk.js
+// node_modules/zod/v4/locales/tk.js
 function tk_default() {
   return {
     localeError: error53()
@@ -12257,7 +12261,7 @@ function tk_default() {
 }
 var error53;
 var init_tk = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/tk.js"() {
+  "node_modules/zod/v4/locales/tk.js"() {
     init_util();
     error53 = () => {
       const Sizable = {
@@ -12363,7 +12367,7 @@ var init_tk = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/tr.js
+// node_modules/zod/v4/locales/tr.js
 function tr_default() {
   return {
     localeError: error54()
@@ -12371,7 +12375,7 @@ function tr_default() {
 }
 var error54;
 var init_tr = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/tr.js"() {
+  "node_modules/zod/v4/locales/tr.js"() {
     init_util();
     error54 = () => {
       const Sizable = {
@@ -12480,7 +12484,7 @@ var init_tr = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/uk.js
+// node_modules/zod/v4/locales/uk.js
 function uk_default() {
   return {
     localeError: error55()
@@ -12488,7 +12492,7 @@ function uk_default() {
 }
 var error55;
 var init_uk = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/uk.js"() {
+  "node_modules/zod/v4/locales/uk.js"() {
     init_util();
     error55 = () => {
       const Sizable = {
@@ -12600,17 +12604,17 @@ var init_uk = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ua.js
+// node_modules/zod/v4/locales/ua.js
 function ua_default() {
   return uk_default();
 }
 var init_ua = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ua.js"() {
+  "node_modules/zod/v4/locales/ua.js"() {
     init_uk();
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ur.js
+// node_modules/zod/v4/locales/ur.js
 function ur_default() {
   return {
     localeError: error56()
@@ -12618,7 +12622,7 @@ function ur_default() {
 }
 var error56;
 var init_ur = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/ur.js"() {
+  "node_modules/zod/v4/locales/ur.js"() {
     init_util();
     error56 = () => {
       const Sizable = {
@@ -12732,7 +12736,7 @@ var init_ur = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/uz.js
+// node_modules/zod/v4/locales/uz.js
 function uz_default() {
   return {
     localeError: error57()
@@ -12740,7 +12744,7 @@ function uz_default() {
 }
 var error57;
 var init_uz = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/uz.js"() {
+  "node_modules/zod/v4/locales/uz.js"() {
     init_util();
     error57 = () => {
       const Sizable = {
@@ -12852,7 +12856,7 @@ var init_uz = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/vi.js
+// node_modules/zod/v4/locales/vi.js
 function vi_default() {
   return {
     localeError: error58()
@@ -12860,7 +12864,7 @@ function vi_default() {
 }
 var error58;
 var init_vi = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/vi.js"() {
+  "node_modules/zod/v4/locales/vi.js"() {
     init_util();
     error58 = () => {
       const Sizable = {
@@ -12972,7 +12976,7 @@ var init_vi = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/zh-CN.js
+// node_modules/zod/v4/locales/zh-CN.js
 function zh_CN_default() {
   return {
     localeError: error59()
@@ -12980,7 +12984,7 @@ function zh_CN_default() {
 }
 var error59;
 var init_zh_CN = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/zh-CN.js"() {
+  "node_modules/zod/v4/locales/zh-CN.js"() {
     init_util();
     error59 = () => {
       const Sizable = {
@@ -13093,7 +13097,7 @@ var init_zh_CN = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/zh-TW.js
+// node_modules/zod/v4/locales/zh-TW.js
 function zh_TW_default() {
   return {
     localeError: error60()
@@ -13101,7 +13105,7 @@ function zh_TW_default() {
 }
 var error60;
 var init_zh_TW = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/zh-TW.js"() {
+  "node_modules/zod/v4/locales/zh-TW.js"() {
     init_util();
     error60 = () => {
       const Sizable = {
@@ -13212,7 +13216,7 @@ var init_zh_TW = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/yo.js
+// node_modules/zod/v4/locales/yo.js
 function yo_default() {
   return {
     localeError: error61()
@@ -13220,7 +13224,7 @@ function yo_default() {
 }
 var error61;
 var init_yo = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/yo.js"() {
+  "node_modules/zod/v4/locales/yo.js"() {
     init_util();
     error61 = () => {
       const Sizable = {
@@ -13331,7 +13335,7 @@ var init_yo = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/index.js
+// node_modules/zod/v4/locales/index.js
 var locales_exports = {};
 __export(locales_exports, {
   ar: () => ar_default,
@@ -13399,7 +13403,7 @@ __export(locales_exports, {
   zhTW: () => zh_TW_default
 });
 var init_locales = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/locales/index.js"() {
+  "node_modules/zod/v4/locales/index.js"() {
     init_ar();
     init_az();
     init_be();
@@ -13466,13 +13470,13 @@ var init_locales = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/registries.js
+// node_modules/zod/v4/core/registries.js
 function registry() {
   return new $ZodRegistry();
 }
 var _a2, $output, $input, $ZodRegistry, globalRegistry;
 var init_registries = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/registries.js"() {
+  "node_modules/zod/v4/core/registries.js"() {
     $output = /* @__PURE__ */ Symbol("ZodOutput");
     $input = /* @__PURE__ */ Symbol("ZodInput");
     $ZodRegistry = class {
@@ -13520,7 +13524,7 @@ var init_registries = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/compile.js
+// node_modules/zod/v4/core/compile.js
 function compileValidator(schema4, parser) {
   try {
     return compileFn(schema4, { assertOnly: true });
@@ -15082,7 +15086,7 @@ function generateTransformCheck(doc, ctx, schema4, accessor) {
 }
 var INVALID, FALLBACK_FLAG, ZodCompileAsyncError, ZodCompileUnsupportedError, WHEN_DEFAULTED_CHECKS, PATTERN_IS_COMPLETE;
 var init_compile = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/compile.js"() {
+  "node_modules/zod/v4/core/compile.js"() {
     init_core();
     init_doc();
     init_memoizer();
@@ -15141,7 +15145,7 @@ var init_compile = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/api.js
+// node_modules/zod/v4/core/api.js
 function snapshotChecks(def) {
   if (def.checks)
     def.checks = [...def.checks];
@@ -16194,7 +16198,7 @@ function _stringFormat(Class2, format, fnOrRegex, _params = {}) {
 }
 var TimePrecision;
 var init_api = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/api.js"() {
+  "node_modules/zod/v4/core/api.js"() {
     init_checks();
     init_registries();
     init_schemas();
@@ -16209,7 +16213,7 @@ var init_api = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/to-json-schema.js
+// node_modules/zod/v4/core/to-json-schema.js
 function assignProps(target, ...sources2) {
   for (const source of sources2) {
     for (const key2 of Reflect.ownKeys(source)) {
@@ -16725,7 +16729,7 @@ function isTransforming(_schema, _ctx) {
 }
 var FOLDABLE_KEYS, UNION_KEYS, createToJSONSchemaMethod, createStandardJSONSchemaMethod;
 var init_to_json_schema = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/to-json-schema.js"() {
+  "node_modules/zod/v4/core/to-json-schema.js"() {
     init_registries();
     init_util();
     FOLDABLE_KEYS = /* @__PURE__ */ new Set(["type", "properties", "required", "additionalProperties"]);
@@ -16746,7 +16750,7 @@ var init_to_json_schema = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/json-schema-processors.js
+// node_modules/zod/v4/core/json-schema-processors.js
 function aggregateChecks(schema4) {
   const agg = {};
   const def = schema4._zod.def;
@@ -16896,7 +16900,7 @@ function toJSONSchema(input2, params) {
 }
 var narrowMin, narrowMax, narrowBoth, addDivisor, addPattern, intersectMime, setFormat, minContributor, maxContributor, formatContributor, contributors, formatMap, exactPatterns, exactPattern, stringProcessor, numberProcessor, booleanProcessor, bigintProcessor, symbolProcessor, nullProcessor, undefinedProcessor, voidProcessor, neverProcessor, anyProcessor, unknownProcessor, dateProcessor, enumProcessor, literalProcessor, nanProcessor, templateLiteralProcessor, fileProcessor, successProcessor, customProcessor, functionProcessor, transformProcessor, mapProcessor, setProcessor, arrayProcessor, objectProcessor, unionProcessor, intersectionProcessor, tupleProcessor, pendingRecords, recordProcessor, nullableProcessor, nonoptionalProcessor, UNREPRESENTABLE_DEFAULT, defaultProcessor, prefaultProcessor, catchProcessor, pipeProcessor, readonlyProcessor, promiseProcessor, optionalProcessor, lazyProcessor, allProcessors;
 var init_json_schema_processors = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/json-schema-processors.js"() {
+  "node_modules/zod/v4/core/json-schema-processors.js"() {
     init_regexes();
     init_schemas();
     init_to_json_schema();
@@ -17503,10 +17507,10 @@ var init_json_schema_processors = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/json-schema-generator.js
+// node_modules/zod/v4/core/json-schema-generator.js
 var JSONSchemaGenerator;
 var init_json_schema_generator = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/json-schema-generator.js"() {
+  "node_modules/zod/v4/core/json-schema-generator.js"() {
     init_json_schema_processors();
     init_to_json_schema();
     JSONSchemaGenerator = class {
@@ -17588,14 +17592,14 @@ var init_json_schema_generator = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/json-schema.js
+// node_modules/zod/v4/core/json-schema.js
 var json_schema_exports = {};
 var init_json_schema = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/json-schema.js"() {
+  "node_modules/zod/v4/core/json-schema.js"() {
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/index.js
+// node_modules/zod/v4/core/index.js
 var core_exports2 = {};
 __export(core_exports2, {
   $ZodAny: () => $ZodAny,
@@ -17912,7 +17916,7 @@ __export(core_exports2, {
   withParser: () => withParser
 });
 var init_core2 = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/index.js"() {
+  "node_modules/zod/v4/core/index.js"() {
     init_core();
     init_parse();
     init_errors();
@@ -17935,7 +17939,7 @@ var init_core2 = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/checks.js
+// node_modules/zod/v4/classic/checks.js
 var checks_exports2 = {};
 __export(checks_exports2, {
   endsWith: () => _endsWith,
@@ -17970,12 +17974,12 @@ __export(checks_exports2, {
   uppercase: () => _uppercase
 });
 var init_checks2 = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/checks.js"() {
+  "node_modules/zod/v4/classic/checks.js"() {
     init_core2();
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/errors.js
+// node_modules/zod/v4/classic/errors.js
 function _lazyMethod(proto, key2, make) {
   Object.defineProperty(proto, key2, {
     configurable: true,
@@ -17992,7 +17996,7 @@ function _lazyMethod(proto, key2, make) {
 }
 var _installedErrorProtos, initializer2, ZodError, ZodRealError;
 var init_errors2 = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/errors.js"() {
+  "node_modules/zod/v4/classic/errors.js"() {
     init_core2();
     init_core2();
     init_util();
@@ -18029,10 +18033,10 @@ var init_errors2 = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/parse.js
+// node_modules/zod/v4/classic/parse.js
 var parse2, parseAsync2, safeParse2, safeParseAsync2, encode2, decode2, encodeAsync2, decodeAsync2, safeEncode2, safeDecode2, safeEncodeAsync2, safeDecodeAsync2;
 var init_parse2 = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/parse.js"() {
+  "node_modules/zod/v4/classic/parse.js"() {
     init_core2();
     init_errors2();
     init_core2();
@@ -18051,7 +18055,7 @@ var init_parse2 = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/schemas.js
+// node_modules/zod/v4/classic/schemas.js
 var schemas_exports2 = {};
 __export(schemas_exports2, {
   ZodAny: () => ZodAny,
@@ -18725,7 +18729,7 @@ function preprocess(fn, schema4) {
 }
 var ZodType, _ZodString, ZodString, ZodStringFormat, ZodISODateTime, ZodISODate, ZodISOTime, ZodISODuration, ZodEmail, ZodGUID, ZodUUID, ZodURL, ZodEmoji, ZodNanoID, ZodCUID, ZodCUID2, ZodULID, ZodXID, ZodKSUID, ZodIPv4, ZodMAC, ZodIPv6, ZodCIDRv4, ZodCIDRv6, ZodBase64, ZodBase64URL, ZodE164, ZodCreditCard, ZodIBAN, ZodJWT, ZodCustomStringFormat, ZodNumber, ZodNumberFormat, ZodBoolean, ZodBigInt, ZodBigIntFormat, ZodSymbol, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodVoid, ZodDate, ZodArray, ZodObject, ZodUnion, ZodXor, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodMap, ZodSet, ZodEnum, ZodLiteral, ZodFile, ZodTransform, ZodOptional, ZodExactOptional, ZodNullable, ZodDefault, ZodPrefault, ZodNonOptional, ZodSuccess, ZodCatch, ZodNaN, ZodPipe, ZodCodec, ZodPreprocess, ZodReadonly, ZodTemplateLiteral, ZodLazy, ZodPromise, ZodFunction, ZodCustom, describe2, meta2, ZodInstanceOf, stringbool;
 var init_schemas2 = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/schemas.js"() {
+  "node_modules/zod/v4/classic/schemas.js"() {
     init_core2();
     init_core2();
     init_json_schema_processors();
@@ -19708,7 +19712,7 @@ var init_schemas2 = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/compat.js
+// node_modules/zod/v4/classic/compat.js
 function setErrorMap(map3) {
   config({
     customError: map3
@@ -19719,7 +19723,7 @@ function getErrorMap() {
 }
 var ZodIssueCode, ZodFirstPartyTypeKind;
 var init_compat = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/compat.js"() {
+  "node_modules/zod/v4/classic/compat.js"() {
     init_core2();
     ZodIssueCode = {
       invalid_type: "invalid_type",
@@ -19739,7 +19743,7 @@ var init_compat = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/iso.js
+// node_modules/zod/v4/classic/iso.js
 var iso_exports = {};
 __export(iso_exports, {
   ZodISODate: () => ZodISODate,
@@ -19764,14 +19768,14 @@ function duration2(params) {
   return _isoDuration(ZodISODuration, params);
 }
 var init_iso = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/iso.js"() {
+  "node_modules/zod/v4/classic/iso.js"() {
     init_core2();
     init_schemas2();
     init_schemas2();
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/from-json-schema.js
+// node_modules/zod/v4/classic/from-json-schema.js
 function detectVersion(schema4, defaultTarget) {
   const $schema = schema4.$schema;
   if ($schema === "https://json-schema.org/draft/2020-12/schema") {
@@ -20402,7 +20406,7 @@ function fromJSONSchema(schema4, params) {
 }
 var z, RECOGNIZED_KEYS, SCHEMA_KEYWORDS, SCHEMA_MAP_KEYWORDS, fullTime;
 var init_from_json_schema = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/from-json-schema.js"() {
+  "node_modules/zod/v4/classic/from-json-schema.js"() {
     init_registries();
     init_util();
     init_checks2();
@@ -20514,7 +20518,7 @@ var init_from_json_schema = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/core/visit.js
+// node_modules/zod/v4/core/visit.js
 function visit(schema4, fnOrHandlers) {
   const fn = typeof fnOrHandlers === "function" ? fnOrHandlers : (node2, rewritten) => {
     const h2 = fnOrHandlers[node2._zod.def.type];
@@ -20669,14 +20673,14 @@ function visit(schema4, fnOrHandlers) {
 }
 var RESOLVING;
 var init_visit = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/core/visit.js"() {
+  "node_modules/zod/v4/core/visit.js"() {
     init_schemas();
     init_util();
     RESOLVING = /* @__PURE__ */ Symbol("z.visit/resolving");
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/deep-partial.js
+// node_modules/zod/v4/classic/deep-partial.js
 function deepPartial(schema4) {
   return visit(schema4, {
     object: (s) => s.partial(),
@@ -20688,13 +20692,13 @@ function deepPartial(schema4) {
   });
 }
 var init_deep_partial = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/deep-partial.js"() {
+  "node_modules/zod/v4/classic/deep-partial.js"() {
     init_visit();
     init_schemas2();
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/in-out.js
+// node_modules/zod/v4/classic/in-out.js
 function withChecks(side, checks) {
   if (!checks?.length)
     return side;
@@ -20724,14 +20728,14 @@ function output(schema4) {
   });
 }
 var init_in_out = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/in-out.js"() {
+  "node_modules/zod/v4/classic/in-out.js"() {
     init_util();
     init_visit();
     init_schemas2();
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/coerce.js
+// node_modules/zod/v4/classic/coerce.js
 var coerce_exports = {};
 __export(coerce_exports, {
   bigint: () => bigint3,
@@ -20756,13 +20760,13 @@ function date4(params) {
   return _coercedDate(ZodDate, params);
 }
 var init_coerce = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/coerce.js"() {
+  "node_modules/zod/v4/classic/coerce.js"() {
     init_core2();
     init_schemas2();
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/external.js
+// node_modules/zod/v4/classic/external.js
 var external_exports = {};
 __export(external_exports, {
   $brand: () => $brand,
@@ -21025,7 +21029,7 @@ __export(external_exports, {
   xor: () => xor
 });
 var init_external = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/v4/classic/external.js"() {
+  "node_modules/zod/v4/classic/external.js"() {
     init_core2();
     init_schemas2();
     init_checks2();
@@ -21044,9 +21048,9 @@ var init_external = __esm({
   }
 });
 
-// ../../../../Documents/Code/Echoes/node_modules/zod/index.js
+// node_modules/zod/index.js
 var init_zod = __esm({
-  "../../../../Documents/Code/Echoes/node_modules/zod/index.js"() {
+  "node_modules/zod/index.js"() {
     init_external();
     init_external();
   }
@@ -21072,6 +21076,7 @@ function splitBusinessText(text, id, settings = {}) {
 var BUSINESS_REGEX_RULES, businessRegexValueSchema, businessRegexSettingsSchema;
 var init_business_regex = __esm({
   "src/shared/business-regex.ts"() {
+    "use strict";
     init_zod();
     BUSINESS_REGEX_RULES = [
       { id: "aliasName", group: "\u4EBA\u7269\u4E0E\u8D44\u6599", name: "\u522B\u540D\u5217\u540D\u79F0", pattern: "^(\u522B\u540D|\u522B\u79F0|aliases?|alternate_names?)$", flags: "i", usage: "\u8BC6\u522B\u4F5C\u4E3A\u522B\u540D\u4F7F\u7528\u7684\u8868\u683C\u5217\u540D\u79F0\u3002" },
@@ -21121,6 +21126,7 @@ function renderContinuity(value) {
 var storyTimeSchema, continuitySchema, aliasSchema, continuitySettingsSchema, DEFAULT_CONTINUITY, states, CONTINUITY_EXTRACTION_GUIDE;
 var init_continuity = __esm({
   "src/shared/continuity.ts"() {
+    "use strict";
     init_zod();
     storyTimeSchema = external_exports.string().trim().max(4e3);
     continuitySchema = external_exports.object({
@@ -21347,6 +21353,7 @@ function renderStatusVariables(variables) {
 var partNames, precedence, functions, FormulaParser, operandSchema, variableSchema, listSchema, statusVariablesSchema;
 var init_status_variables = __esm({
   "src/shared/status-variables.ts"() {
+    "use strict";
     init_zod();
     partNames = { base: "\u57FA\u7840\u503C", extra: "\u989D\u5916\u503C", final: "\u6700\u7EC8\u503C" };
     precedence = /* @__PURE__ */ new Map([["+", 10], ["-", 10], ["*", 20], ["/", 20], ["%", 20], ["^", 30], ["**", 30]]);
@@ -21487,6 +21494,7 @@ ${rules.join("\n")}
 var creativePreferenceSchema, creativePreferencesSchema, EMPTY_CREATIVE_PREFERENCES;
 var init_creative_preferences = __esm({
   "src/shared/creative-preferences.ts"() {
+    "use strict";
     init_zod();
     creativePreferenceSchema = external_exports.object({
       id: external_exports.string().min(1).max(120),
@@ -21583,6 +21591,7 @@ function validateMemoryValues(columns, rawValues, options = {}) {
 var MAX_EXTRACTION_CHARACTERS, DATA_NAME_KEY, taskBudgetSchema, identifierSchema, summaryBatchingSchema, extractionContextPolicySchema, injectionBudgetSchema, memoryColumnDefinitionSchema, columnCollectionSchema, memoryTypeTemplateInputSchema, memoryTypeInputSchema, persistedFields, memoryTypeTemplateSchema, memoryTypeDefinitionSchema, promptPresetItemSchema, promptPresetSchema, structuredMemoryCatalogSchema, memoryRowSourceSchema, memoryRowInputSchema, memoryRowSchema, extractionOperationSchema, extractionPayloadSchema, promptMessageSchema, chatMessageSchema, failoverPolicySchema, generationEndpointSchema, generationEndpointGroupSchema, structuredExtractionBatchSchema, extractionReviewItemSchema, extractionRequestSchema, summaryPromptBase, summaryPromptItemSchema, summaryPromptPresetSchema, summaryPreprocessRuleSchema, summaryBatchInputSchema, summaryTimestampSchema, summarySliceCandidateSchema, summaryBatchMetadataSchema, summarySliceSchema, summaryPayloadSchema, summaryCompressionConfigSchema, messageCompressionMarkerSchema, recallFlagRulesSchema, recallPoolReferenceSchema, recallPoolSchema, summaryCatalogSchema, summaryGenerationRequestSchema, summaryCoverageRequestSchema, summaryCoveragePayloadSchema, jsonValueSchema, statusStateSchema, statusPromptBase, statusPromptItemSchema, statusPromptPresetSchema, statusValidationRuleSchema, statusValidationConfigSchema, statusPatchOperationSchema, statusPayloadSchema, statusProviderPathSchema, statusProviderOperationSchema, statusProviderPayloadSchema, statusUpdateRequestSchema, jobStatusSchema, vectorStateSchema, retrievalEndpointSchema, embeddingEndpointGroupSchema, rerankEndpointSetSchema, retrievalCollectionInputSchema, retrievalCollectionSchema, retrievalDocumentInputSchema, retrievalRequestOptions, retrievalUpsertRequestSchema, retrievalDeleteRequestSchema, retrievalDocumentSyncRequestSchema, retrievalDocumentStatusRequestSchema, retrievalDocumentManifestRequestSchema, retrievalRebuildRequestSchema, retrievalQueryPresetBase, retrievalQueryPresetItemSchema, retrievalQueryPresetSchema, retrievalInjectionConfigSchema, statusProfileFields, statusTemplateSchema, statusProfileSchema, statusCatalogSchema, statusSnapshotSchema, retrievalSourceWeightSchema, retrievalQueryRequestSchema, retrievalQueryContinueRequestSchema, endpointTestRequestSchema, endpointModelListRequestSchema, buildInfoSchema, subsystemStateSchema, systemStatusSchema, diagnosticCheckSchema, repairRequestSchema, systemDiagnosticRequestSchema, repairResultSchema, credentialMetadataSchema, credentialCreateSchema, credentialMigrationSchema, credentialUpdateSchema, endpointCredentialRefSchema, backupWorldbookEntrySchema, backupMessageSwipeSchema, echoesBackupV1Schema, restorePlanSchema, restoreResultSchema;
 var init_schemas3 = __esm({
   "src/shared/schemas.ts"() {
+    "use strict";
     init_zod();
     init_business_regex();
     init_continuity();
@@ -22768,6 +22777,7 @@ function stageInvalidReason(stage, overviews) {
 var BATCH_OVERVIEW_PROMPT_4_1, DEFAULT_BATCH_OVERVIEW_MAX_CHARACTERS, BATCH_OVERVIEW_MAX_CHARACTERS_PLACEHOLDER, DEFAULT_BATCH_OVERVIEW_PROMPT, LEGACY_BATCH_OVERVIEW_PROMPTS, batchOverviewPayloadSchema, batchOverviewSchema, DEFAULT_STAGE_THRESHOLD, DEFAULT_STAGE_MERGE_COUNT, stageOverviewMaxCharacters, STAGE_OVERVIEW_PROMPT, stageOverviewSourceSchema, stageOverviewSchema, batchOverviewRequestSchema;
 var init_batch_overview = __esm({
   "src/shared/batch-overview.ts"() {
+    "use strict";
     init_business_regex();
     init_zod();
     init_schemas3();
@@ -22864,6 +22874,7 @@ var init_batch_overview = __esm({
 var DEFAULT_DISCUSSION_SYSTEM_PROMPT, discussionSettingsSchema, discussionMessageSchema, discussionRequestSchema;
 var init_discussion = __esm({
   "src/shared/discussion.ts"() {
+    "use strict";
     init_zod();
     init_schemas3();
     DEFAULT_DISCUSSION_SYSTEM_PROMPT = `\u73B0\u5728\u6682\u505C\u5267\u60C5\u6F14\u7ECE\uFF0C\u8FDB\u5165\u5267\u60C5\u8BA8\u8BBA\u6A21\u5F0F\u3002\u4EE5\u4E2D\u6587\u4E0E\u7528\u6237\u8BA8\u8BBA\u521B\u4F5C\uFF0C\u800C\u4E0D\u662F\u7EE7\u7EED\u626E\u6F14\u4EBA\u7269\u6216\u63A8\u8FDB\u6545\u4E8B\u3002
@@ -22913,6 +22924,7 @@ function statusRangeNotice(skippedCount) {
 var DEFAULT_STATUS_TASK_PROMPT, LEGACY_STATUS_TASK_PROMPTS, STATUS_TIDY_PROMPT;
 var init_status_prompts = __esm({
   "src/shared/status-prompts.ts"() {
+    "use strict";
     DEFAULT_STATUS_TASK_PROMPT = `\u4F60\u8D1F\u8D23\u7EF4\u62A4\u4E00\u573A\u957F\u671F\u89D2\u8272\u626E\u6F14\u7684\u201C\u5F53\u524D\u72B6\u6001\u201D\uFF1A\u5B83\u63CF\u8FF0 <new_messages> \u7ED3\u675F\u8FD9\u4E00\u523B\u7684\u5C40\u9762\uFF0C\u6BCF\u6B21\u751F\u6210\u90FD\u4F1A\u5B8C\u6574\u6CE8\u5165\u4E3B\u6A21\u578B\uFF0C\u6240\u4EE5\u5FC5\u987B\u77ED\u5C0F\u3001\u51C6\u786E\u3001\u4E0D\u91CD\u590D\u3002\u5BF9\u7167 <current_state>\uFF0C\u53EA\u8F93\u51FA\u53D1\u751F\u4E86\u53D8\u5316\u7684\u90E8\u5206\uFF1B\u6CA1\u6709\u53D8\u5316\u7684\u5185\u5BB9\u4E0D\u8F93\u51FA\uFF0C\u7A0B\u5E8F\u4F1A\u4FDD\u7559\u539F\u503C\u3002
 
 ## \u53C2\u4E0E\u8005\u4E0E\u77E5\u60C5
@@ -22964,6 +22976,7 @@ function invalidateRecall(worldbookName) {
 var listeners;
 var init_recall_invalidation = __esm({
   "src/extension/recall-invalidation.ts"() {
+    "use strict";
     listeners = /* @__PURE__ */ new Set();
   }
 });
@@ -23030,6 +23043,7 @@ function mergeSummaryCandidates(candidates) {
 var DEFAULT_SUMMARY_BATCHING;
 var init_adaptive_batches = __esm({
   "src/extension/summary/adaptive-batches.ts"() {
+    "use strict";
     DEFAULT_SUMMARY_BATCHING = {
       enabled: true,
       maxCharacters: 6e4,
@@ -23099,6 +23113,7 @@ function upgradeLegacyMemoryCatalog(catalog) {
 var TEMPLATE_TIME, hiddenNumber, hiddenText, PEOPLE_MEMORY_TEMPLATE, RELATIONSHIP_MEMORY_TEMPLATE, ORGANIZATION_MEMORY_TEMPLATE, PLACE_MEMORY_TEMPLATE, ITEM_MEMORY_TEMPLATE, CONCEPT_MEMORY_TEMPLATE, RULE_MEMORY_TEMPLATE, INSTITUTION_MEMORY_TEMPLATE, DOCUMENT_MEMORY_TEMPLATE, DEFAULT_TEMPLATE_GUIDE, DEFAULT_TYPE_TEMPLATE, DEFAULT_CATALOG_TYPES, BUILT_IN_MEMORY_TEMPLATES, OPTIONAL_MEMORY_TEMPLATES, DEFAULT_MAIN_PROMPT, LEGACY_MEMORY_TEXT_REPLACEMENTS, LEGACY_MAIN_PROMPT_REPLACEMENTS;
 var init_memory_templates = __esm({
   "src/extension/state/memory-templates.ts"() {
+    "use strict";
     TEMPLATE_TIME = "2026-10-01T00:00:00.000Z";
     hiddenNumber = "\u8FD9\u662F\u4E00\u4E2A\u9690\u85CF\u8BBE\u5B9A\u76F8\u5173\u7684\u5B57\u6BB5\uFF0C\u5728\u8BBE\u5B9A\u672A\u63ED\u9732\u4E4B\u524D\u9ED8\u8BA4\u586B\u5199-1\u3002";
     hiddenText = "\u8FD9\u662F\u4E00\u4E2A\u9690\u85CF\u8BBE\u5B9A\u76F8\u5173\u7684\u5B57\u6BB5\uFF0C\u5728\u8BBE\u5B9A\u672A\u63ED\u9732\u4E4B\u524D\u9ED8\u8BA4\u586B\u5199\u201C\u672A\u77E5\u201D\u3002";
@@ -23779,6 +23794,7 @@ function instantiateStatusProfile(template2 = DEFAULT_STATUS_TEMPLATE) {
 var SETTINGS_KEY, DEFAULT_TEMPLATE_ID, DEFAULT_STATUS_TEMPLATE_ID, DEFAULT_TEMPLATE_TIME, BUILT_IN_MEMORY_TEMPLATE_IDS, DEFAULT_STATUS_TEMPLATE, DEFAULT_SUMMARY_PROMPT_TIME, DEFAULT_SUMMARY_PROMPT_PRESET, DEFAULT_SETTINGS, workflowConfigSchema, echoesSettingsV2Schema;
 var init_settings = __esm({
   "src/extension/state/settings.ts"() {
+    "use strict";
     init_business_regex();
     init_crypto_compat();
     init_batch_overview();
@@ -24051,6 +24067,7 @@ var init_settings = __esm({
 var EchoesRequestError;
 var init_request_error = __esm({
   "src/extension/api/request-error.ts"() {
+    "use strict";
     EchoesRequestError = class extends Error {
       constructor(message, details = {}) {
         super(message);
@@ -24095,6 +24112,7 @@ function isPreparedTaskRequest(input2) {
 var prepared;
 var init_task_request = __esm({
   "src/extension/api/task-request.ts"() {
+    "use strict";
     init_settings();
     prepared = /* @__PURE__ */ new WeakSet();
   }
@@ -24157,6 +24175,7 @@ async function requestJson(path, init, prepared2 = false) {
 var API_ROOT, REQUEST_TIMEOUT_MS, echoesApi;
 var init_client = __esm({
   "src/extension/api/client.ts"() {
+    "use strict";
     init_domain();
     init_settings();
     init_chat_reset_state();
@@ -24734,7 +24753,7 @@ function runPreprocess(messages2, rules, timeoutMs, includeNotes) {
 // src/extension/summary/summary-request.ts
 init_adaptive_batches();
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/nodes/identity.js
+// node_modules/yaml/browser/dist/nodes/identity.js
 var ALIAS = /* @__PURE__ */ Symbol.for("yaml.alias");
 var DOC = /* @__PURE__ */ Symbol.for("yaml.document");
 var MAP = /* @__PURE__ */ Symbol.for("yaml.map");
@@ -24770,7 +24789,7 @@ function isNode(node2) {
 }
 var hasAnchor = (node2) => (isScalar(node2) || isCollection(node2)) && !!node2.anchor;
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/visit.js
+// node_modules/yaml/browser/dist/visit.js
 var BREAK = /* @__PURE__ */ Symbol("break visit");
 var SKIP = /* @__PURE__ */ Symbol("skip children");
 var REMOVE = /* @__PURE__ */ Symbol("remove node");
@@ -24920,7 +24939,7 @@ function replaceNode(key2, path, node2) {
   }
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/doc/directives.js
+// node_modules/yaml/browser/dist/doc/directives.js
 var escapeChars = {
   "!": "%21",
   ",": "%2C",
@@ -25083,7 +25102,7 @@ var Directives = class _Directives {
 Directives.defaultYaml = { explicit: false, version: "1.2" };
 Directives.defaultTags = { "!!": "tag:yaml.org,2002:" };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/doc/anchors.js
+// node_modules/yaml/browser/dist/doc/anchors.js
 function anchorIsValid(anchor2) {
   if (/[\x00-\x19\s,[\]{}]/.test(anchor2)) {
     const sa = JSON.stringify(anchor2);
@@ -25142,7 +25161,7 @@ function createNodeAnchors(doc, prefix) {
   };
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/doc/applyReviver.js
+// node_modules/yaml/browser/dist/doc/applyReviver.js
 function applyReviver(reviver, obj, key2, val) {
   if (val && typeof val === "object") {
     if (Array.isArray(val)) {
@@ -25186,7 +25205,7 @@ function applyReviver(reviver, obj, key2, val) {
   return reviver.call(obj, key2, val);
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/nodes/toJS.js
+// node_modules/yaml/browser/dist/nodes/toJS.js
 function toJS(value, arg, ctx) {
   if (Array.isArray(value))
     return value.map((v, i) => toJS(v, String(i), ctx));
@@ -25209,7 +25228,7 @@ function toJS(value, arg, ctx) {
   return value;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/nodes/Node.js
+// node_modules/yaml/browser/dist/nodes/Node.js
 var NodeBase = class {
   constructor(type) {
     Object.defineProperty(this, NODE_TYPE, { value: type });
@@ -25241,7 +25260,7 @@ var NodeBase = class {
   }
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/nodes/Alias.js
+// node_modules/yaml/browser/dist/nodes/Alias.js
 var Alias = class extends NodeBase {
   constructor(source) {
     super(ALIAS);
@@ -25346,7 +25365,7 @@ function getAliasCount(doc, node2, anchors) {
   return 1;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/nodes/Scalar.js
+// node_modules/yaml/browser/dist/nodes/Scalar.js
 var isScalarValue = (value) => !value || typeof value !== "function" && typeof value !== "object";
 var Scalar = class extends NodeBase {
   constructor(value) {
@@ -25366,7 +25385,7 @@ Scalar.PLAIN = "PLAIN";
 Scalar.QUOTE_DOUBLE = "QUOTE_DOUBLE";
 Scalar.QUOTE_SINGLE = "QUOTE_SINGLE";
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/doc/createNode.js
+// node_modules/yaml/browser/dist/doc/createNode.js
 var defaultTagPrefix = "tag:yaml.org,2002:";
 function findTagObject(value, tagName, tags) {
   if (tagName) {
@@ -25432,7 +25451,7 @@ function createNode(value, tagName, ctx) {
   return node2;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/nodes/Collection.js
+// node_modules/yaml/browser/dist/nodes/Collection.js
 function collectionFromPath(schema4, path, value) {
   let v = value;
   for (let i = path.length - 1; i >= 0; --i) {
@@ -25564,7 +25583,7 @@ var Collection = class extends NodeBase {
   }
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/stringify/stringifyComment.js
+// node_modules/yaml/browser/dist/stringify/stringifyComment.js
 var stringifyComment = (str) => str.replace(/^(?!$)(?: $)?/gm, "#");
 function indentComment(comment, indent) {
   if (/^\n+$/.test(comment))
@@ -25573,7 +25592,7 @@ function indentComment(comment, indent) {
 }
 var lineComment = (str, indent, comment) => str.endsWith("\n") ? indentComment(comment, indent) : comment.includes("\n") ? "\n" + indentComment(comment, indent) : (str.endsWith(" ") ? "" : " ") + comment;
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/stringify/foldFlowLines.js
+// node_modules/yaml/browser/dist/stringify/foldFlowLines.js
 var FOLD_FLOW = "flow";
 var FOLD_BLOCK = "block";
 var FOLD_QUOTED = "quoted";
@@ -25700,7 +25719,7 @@ function consumeMoreIndentedLines(text, i, indent) {
   return end;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/stringify/stringifyString.js
+// node_modules/yaml/browser/dist/stringify/stringifyString.js
 var getFoldOptions = (ctx, isBlock2) => ({
   indentAtStart: isBlock2 ? ctx.indent.length : ctx.indentAtStart,
   lineWidth: ctx.options.lineWidth,
@@ -25975,7 +25994,7 @@ function stringifyString(item, ctx, onComment, onChompKeep) {
   return res;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/stringify/stringify.js
+// node_modules/yaml/browser/dist/stringify/stringify.js
 function createStringifyContext(doc, options) {
   const opt = Object.assign({
     blockQuote: true,
@@ -26088,7 +26107,7 @@ function stringify(item, ctx, onComment, onChompKeep) {
 ${ctx.indent}${str}`;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/stringify/stringifyPair.js
+// node_modules/yaml/browser/dist/stringify/stringifyPair.js
 function stringifyPair({ key: key2, value }, ctx, onComment, onChompKeep) {
   const { allNullValues, doc, indent, indentStep, options: { commentString, indentSeq, simpleKeys } } = ctx;
   let keyComment = isNode(key2) && key2.comment || null;
@@ -26211,14 +26230,14 @@ ${ctx.indent}`;
   return str;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/log.js
+// node_modules/yaml/browser/dist/log.js
 function warn(logLevel, warning) {
   if (logLevel === "debug" || logLevel === "warn") {
     console.warn(warning);
   }
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/yaml-1.1/merge.js
+// node_modules/yaml/browser/dist/schema/yaml-1.1/merge.js
 var MERGE_KEY = "<<";
 var merge2 = {
   identify: (value) => value === MERGE_KEY || typeof value === "symbol" && value.description === MERGE_KEY,
@@ -26268,7 +26287,7 @@ function resolveAliasValue(ctx, value) {
   return ctx && isAlias(value) ? value.resolve(ctx.doc, ctx) : value;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/nodes/addPairToJSMap.js
+// node_modules/yaml/browser/dist/nodes/addPairToJSMap.js
 function addPairToJSMap(ctx, map3, { key: key2, value }) {
   if (isNode(key2) && key2.addToJSMap)
     key2.addToJSMap(ctx, map3, value);
@@ -26321,7 +26340,7 @@ function stringifyKey(key2, jsKey, ctx) {
   return JSON.stringify(jsKey);
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/nodes/Pair.js
+// node_modules/yaml/browser/dist/nodes/Pair.js
 function createPair(key2, value, ctx) {
   const k = createNode(key2, void 0, ctx);
   const v = createNode(value, void 0, ctx);
@@ -26350,7 +26369,7 @@ var Pair = class _Pair {
   }
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/stringify/stringifyCollection.js
+// node_modules/yaml/browser/dist/stringify/stringifyCollection.js
 function stringifyCollection(collection, ctx, options) {
   const flow = ctx.inFlow ?? collection.flow;
   const stringify4 = flow ? stringifyFlowCollection : stringifyBlockCollection;
@@ -26492,7 +26511,7 @@ function addCommentBefore({ indent, options: { commentString } }, lines2, commen
   }
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/nodes/YAMLMap.js
+// node_modules/yaml/browser/dist/nodes/YAMLMap.js
 function findPair(items, key2) {
   const k = isScalar(key2) ? key2.value : key2;
   for (const it of items) {
@@ -26623,7 +26642,7 @@ var YAMLMap = class extends Collection {
   }
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/common/map.js
+// node_modules/yaml/browser/dist/schema/common/map.js
 var map2 = {
   collection: "map",
   default: true,
@@ -26637,7 +26656,7 @@ var map2 = {
   createNode: (schema4, obj, ctx) => YAMLMap.from(schema4, obj, ctx)
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/nodes/YAMLSeq.js
+// node_modules/yaml/browser/dist/nodes/YAMLSeq.js
 var YAMLSeq = class extends Collection {
   static get tagName() {
     return "tag:yaml.org,2002:seq";
@@ -26741,7 +26760,7 @@ function asItemIndex(key2) {
   return typeof idx === "number" && Number.isInteger(idx) && idx >= 0 ? idx : null;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/common/seq.js
+// node_modules/yaml/browser/dist/schema/common/seq.js
 var seq = {
   collection: "seq",
   default: true,
@@ -26755,7 +26774,7 @@ var seq = {
   createNode: (schema4, obj, ctx) => YAMLSeq.from(schema4, obj, ctx)
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/common/string.js
+// node_modules/yaml/browser/dist/schema/common/string.js
 var string4 = {
   identify: (value) => typeof value === "string",
   default: true,
@@ -26767,7 +26786,7 @@ var string4 = {
   }
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/common/null.js
+// node_modules/yaml/browser/dist/schema/common/null.js
 var nullTag = {
   identify: (value) => value == null,
   createNode: () => new Scalar(null),
@@ -26778,7 +26797,7 @@ var nullTag = {
   stringify: ({ source }, ctx) => typeof source === "string" && nullTag.test.test(source) ? source : ctx.options.nullStr
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/core/bool.js
+// node_modules/yaml/browser/dist/schema/core/bool.js
 var boolTag = {
   identify: (value) => typeof value === "boolean",
   default: true,
@@ -26795,7 +26814,7 @@ var boolTag = {
   }
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/stringify/stringifyNumber.js
+// node_modules/yaml/browser/dist/stringify/stringifyNumber.js
 function stringifyNumber({ format, minFractionDigits, tag, value }) {
   if (typeof value === "bigint")
     return String(value);
@@ -26816,7 +26835,7 @@ function stringifyNumber({ format, minFractionDigits, tag, value }) {
   return n;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/core/float.js
+// node_modules/yaml/browser/dist/schema/core/float.js
 var floatNaN = {
   identify: (value) => typeof value === "number",
   default: true,
@@ -26852,7 +26871,7 @@ var float = {
   stringify: stringifyNumber
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/core/int.js
+// node_modules/yaml/browser/dist/schema/core/int.js
 var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
 var intResolve = (str, offset, radix, { intAsBigInt }) => intAsBigInt ? BigInt(str) : parseInt(str.substring(offset), radix);
 function intStringify(node2, radix, prefix) {
@@ -26888,7 +26907,7 @@ var intHex = {
   stringify: (node2) => intStringify(node2, 16, "0x")
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/core/schema.js
+// node_modules/yaml/browser/dist/schema/core/schema.js
 var schema = [
   map2,
   seq,
@@ -26903,7 +26922,7 @@ var schema = [
   float
 ];
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/json/schema.js
+// node_modules/yaml/browser/dist/schema/json/schema.js
 function intIdentify2(value) {
   return typeof value === "bigint" || Number.isInteger(value);
 }
@@ -26961,7 +26980,7 @@ var jsonError = {
 };
 var schema2 = [map2, seq].concat(jsonScalars, jsonError);
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/yaml-1.1/binary.js
+// node_modules/yaml/browser/dist/schema/yaml-1.1/binary.js
 var binary = {
   identify: (value) => value instanceof Uint8Array,
   // Buffer inherits from Uint8Array
@@ -27014,7 +27033,7 @@ var binary = {
   }
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/yaml-1.1/pairs.js
+// node_modules/yaml/browser/dist/schema/yaml-1.1/pairs.js
 function resolvePairs(seq2, onError) {
   if (isSeq(seq2)) {
     for (let i = 0; i < seq2.items.length; ++i) {
@@ -27080,7 +27099,7 @@ var pairs = {
   createNode: createPairs
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/yaml-1.1/omap.js
+// node_modules/yaml/browser/dist/schema/yaml-1.1/omap.js
 var YAMLOMap = class _YAMLOMap extends YAMLSeq {
   constructor() {
     super();
@@ -27146,7 +27165,7 @@ var omap = {
   createNode: (schema4, iterable, ctx) => YAMLOMap.from(schema4, iterable, ctx)
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/yaml-1.1/bool.js
+// node_modules/yaml/browser/dist/schema/yaml-1.1/bool.js
 function boolStringify({ value, source }, ctx) {
   const boolObj = value ? trueTag : falseTag;
   if (source && boolObj.test.test(source))
@@ -27170,7 +27189,7 @@ var falseTag = {
   stringify: boolStringify
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/yaml-1.1/float.js
+// node_modules/yaml/browser/dist/schema/yaml-1.1/float.js
 var floatNaN2 = {
   identify: (value) => typeof value === "number",
   default: true,
@@ -27209,7 +27228,7 @@ var float2 = {
   stringify: stringifyNumber
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/yaml-1.1/int.js
+// node_modules/yaml/browser/dist/schema/yaml-1.1/int.js
 var intIdentify3 = (value) => typeof value === "bigint" || Number.isInteger(value);
 function intResolve2(str, offset, radix, { intAsBigInt }) {
   const sign = str[0];
@@ -27278,7 +27297,7 @@ var intHex2 = {
   stringify: (node2) => intStringify2(node2, 16, "0x")
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/yaml-1.1/set.js
+// node_modules/yaml/browser/dist/schema/yaml-1.1/set.js
 var YAMLSet = class _YAMLSet extends YAMLMap {
   constructor(schema4) {
     super(schema4);
@@ -27357,7 +27376,7 @@ var set2 = {
   }
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/yaml-1.1/timestamp.js
+// node_modules/yaml/browser/dist/schema/yaml-1.1/timestamp.js
 function parseSexagesimal(str, asBigInt) {
   const sign = str[0];
   const parts = sign === "-" || sign === "+" ? str.substring(1) : str;
@@ -27436,7 +27455,7 @@ var timestamp = {
   stringify: ({ value }) => value?.toISOString().replace(/(T00:00:00)?\.000Z$/, "") ?? ""
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/yaml-1.1/schema.js
+// node_modules/yaml/browser/dist/schema/yaml-1.1/schema.js
 var schema3 = [
   map2,
   seq,
@@ -27461,7 +27480,7 @@ var schema3 = [
   timestamp
 ];
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/tags.js
+// node_modules/yaml/browser/dist/schema/tags.js
 var schemas = /* @__PURE__ */ new Map([
   ["core", schema],
   ["failsafe", [map2, seq, string4]],
@@ -27532,7 +27551,7 @@ function getTags(customTags, schemaName, addMergeTag) {
   }, []);
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/schema/Schema.js
+// node_modules/yaml/browser/dist/schema/Schema.js
 var sortMapEntriesByKey = (a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
 var Schema = class _Schema {
   constructor({ compat, customTags, merge: merge3, resolveKnownTags, schema: schema4, sortMapEntries, toStringDefaults }) {
@@ -27553,7 +27572,7 @@ var Schema = class _Schema {
   }
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/stringify/stringifyDocument.js
+// node_modules/yaml/browser/dist/stringify/stringifyDocument.js
 function stringifyDocument(doc, options) {
   const lines2 = [];
   let hasDirectives = options.directives === true;
@@ -27624,7 +27643,7 @@ function stringifyDocument(doc, options) {
   return lines2.join("\n") + "\n";
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/doc/Document.js
+// node_modules/yaml/browser/dist/doc/Document.js
 var Document = class _Document {
   constructor(value, replacer, options) {
     this.commentBefore = null;
@@ -27916,7 +27935,7 @@ function assertCollection(contents) {
   throw new Error("Expected a YAML collection as document contents");
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/errors.js
+// node_modules/yaml/browser/dist/errors.js
 var YAMLError = class extends Error {
   constructor(name, pos, code2, message) {
     super();
@@ -27972,7 +27991,7 @@ ${pointer}
   }
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/resolve-props.js
+// node_modules/yaml/browser/dist/compose/resolve-props.js
 function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIndent, startOnNewline }) {
   let spaceBefore = false;
   let atNewline = startOnNewline;
@@ -28100,7 +28119,7 @@ function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIn
   };
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/util-contains-newline.js
+// node_modules/yaml/browser/dist/compose/util-contains-newline.js
 function containsNewline(key2) {
   if (!key2)
     return null;
@@ -28136,7 +28155,7 @@ function containsNewline(key2) {
   }
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/util-flow-indent-check.js
+// node_modules/yaml/browser/dist/compose/util-flow-indent-check.js
 function flowIndentCheck(indent, fc, onError) {
   if (fc?.type === "flow-collection") {
     const end = fc.end[0];
@@ -28147,7 +28166,7 @@ function flowIndentCheck(indent, fc, onError) {
   }
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/util-map-includes.js
+// node_modules/yaml/browser/dist/compose/util-map-includes.js
 function mapIncludes(ctx, items, search) {
   const { uniqueKeys } = ctx.options;
   if (uniqueKeys === false)
@@ -28156,7 +28175,7 @@ function mapIncludes(ctx, items, search) {
   return items.some((pair) => isEqual(pair.key, search));
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/resolve-block-map.js
+// node_modules/yaml/browser/dist/compose/resolve-block-map.js
 var startColMsg = "All mapping items must start at the same column";
 function resolveBlockMap({ composeNode: composeNode2, composeEmptyNode: composeEmptyNode2 }, ctx, bm, onError, tag) {
   const NodeClass = tag?.nodeClass ?? YAMLMap;
@@ -28252,7 +28271,7 @@ function resolveBlockMap({ composeNode: composeNode2, composeEmptyNode: composeE
   return map3;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/resolve-block-seq.js
+// node_modules/yaml/browser/dist/compose/resolve-block-seq.js
 function resolveBlockSeq({ composeNode: composeNode2, composeEmptyNode: composeEmptyNode2 }, ctx, bs, onError, tag) {
   const NodeClass = tag?.nodeClass ?? YAMLSeq;
   const seq2 = new NodeClass(ctx.schema);
@@ -28294,7 +28313,7 @@ function resolveBlockSeq({ composeNode: composeNode2, composeEmptyNode: composeE
   return seq2;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/resolve-end.js
+// node_modules/yaml/browser/dist/compose/resolve-end.js
 function resolveEnd(end, offset, reqSpace, onError) {
   let comment = "";
   if (end) {
@@ -28331,7 +28350,7 @@ function resolveEnd(end, offset, reqSpace, onError) {
   return { comment, offset };
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/resolve-flow-collection.js
+// node_modules/yaml/browser/dist/compose/resolve-flow-collection.js
 var blockMsg = "Block collections are not allowed within flow collections";
 var isBlock = (token) => token && (token.type === "block-map" || token.type === "block-seq");
 function resolveFlowCollection({ composeNode: composeNode2, composeEmptyNode: composeEmptyNode2 }, ctx, fc, onError, tag) {
@@ -28511,7 +28530,7 @@ function resolveFlowCollection({ composeNode: composeNode2, composeEmptyNode: co
   return coll;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/compose-collection.js
+// node_modules/yaml/browser/dist/compose/compose-collection.js
 function resolveCollection(CN2, ctx, token, onError, tagName, tag) {
   const coll = token.type === "block-map" ? resolveBlockMap(CN2, ctx, token, onError, tag) : token.type === "block-seq" ? resolveBlockSeq(CN2, ctx, token, onError, tag) : resolveFlowCollection(CN2, ctx, token, onError, tag);
   const Coll = coll.constructor;
@@ -28563,7 +28582,7 @@ function composeCollection(CN2, ctx, token, props, onError) {
   return node2;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/resolve-block-scalar.js
+// node_modules/yaml/browser/dist/compose/resolve-block-scalar.js
 function resolveBlockScalar(ctx, scalar, onError) {
   const start = scalar.offset;
   const header = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
@@ -28739,7 +28758,7 @@ function splitLines(source) {
   return lines2;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/resolve-flow-scalar.js
+// node_modules/yaml/browser/dist/compose/resolve-flow-scalar.js
 function resolveFlowScalar(scalar, strict, onError) {
   const { offset, type, source, end } = scalar;
   let _type;
@@ -28951,7 +28970,7 @@ function parseCharCode(source, offset, length, onError) {
   }
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/compose-scalar.js
+// node_modules/yaml/browser/dist/compose/compose-scalar.js
 function composeScalar(ctx, token, tagToken, onError) {
   const { value, type, comment, range } = token.type === "block-scalar" ? resolveBlockScalar(ctx, token, onError) : resolveFlowScalar(token, ctx.options.strict, onError);
   const tagName = tagToken ? ctx.directives.tagName(tagToken.source, (msg) => onError(tagToken, "TAG_RESOLVE_FAILED", msg)) : null;
@@ -29022,7 +29041,7 @@ function findScalarTagByTest({ atKey, directives, schema: schema4 }, value, toke
   return tag;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/util-empty-scalar-position.js
+// node_modules/yaml/browser/dist/compose/util-empty-scalar-position.js
 function emptyScalarPosition(offset, before, pos) {
   if (before) {
     pos ?? (pos = before.length);
@@ -29046,7 +29065,7 @@ function emptyScalarPosition(offset, before, pos) {
   return offset;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/compose-node.js
+// node_modules/yaml/browser/dist/compose/compose-node.js
 var CN = { composeNode, composeEmptyNode };
 function composeNode(ctx, token, props, onError) {
   const atKey = ctx.atKey;
@@ -29139,7 +29158,7 @@ function composeAlias({ options }, { offset, source, end }, onError) {
   return alias;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/compose-doc.js
+// node_modules/yaml/browser/dist/compose/compose-doc.js
 function composeDoc(options, directives, { offset, start, value, end }, onError) {
   const opts = Object.assign({ _directives: directives }, options);
   const doc = new Document(void 0, opts);
@@ -29172,7 +29191,7 @@ function composeDoc(options, directives, { offset, start, value, end }, onError)
   return doc;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/compose/composer.js
+// node_modules/yaml/browser/dist/compose/composer.js
 function getErrorPos(src) {
   if (typeof src === "number")
     return [src, src + 1];
@@ -29365,7 +29384,7 @@ ${end.comment}` : end.comment;
   }
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/parse/cst-visit.js
+// node_modules/yaml/browser/dist/parse/cst-visit.js
 var BREAK2 = /* @__PURE__ */ Symbol("break visit");
 var SKIP2 = /* @__PURE__ */ Symbol("skip children");
 var REMOVE2 = /* @__PURE__ */ Symbol("remove item");
@@ -29421,7 +29440,7 @@ function _visit(path, item, visitor) {
   return typeof ctrl === "function" ? ctrl(item, path) : ctrl;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/parse/cst.js
+// node_modules/yaml/browser/dist/parse/cst.js
 var BOM = "\uFEFF";
 var DOCUMENT = "";
 var FLOW_END = "";
@@ -29486,7 +29505,7 @@ function tokenType(source) {
   return null;
 }
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/parse/lexer.js
+// node_modules/yaml/browser/dist/parse/lexer.js
 function isEmpty(ch) {
   switch (ch) {
     case void 0:
@@ -30068,7 +30087,7 @@ var Lexer = class {
   }
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/parse/line-counter.js
+// node_modules/yaml/browser/dist/parse/line-counter.js
 var LineCounter = class {
   constructor() {
     this.lineStarts = [];
@@ -30093,7 +30112,7 @@ var LineCounter = class {
   }
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/parse/parser.js
+// node_modules/yaml/browser/dist/parse/parser.js
 function includesToken(list2, type) {
   for (let i = 0; i < list2.length; ++i)
     if (list2[i].type === type)
@@ -30956,7 +30975,7 @@ var Parser = class {
   }
 };
 
-// ../../../../Documents/Code/Echoes/node_modules/yaml/browser/dist/public-api.js
+// node_modules/yaml/browser/dist/public-api.js
 function parseOptions(options) {
   const prettyErrors = options.prettyErrors !== false;
   const lineCounter = options.lineCounter || prettyErrors && new LineCounter() || null;
@@ -42141,13 +42160,25 @@ var DiscussionCoordinator = class {
   emit() {
     for (const listener of this.listeners) listener();
   }
-  async start(prompt) {
+  readyChat() {
     if (this.active) throw new Error("\u8BF7\u5148\u7B49\u5F85\u6216\u505C\u6B62\u6B63\u5728\u8FDB\u884C\u7684\u5267\u60C5\u8BA8\u8BBA\u3002");
     const chatId = SillyTavern.getContext().chatId;
     if (!chatId) throw new Error("\u8BF7\u5148\u9009\u62E9\u804A\u5929\u3002");
-    if (this.history(chatId).some((run2) => run2.status === "decision_required")) {
+    if (this.history(chatId).some((run) => run.status === "decision_required")) {
       throw new Error("\u8BF7\u5148\u786E\u8BA4\u5207\u6362\u7AEF\u70B9\uFF0C\u6216\u65B0\u5EFA\u8BA8\u8BBA\u540E\u518D\u53D1\u9001\u3002");
     }
+    return chatId;
+  }
+  async start(prompt) {
+    return this.startTurn(this.readyChat(), prompt);
+  }
+  async regenerate(runId) {
+    const chatId = this.readyChat();
+    const previous = this.history(chatId).find((item) => item.id === runId);
+    if (!previous) throw new Error("\u5F53\u524D\u804A\u5929\u4E2D\u627E\u4E0D\u5230\u8FD9\u6761\u8BA8\u8BBA\u8BB0\u5F55\u3002");
+    return this.startTurn(chatId, previous.prompt, previous);
+  }
+  async startTurn(chatId, prompt, previous) {
     if (!prompt.trim()) throw new Error("\u8BF7\u8F93\u5165\u672C\u6B21\u5267\u60C5\u8BA8\u8BBA\u5185\u5BB9\u3002");
     if (prompt.length > 1e5) throw new Error("\u8BA8\u8BBA\u5185\u5BB9\u8D85\u8FC7 100000 \u5B57\u7B26\u3002");
     const settings = getSettings();
@@ -42157,53 +42188,46 @@ var DiscussionCoordinator = class {
       throw new Error("\u8BF7\u5148\u5728\u201CAPI \u8FDE\u63A5 \u2192 \u5DE5\u4F5C\u6D41\u5206\u914D\u201D\u914D\u7F6E\u5267\u60C5\u8BA8\u8BBA\u7684\u751F\u6210\u7AEF\u70B9\u7EC4\u3002");
     }
     const run = {
-      id: randomUuid(),
+      id: previous?.id ?? randomUuid(),
       chatId,
       prompt,
       text: "",
       status: "preparing",
-      message: "\u6B63\u5728\u901A\u8FC7\u9152\u9986\u51C6\u5907\u5B8C\u6574\u4E0A\u4E0B\u6587",
-      startedAt: (/* @__PURE__ */ new Date()).toISOString()
+      systemPrompt: previous?.systemPrompt ?? settings.discussion.systemPrompt,
+      message: "\u6B63\u5728\u51C6\u5907\u8BA8\u8BBA\u4E0A\u4E0B\u6587",
+      startedAt: previous?.startedAt ?? (/* @__PURE__ */ new Date()).toISOString(),
+      ...previous ? { replaces: previous } : {}
     };
     const history = this.runs.get(chatId) ?? [];
-    history.push(run);
+    const index = previous ? history.indexOf(previous) : history.length;
+    history[index] = run;
     this.runs.set(chatId, history);
-    const controller = new AbortController();
-    this.active = { run, controller };
-    this.emit();
-    try {
+    await this.execute(run, async (signal) => {
       let messages2 = this.contexts.get(chatId);
       if (!messages2) {
-        messages2 = await captureDiscussionContext(controller.signal);
-        controller.signal.throwIfAborted();
+        messages2 = await captureDiscussionContext(signal);
+        signal.throwIfAborted();
         if (SillyTavern.getContext().chatId !== chatId) throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u8BA8\u8BBA\u672A\u53D1\u9001\u3002");
         this.contexts.set(chatId, structuredClone(messages2));
       }
-      controller.signal.throwIfAborted();
+      signal.throwIfAborted();
       if (SillyTavern.getContext().chatId !== chatId) throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u8BA8\u8BBA\u672A\u53D1\u9001\u3002");
-      const turns = history.filter((item) => item.status === "completed").flatMap((item) => [
+      const turns = history.slice(0, index).filter((item) => item.status === "completed").flatMap((item) => [
         { role: "user", content: item.prompt },
         { role: "assistant", content: item.text }
       ]);
-      run.request = discussionRequestSchema.parse({
+      return discussionRequestSchema.parse({
         chatId,
         messages: [
           ...structuredClone(messages2),
-          { role: "system", content: settings.discussion.systemPrompt },
+          { role: "system", content: run.systemPrompt },
           ...turns,
           { role: "user", content: prompt }
         ],
         generationGroup: structuredClone(group),
         failoverPolicy: workflow.failoverPolicy
       });
-      await this.generate(run, controller.signal);
-    } catch (error62) {
-      this.failed(run, controller.signal, error62);
-    } finally {
-      if (run.status !== "decision_required") delete run.request;
-      this.active = null;
-      this.emit();
-    }
+    });
   }
   async continue(runId) {
     if (this.active) throw new Error("\u5DF2\u6709\u5267\u60C5\u8BA8\u8BBA\u6B63\u5728\u8FDB\u884C\u3002");
@@ -42213,19 +42237,16 @@ var DiscussionCoordinator = class {
     if (!run?.request || run.status !== "decision_required" || !decision?.nextEndpointId) {
       throw new Error("\u6CA1\u6709\u53EF\u7EE7\u7EED\u7684\u5F85\u786E\u8BA4\u8BA8\u8BBA\u8BF7\u6C42\u3002");
     }
-    const controller = new AbortController();
-    this.active = { run, controller };
     run.request.resumeAfterEndpointId = decision.failedEndpointId;
+    await this.execute(run);
+  }
+  discardRegeneration(runId) {
+    if (this.active) throw new Error("\u5DF2\u6709\u5267\u60C5\u8BA8\u8BBA\u6B63\u5728\u8FDB\u884C\u3002");
+    const chatId = SillyTavern.getContext().chatId ?? "";
+    const run = this.history(chatId).find((item) => item.id === runId);
+    if (!run?.replaces || run.status !== "decision_required") throw new Error("\u6CA1\u6709\u5F85\u786E\u8BA4\u7684\u91CD\u65B0\u751F\u6210\u8BF7\u6C42\u3002");
+    this.restore(run, "\u5DF2\u4FDD\u7559\u539F\u8BA8\u8BBA\u8BB0\u5F55\u3002\u5DF2\u53D1\u9001\u7684\u91CD\u65B0\u751F\u6210\u8BF7\u6C42\u4ECD\u53EF\u80FD\u8BA1\u8D39\u3002");
     this.emit();
-    try {
-      await this.generate(run, controller.signal);
-    } catch (error62) {
-      this.failed(run, controller.signal, error62);
-    } finally {
-      if (run.status !== "decision_required") delete run.request;
-      this.active = null;
-      this.emit();
-    }
   }
   async stop() {
     const active = this.active;
@@ -42248,12 +42269,48 @@ var DiscussionCoordinator = class {
     this.contexts.delete(chatId);
     this.emit();
   }
+  restore(run, message) {
+    const history = this.runs.get(run.chatId);
+    const previous = run.replaces;
+    previous.message = message;
+    history[history.indexOf(run)] = previous;
+    delete run.replaces;
+    delete run.request;
+  }
+  async execute(run, prepare) {
+    const controller = new AbortController();
+    this.active = { run, controller };
+    try {
+      if (prepare) {
+        this.emit();
+        run.request = await prepare(controller.signal);
+      }
+      await this.generate(run, controller.signal);
+      if (run.replaces && run.status === "completed") {
+        const history = this.runs.get(run.chatId);
+        history.splice(history.indexOf(run) + 1);
+        delete run.replaces;
+      }
+    } catch (error62) {
+      this.failed(run, controller.signal, error62);
+      if (run.replaces) {
+        const reason = run.status === "cancelled" ? "\u5DF2\u505C\u6B62\u91CD\u65B0\u751F\u6210\uFF0C\u5DF2\u53D1\u9001\u8BF7\u6C42\u4ECD\u53EF\u80FD\u8BA1\u8D39\u3002" : `\u91CD\u65B0\u751F\u6210\u5931\u8D25\uFF1A${run.message}`;
+        this.restore(run, `${reason}\uFF08\u5DF2\u4FDD\u7559\u539F\u8BA8\u8BBA\u8BB0\u5F55\uFF09`);
+      }
+    } finally {
+      if (run.status !== "decision_required") delete run.request;
+      this.active = null;
+      this.emit();
+    }
+  }
   async generate(run, signal) {
     run.status = "generating";
     run.message = "\u6B63\u5728\u63D0\u4EA4\u5267\u60C5\u8BA8\u8BBA";
     delete run.jobId;
     delete run.result;
     this.emit();
+    signal.throwIfAborted();
+    if (SillyTavern.getContext().chatId !== run.chatId) throw new Error("\u804A\u5929\u5DF2\u5207\u6362\uFF0C\u8BA8\u8BBA\u672A\u53D1\u9001\u3002");
     const result = await echoesApi.discuss(run.request, signal, (event) => {
       if (signal.aborted) return;
       if (event.type === "endpoint") {
@@ -42269,6 +42326,7 @@ var DiscussionCoordinator = class {
       this.emit();
     });
     signal.throwIfAborted();
+    if (SillyTavern.getContext().chatId !== run.chatId) throw new DOMException("\u804A\u5929\u5DF2\u5207\u6362\u3002", "AbortError");
     run.result = result;
     if (result.outcome === "completed") {
       run.text = result.text ?? "";
@@ -48112,6 +48170,9 @@ var STATUS = {
   failed: ["\u5931\u8D25", "danger"],
   decision_required: ["\u7B49\u5F85\u786E\u8BA4", "warning"]
 };
+function isRegenerable(run) {
+  return run.status === "completed" || run.status === "failed" || run.status === "cancelled";
+}
 function discussionPage(ctx) {
   const workflow = getSettings().generationWorkflows.discussion;
   const group = getSettings().generationGroups.find((item) => item.id === workflow.groupId);
@@ -48171,6 +48232,34 @@ function discussionPage(ctx) {
   const contextNote = h("p", "ec-muted");
   const results = h("div", "ec-discussion-results");
   const idle = empty("\u8FD8\u6CA1\u6709\u8BA8\u8BBA\u56DE\u590D\u3002\u53D1\u9001\u540E\u53EF\u7EE7\u7EED\u8FFD\u95EE\uFF0C\u95EE\u7B54\u53EA\u4FDD\u7559\u5728\u672C\u9875\u4E2D\uFF0C\u4E0D\u4F1A\u5199\u5165\u804A\u5929\u3002");
+  const findRun = (runId) => discussionCoordinator.history(ctx.chatId).find((run) => run.id === runId);
+  const discussionBlocked = (history) => Boolean(discussionCoordinator.running) || history.some((run) => run.status === "decision_required");
+  const regenerationTarget = (runId) => {
+    const history = discussionCoordinator.history(ctx.chatId);
+    if (discussionBlocked(history)) return;
+    const index = history.findIndex((run2) => run2.id === runId);
+    const run = history[index];
+    if (!run || !isRegenerable(run)) return;
+    return { run, laterTurns: history.length - index - 1 };
+  };
+  const regenerate = async (runId) => {
+    ctx.guard();
+    const target = regenerationTarget(runId);
+    if (!target) return;
+    const { laterTurns } = target;
+    if (!await confirmAction({
+      title: "\u91CD\u65B0\u751F\u6210\u56DE\u590D\uFF1F",
+      cost: true,
+      confirmLabel: "\u91CD\u65B0\u751F\u6210",
+      message: "\u4F1A\u518D\u6B21\u8BF7\u6C42\u751F\u6210\u7AEF\u70B9\uFF0C\u6210\u529F\u540E\u624D\u4F1A\u66FF\u6362\u539F\u56DE\u590D\u3002" + (laterTurns ? `\u4EC5\u5728\u91CD\u65B0\u751F\u6210\u6210\u529F\u540E\uFF0C\u624D\u4F1A\u79FB\u9664\u5176\u540E\u7684 ${laterTurns} \u8F6E\u95EE\u7B54\u3002` : "")
+    })) return;
+    ctx.guard();
+    const current = regenerationTarget(runId);
+    if (!current || current.run !== target.run || current.laterTurns !== laterTurns) {
+      throw new Error("\u8BA8\u8BBA\u8BB0\u5F55\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u786E\u8BA4\u3002");
+    }
+    await discussionCoordinator.regenerate(runId);
+  };
   const views = /* @__PURE__ */ new Map();
   let markdownTimer;
   const render = () => {
@@ -48178,7 +48267,8 @@ function discussionPage(ctx) {
     const running2 = discussionCoordinator.running;
     const history = discussionCoordinator.history(ctx.chatId);
     const completed = history.filter((run) => run.status === "completed").length;
-    send.disabled = Boolean(running2) || history.some((run) => run.status === "decision_required");
+    const blocked2 = discussionBlocked(history);
+    send.disabled = blocked2;
     send.querySelector("span").textContent = completed ? "\u7EE7\u7EED\u8BA8\u8BBA" : "\u5F00\u59CB\u8BA8\u8BBA";
     reset.disabled = Boolean(running2);
     stop.hidden = !running2 || running2.chatId !== ctx.chatId;
@@ -48191,11 +48281,23 @@ function discussionPage(ctx) {
     for (const run of history) {
       let view = views.get(run.id);
       if (!view) {
+        const runId = run.id;
+        const prompt = h("div", "ec-prose ec-discussion-prompt");
         const state = h("span");
         const meta3 = h("span", "ec-muted");
+        const time3 = h("time", "ec-muted");
         const text = h("div", "ec-prose ec-discussion-text");
         const message = h("p", "ec-muted");
         message.setAttribute("role", "status");
+        const copy = iconButton("\u590D\u5236\u56DE\u590D", "copy", async () => {
+          const current = findRun(runId);
+          if (!current) return;
+          await copyText(current.text);
+          toast("\u5DF2\u590D\u5236", "success");
+        });
+        const regenerateButton = iconButton("\u91CD\u65B0\u751F\u6210", "rotate", () => {
+          void regenerate(runId).catch(reportError);
+        });
         const resume = button("\u5207\u6362\u5230\u4E0B\u4E00\u7AEF\u70B9", async () => {
           ctx.guard();
           if (!await confirmAction({
@@ -48204,40 +48306,70 @@ function discussionPage(ctx) {
             confirmLabel: "\u5207\u6362",
             message: "\u4E0A\u4E00\u4E2A\u8BF7\u6C42\u53EF\u80FD\u5DF2\u7ECF\u5B8C\u6210\u5E76\u8BA1\u8D39\u3002\u4F1A\u7528\u540C\u4E00\u4EFD\u4E0A\u4E0B\u6587\u5411\u4E0B\u4E00\u4E2A\u7AEF\u70B9\u53D1\u8D77\u65B0\u8BF7\u6C42\u3002"
           })) return;
-          await discussionCoordinator.continue(run.id);
+          ctx.guard();
+          await discussionCoordinator.continue(runId);
         }, { small: true, icon: "forward" });
-        const attempts = h("div");
+        const discard = button("\u4FDD\u7559\u539F\u8BB0\u5F55", () => {
+          ctx.guard();
+          const current = findRun(runId);
+          if (!discussionCoordinator.running && current?.status === "decision_required" && current.replaces) {
+            discussionCoordinator.discardRegeneration(runId);
+          }
+        }, { small: true, variant: "ghost" });
+        const decisionActions = h("div", "ec-row", resume, discard);
+        const attempts2 = h("div");
         const root = h(
           "article",
           "ec-discussion-item",
+          h("div", "ec-discussion-user", h("strong", "ec-discussion-author", "\u4F60"), prompt),
           h(
-            "header",
-            "ec-row",
-            state,
-            meta3,
-            h("span", "ec-grow"),
-            h("time", "ec-muted", formatTime(run.startedAt, false)),
-            iconButton("\u590D\u5236\u56DE\u590D", "copy", async () => {
-              await copyText(run.text);
-              toast("\u5DF2\u590D\u5236", "success");
-            })
-          ),
-          lazy2("\u672C\u6B21\u63D0\u95EE", run.prompt),
-          message,
-          text,
-          attempts,
-          h("div", "ec-row", resume)
+            "div",
+            "ec-discussion-reply",
+            h(
+              "header",
+              "ec-row",
+              h("strong", "ec-discussion-author", "AI \u56DE\u590D"),
+              state,
+              meta3,
+              h("span", "ec-grow"),
+              time3,
+              h("div", "ec-row", copy, regenerateButton)
+            ),
+            message,
+            text,
+            attempts2,
+            decisionActions
+          )
         );
-        view = { root, state, meta: meta3, text, message, resume, attempts, renderedAt: 0 };
+        view = {
+          root,
+          prompt,
+          state,
+          meta: meta3,
+          time: time3,
+          text,
+          message,
+          regenerate: regenerateButton,
+          resume,
+          discard,
+          decisionActions,
+          attempts: attempts2,
+          renderedAt: 0
+        };
         views.set(run.id, view);
         results.append(root);
       }
+      if (view.prompt.textContent !== run.prompt) view.prompt.textContent = run.prompt;
       const [label, tone] = STATUS[run.status];
       view.state.replaceChildren(badge(label, tone));
       view.meta.textContent = run.endpointName ? `${run.endpointName} \xB7 ${run.streaming ? "\u6D41\u5F0F" : "\u975E\u6D41\u5F0F"}` : "";
+      if (view.time.dateTime !== run.startedAt) {
+        view.time.dateTime = run.startedAt;
+        view.time.textContent = formatTime(run.startedAt, false);
+      }
       view.message.textContent = run.message;
       if (view.renderedText !== run.text) {
-        if (run.status === "generating" && view.renderedText !== void 0 && performance.now() - view.renderedAt < 120) {
+        if (run.status === "generating" && run.text && view.renderedText !== void 0 && performance.now() - view.renderedAt < 120) {
           markdownTimer ??= setTimeout(() => {
             markdownTimer = void 0;
             render();
@@ -48248,11 +48380,19 @@ function discussionPage(ctx) {
           void renderMarkdown(view.text, run.text);
         }
       }
-      view.resume.hidden = run.status !== "decision_required" || !run.result?.decisionRequired?.nextEndpointId;
+      view.regenerate.hidden = !isRegenerable(run);
+      view.regenerate.disabled = blocked2;
+      const decisionRequired = run.status === "decision_required";
+      view.resume.hidden = !decisionRequired || !run.result?.decisionRequired?.nextEndpointId;
       view.resume.disabled = Boolean(running2);
-      if (view.result !== run.result) {
-        view.result = run.result;
-        view.attempts.replaceChildren(...run.result?.attempts.length ? [lazy2("\u7AEF\u70B9\u5C1D\u8BD5\u8BB0\u5F55", () => attemptsTable(run.result.attempts))] : []);
+      view.discard.hidden = !decisionRequired || !run.replaces;
+      view.discard.disabled = Boolean(running2);
+      view.decisionActions.hidden = view.resume.hidden && view.discard.hidden;
+      const attempts = run.result?.attempts;
+      view.attempts.hidden = !attempts?.length;
+      if (view.renderedAttempts !== attempts) {
+        view.renderedAttempts = attempts;
+        view.attempts.replaceChildren(...attempts?.length ? [lazy2("\u7AEF\u70B9\u5C1D\u8BD5\u8BB0\u5F55", () => attemptsTable(attempts))] : []);
       }
     }
   };
