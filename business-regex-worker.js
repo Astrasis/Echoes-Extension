@@ -19783,7 +19783,7 @@ var MAX_REPAIRS = 16;
 var ParseBudget = class {
   remaining;
   constructor(length) {
-    this.remaining = Math.max(65536, length * 12);
+    this.remaining = Math.max(262144, length * 64);
   }
   spend(amount = 1) {
     this.remaining -= amount;
@@ -19843,11 +19843,25 @@ function objectEnds(text, budget) {
   }
   return ends;
 }
+function lastArrayIndex(open2) {
+  for (let index = open2.length - 1; index >= 0; index -= 1) {
+    if (open2[index].kind === "[") return index;
+  }
+  return -1;
+}
 function lenientObject(text, start, budget) {
   const open2 = [];
   let inString = false;
   let escaped = false;
   let rewritten = "";
+  const nextNonSpace = (from) => {
+    let cursor = from;
+    while (cursor < text.length && /\s/.test(text.charAt(cursor))) {
+      budget.spend();
+      cursor += 1;
+    }
+    return cursor;
+  };
   for (let index = start; index < text.length; index += 1) {
     budget.spend();
     const char = text[index];
@@ -19856,23 +19870,72 @@ function lenientObject(text, start, budget) {
       if (escaped) escaped = false;
       else if (char === "\\") escaped = true;
       else if (char === '"') {
-        let next = index + 1;
-        while (next < text.length && /\s/.test(text.charAt(next))) {
-          budget.spend();
-          next += 1;
+        const next = nextNonSpace(index + 1);
+        const nextChar = text.charAt(next);
+        const top = open2.at(-1);
+        let closesString = false;
+        if (next === text.length) {
+          closesString = true;
+        } else if (top?.kind === "{" && !top.afterColon) {
+          closesString = nextChar === ":";
+        } else if (top?.kind === "{") {
+          if (nextChar === ",") {
+            const afterComma = text.charAt(nextNonSpace(next + 1));
+            closesString = afterComma === '"' || afterComma === "}" || afterComma === "{" && lastArrayIndex(open2) >= 0;
+          } else if (nextChar === "}" || nextChar === "]" && lastArrayIndex(open2) >= 0) {
+            const afterClose = text.charAt(nextNonSpace(next + 1));
+            closesString = open2.length <= 1 || afterClose === "" || ",}[]".includes(afterClose);
+          }
+        } else if (top?.kind === "[") {
+          if (nextChar === ",") {
+            const afterComma = text.charAt(nextNonSpace(next + 1));
+            closesString = afterComma !== "" && '"{[-0123456789tfn]'.includes(afterComma);
+          } else if (nextChar === "]") {
+            const afterClose = text.charAt(nextNonSpace(next + 1));
+            closesString = open2.length <= 1 || afterClose === "" || ",}[]".includes(afterClose);
+          }
         }
-        if (next === text.length || ",}]:".includes(text.charAt(next))) inString = false;
+        if (closesString) inString = false;
         else emitted = '\\"';
       } else if (char === "\n") emitted = "\\n";
       else if (char === "\r") emitted = "\\r";
       else if (char === "	") emitted = "\\t";
     } else if (char === '"') inString = true;
-    else if (char === "{" || char === "[") {
-      open2.push(char);
+    else if (char === "{") {
+      open2.push({ kind: "{", afterColon: false });
       if (open2.length > MAX_DEPTH) throw new Error("\u6A21\u578B\u54CD\u5E94 JSON \u5D4C\u5957\u8D85\u8FC7 256 \u5C42\u3002");
-    } else if (char === "]") open2.pop();
-    else if (char === "}") {
-      if (open2.at(-1) === "[") continue;
+    } else if (char === "[") {
+      open2.push({ kind: "[" });
+      if (open2.length > MAX_DEPTH) throw new Error("\u6A21\u578B\u54CD\u5E94 JSON \u5D4C\u5957\u8D85\u8FC7 256 \u5C42\u3002");
+    } else if (char === ":") {
+      const top = open2.at(-1);
+      if (top?.kind === "{") top.afterColon = true;
+    } else if (char === ",") {
+      const top = open2.at(-1);
+      if (top?.kind === "{") {
+        const arrayIndex = lastArrayIndex(open2);
+        if (arrayIndex >= 0 && text.charAt(nextNonSpace(index + 1)) === "{") {
+          rewritten = rewritten.replace(/,(\s*)$/, "$1");
+          while (open2.length - 1 > arrayIndex) {
+            open2.pop();
+            rewritten += "}";
+          }
+        } else {
+          top.afterColon = false;
+        }
+      }
+    } else if (char === "]") {
+      const arrayIndex = lastArrayIndex(open2);
+      if (arrayIndex < 0) continue;
+      rewritten = rewritten.replace(/,(\s*)$/, "$1");
+      while (open2.length - 1 > arrayIndex) {
+        open2.pop();
+        rewritten += "}";
+      }
+      open2.pop();
+    } else if (char === "}") {
+      if (open2.at(-1)?.kind === "[") continue;
+      rewritten = rewritten.replace(/,(\s*)$/, "$1");
       open2.pop();
       if (!open2.length) return { text: rewritten + char, end: index + 1 };
     }
@@ -19888,6 +19951,7 @@ function parseProviderJsonObject(raw, label, requiredKey, rules = {}) {
   const cleaned = withoutReasoning(raw, rules);
   const budget = new ParseBudget(cleaned.length);
   const ends = objectEnds(cleaned, budget);
+  const keyToken = requiredKey ? `"${requiredKey}"` : void 0;
   let start = cleaned.indexOf("{");
   let attempts = 0;
   let repairs = 0;
@@ -19895,12 +19959,12 @@ function parseProviderJsonObject(raw, label, requiredKey, rules = {}) {
   let value;
   let diagnostic = "";
   const parse3 = (span) => {
-    budget.spend(span.length * 2);
+    budget.spend(span.length);
     try {
       const candidate = JSON.parse(span);
       return isObject2(candidate) ? candidate : void 0;
     } catch (error62) {
-      if (!diagnostic && requiredKey && span.includes(`"${requiredKey}"`)) {
+      if (!diagnostic && keyToken && span.includes(keyToken)) {
         const message2 = error62.message.slice(0, 300);
         const position = message2.match(/\bposition (\d+)/);
         const offset = position ? Number(position[1]) : 0;
@@ -19912,20 +19976,24 @@ function parseProviderJsonObject(raw, label, requiredKey, rules = {}) {
   };
   while (start >= 0) {
     if (++attempts > MAX_CANDIDATES) throw new Error("\u6A21\u578B\u54CD\u5E94 JSON \u5019\u9009\u5BF9\u8C61\u8D85\u8FC7 256 \u4E2A\u3002");
-    let end = ends.get(start);
-    let candidate = end === void 0 ? void 0 : parse3(cleaned.slice(start, end));
-    if (!candidate) {
+    const end = ends.get(start);
+    const slice = end === void 0 ? void 0 : cleaned.slice(start, end);
+    let nextEnd = end;
+    let candidate = slice !== void 0 && (!keyToken || slice.includes(keyToken) || found === 0) ? parse3(slice) : void 0;
+    if (!candidate && (!keyToken || cleaned.indexOf(keyToken, start) >= 0)) {
       if (++repairs > MAX_REPAIRS) throw new Error("\u6A21\u578B\u54CD\u5E94 JSON \u4FEE\u590D\u6B21\u6570\u8D85\u8FC7 16 \u6B21\u3002");
       const repaired = lenientObject(cleaned, start, budget);
       if (repaired) {
         candidate = parse3(repaired.text);
-        if (candidate) end = repaired.end;
+        if (candidate) nextEnd = repaired.end;
+      } else if (!diagnostic && keyToken && cleaned.slice(start, start + keyToken.length + 32).includes(keyToken)) {
+        diagnostic = ` \u8D77\u59CB\u7684 ${keyToken} \u6839\u5BF9\u8C61\u672A\u95ED\u5408\u3002`;
       }
     }
     if (candidate) {
       found += 1;
       if (!requiredKey || Object.hasOwn(candidate, requiredKey)) value = candidate;
-      start = cleaned.indexOf("{", end);
+      start = cleaned.indexOf("{", nextEnd);
     } else start = cleaned.indexOf("{", start + 1);
   }
   if (value) return value;
